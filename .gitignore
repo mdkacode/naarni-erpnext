@@ -19,3 +19,8 @@ node_modules/
 .backportrc.json
 # Aider AI Chat
 .aider*
+
+# Local secrets / logs — never commit
+m365.txt
+deploy/*.log
+

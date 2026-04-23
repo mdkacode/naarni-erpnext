@@ -1,0 +1,116 @@
+{
+  "name": "Vehicle Health Card",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "format:HC-{YYYY}-{#####}",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "vehicle",
+      "label": "Vehicle",
+      "fieldtype": "Link",
+      "options": "Vehicle",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "vehicle_number",
+      "label": "Registration Number",
+      "fieldtype": "Data",
+      "fetch_from": "vehicle.registration_number",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_hc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "job_card",
+      "label": "Source Job Card",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "generated_on",
+      "label": "Generated On",
+      "fieldtype": "Datetime",
+      "default": "Now",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_scores",
+      "label": "Overall Scores",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "overall_pre_score",
+      "label": "Pre-PMS %",
+      "fieldtype": "Percent",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "overall_post_score",
+      "label": "Post-PMS %",
+      "fieldtype": "Percent",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_hc2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "improvement",
+      "label": "Improvement %",
+      "fieldtype": "Percent",
+      "read_only": 1
+    },
+    {
+      "fieldname": "odometer_reading",
+      "label": "Odometer at Service (km)",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_categories",
+      "label": "Per-Category Breakdown",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "category_scores",
+      "label": "Category Scores",
+      "fieldtype": "Table",
+      "options": "Job Card Category Score"
+    },
+    {
+      "fieldname": "section_summary",
+      "label": "Summary",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "summary_notes",
+      "label": "Summary Notes",
+      "fieldtype": "Long Text"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1, "report": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1, "export": 1, "report": 1},
+    {"role": "Aftersales Eng", "read": 1, "export": 1, "report": 1},
+    {"role": "N. Maintenance Head", "read": 1, "export": 1, "report": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "generated_on",
+  "sort_order": "DESC",
+  "title_field": "vehicle_number"
+}

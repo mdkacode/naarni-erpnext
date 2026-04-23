@@ -1,0 +1,60 @@
+{
+  "name": "Depot",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "field:depot_name",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "depot_name",
+      "label": "Depot Name",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "location_code",
+      "label": "Location Code",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "length": 10,
+      "description": "Short code used in Job Card naming series (e.g., BLR01). Uppercase alphanumeric."
+    },
+    {
+      "fieldname": "city",
+      "label": "City",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "state",
+      "label": "State",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "address",
+      "label": "Address",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1}
+  ],
+  "sort_field": "depot_name",
+  "sort_order": "ASC",
+  "title_field": "depot_name"
+}

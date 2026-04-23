@@ -1,0 +1,29 @@
+{
+  "name": "Job Card Repair Item",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {"fieldname": "part_group", "label": "Part Group", "fieldtype": "Link", "options": "Part Group", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "bus_system", "label": "Bus System", "fieldtype": "Data", "fetch_from": "part_group.bus_system", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "description", "label": "Issue / Work Description", "fieldtype": "Small Text", "reqd": 1},
+    {"fieldname": "activity_type", "label": "Activity Type", "fieldtype": "Select", "options": "\nOnly Repair\nSpare Replacement\nBoth", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "column_break_ri1", "fieldtype": "Column Break"},
+    {"fieldname": "component_status", "label": "Status", "fieldtype": "Select", "options": "Good\nRepair/Replace Recommended\nRepair/Replace Immediately", "default": "Good", "in_list_view": 1, "description": "For health score calculation"},
+    {"fieldname": "qty", "label": "Qty", "fieldtype": "Float", "default": "1"},
+    {"fieldname": "rate", "label": "Rate", "fieldtype": "Currency"},
+    {"fieldname": "estimated_amount", "label": "Estimated Amount", "fieldtype": "Currency", "in_list_view": 1},
+    {"fieldname": "actual_amount", "label": "Actual Amount", "fieldtype": "Currency"},
+    {"fieldname": "part_number", "label": "Part Number", "fieldtype": "Data"},
+    {"fieldname": "section_ri_photos", "label": "Evidence", "fieldtype": "Section Break", "collapsible": 1},
+    {"fieldname": "pre_repair_photo", "label": "Pre-Repair Photo", "fieldtype": "Attach Image"},
+    {"fieldname": "post_repair_photo", "label": "Post-Repair Photo", "fieldtype": "Attach Image"},
+    {"fieldname": "section_ri_status", "label": "", "fieldtype": "Section Break"},
+    {"fieldname": "item_status", "label": "Item Status", "fieldtype": "Select", "options": "Pending\nParts Requested\nParts Allocated\nParts Issued\nIn Progress\nCompleted\nCustomer Rejected", "default": "Pending", "in_list_view": 1},
+    {"fieldname": "customer_approved", "label": "Customer Approved", "fieldtype": "Check", "default": "0", "description": "Required for parts > 1K value"},
+    {"fieldname": "customer_rejection_feedback", "label": "Customer Rejection Feedback", "fieldtype": "Small Text", "description": "Per-part rejection reason (PRD p.11 Only Repair step 10)"},
+    {"fieldname": "customer_decision_at", "label": "Customer Decision At", "fieldtype": "Datetime", "read_only": 1}
+  ],
+  "permissions": []
+}

@@ -1,0 +1,37 @@
+00:16:12 system        | socketio.1 started (pid=64214)
+00:16:12 system        | web.1 started (pid=64215)
+00:16:12 system        | redis_cache.1 started (pid=64216)
+00:16:12 system        | watch.1 started (pid=64217)
+00:16:12 system        | schedule.1 started (pid=64218)
+00:16:12 system        | redis_queue.1 started (pid=64219)
+00:16:12 redis_cache.1 | 64216:C 24 Apr 2026 00:16:12.938 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+00:16:12 redis_cache.1 | 64216:C 24 Apr 2026 00:16:12.938 * Redis version=8.6.2, bits=64, commit=00000000, modified=1, pid=64216, just started
+00:16:12 redis_cache.1 | 64216:C 24 Apr 2026 00:16:12.938 * Configuration loaded
+00:16:12 redis_cache.1 | 64216:M 24 Apr 2026 00:16:12.938 * monotonic clock: ARM CNTVCT @ 1000 ticks/us
+00:16:12 redis_cache.1 | 64216:M 24 Apr 2026 00:16:12.939 * Running mode=standalone, port=13000.
+00:16:12 redis_cache.1 | 64216:M 24 Apr 2026 00:16:12.939 # WARNING: The TCP backlog setting of 511 cannot be enforced because kern.ipc.somaxconn is set to the lower value of 128.
+00:16:12 redis_cache.1 | 64216:M 24 Apr 2026 00:16:12.940 # Warning: Could not create server TCP listening socket 127.0.0.1:13000: bind: Address already in use
+00:16:12 redis_cache.1 | 64216:M 24 Apr 2026 00:16:12.940 # Failed listening on port 13000 (tcp), aborting.
+00:16:12 system        | redis_cache.1 stopped (rc=1)
+00:16:12 system        | worker.1 started (pid=64220)
+00:16:12 system        | sending SIGTERM to redis_queue.1 (pid 64219)
+00:16:12 system        | sending SIGTERM to web.1 (pid 64215)
+00:16:12 system        | sending SIGTERM to socketio.1 (pid 64214)
+00:16:12 system        | sending SIGTERM to watch.1 (pid 64217)
+00:16:12 system        | sending SIGTERM to schedule.1 (pid 64218)
+00:16:12 system        | sending SIGTERM to worker.1 (pid 64220)
+00:16:12 redis_queue.1 | 64219:C 24 Apr 2026 00:16:12.944 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+00:16:12 redis_queue.1 | 64219:C 24 Apr 2026 00:16:12.944 * Redis version=8.6.2, bits=64, commit=00000000, modified=1, pid=64219, just started
+00:16:12 redis_queue.1 | 64219:C 24 Apr 2026 00:16:12.944 * Configuration loaded
+00:16:12 redis_queue.1 | 64219:M 24 Apr 2026 00:16:12.945 * monotonic clock: ARM CNTVCT @ 1000 ticks/us
+00:16:12 redis_queue.1 | 64219:signal-handler (1776969972) Received SIGTERM scheduling shutdown...
+00:16:12 redis_queue.1 | 64219:M 24 Apr 2026 00:16:12.945 * Running mode=standalone, port=11000.
+00:16:12 redis_queue.1 | 64219:M 24 Apr 2026 00:16:12.945 # WARNING: The TCP backlog setting of 511 cannot be enforced because kern.ipc.somaxconn is set to the lower value of 128.
+00:16:12 system        | worker.1 stopped (rc=-15)
+00:16:12 redis_queue.1 | 64219:M 24 Apr 2026 00:16:12.946 # Warning: Could not create server TCP listening socket 127.0.0.1:11000: bind: Address already in use
+00:16:12 system        | schedule.1 stopped (rc=-15)
+00:16:12 redis_queue.1 | 64219:M 24 Apr 2026 00:16:12.946 # Failed listening on port 11000 (tcp), aborting.
+00:16:12 system        | watch.1 stopped (rc=-15)
+00:16:12 system        | web.1 stopped (rc=-15)
+00:16:12 system        | socketio.1 stopped (rc=-15)
+00:16:12 system        | redis_queue.1 stopped (rc=1)

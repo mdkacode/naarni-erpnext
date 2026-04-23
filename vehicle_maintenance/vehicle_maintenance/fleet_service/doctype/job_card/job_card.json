@@ -1,0 +1,1045 @@
+{
+  "name": "Job Card",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "is_submittable": 0,
+  "track_changes": 1,
+  "autoname": "autoname",
+  "naming_rule": "Expression (old style)",
+  "fields": [
+    {
+      "fieldname": "section_type",
+      "label": "",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "job_card_type",
+      "label": "Job Card Type",
+      "fieldtype": "Select",
+      "options": "\nPMS + Repair\nOnly Repair\nSoftware Update\nBreakdown",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "bold": 1
+    },
+    {
+      "fieldname": "repair_subtype",
+      "label": "Repair Sub-Type",
+      "fieldtype": "Select",
+      "options": "\nRegular\nAccidental Major",
+      "default": "Regular",
+      "depends_on": "eval:doc.job_card_type=='Only Repair'",
+      "mandatory_depends_on": "eval:doc.job_card_type=='Only Repair'",
+      "description": "Regular = 4h SLA; Accidental Major = 24h SLA"
+    },
+    {
+      "fieldname": "column_break_type1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "priority",
+      "label": "Priority",
+      "fieldtype": "Select",
+      "options": "\nLow\nMedium\nHigh\nUrgent",
+      "default": "Medium",
+      "reqd": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_type2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "job_card_date",
+      "label": "Date",
+      "fieldtype": "Date",
+      "default": "Today",
+      "read_only": 1,
+      "reqd": 1
+    },
+
+    {
+      "fieldname": "section_vehicle",
+      "label": "Vehicle",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "vehicle",
+      "label": "Vehicle Number",
+      "fieldtype": "Link",
+      "options": "Vehicle",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Search by registration number"
+    },
+    {
+      "fieldname": "vehicle_number",
+      "label": "Registration Number",
+      "fieldtype": "Data",
+      "fetch_from": "vehicle.registration_number",
+      "read_only": 1,
+      "in_list_view": 1,
+      "bold": 1
+    },
+    {
+      "fieldname": "column_break_veh1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "vehicle_make_model",
+      "label": "Bus Model",
+      "fieldtype": "Data",
+      "fetch_from": "vehicle.make_model",
+      "read_only": 1
+    },
+    {
+      "fieldname": "oem",
+      "label": "OEM",
+      "fieldtype": "Link",
+      "options": "OEM",
+      "fetch_from": "vehicle.oem",
+      "read_only": 1,
+      "description": "Auto-filled from the Vehicle master"
+    },
+    {
+      "fieldname": "chassis_photo",
+      "label": "Chassis / VIN Plate Photo",
+      "fieldtype": "Attach Image",
+      "depends_on": "eval:['Only Repair','Breakdown','Software Update'].includes(doc.job_card_type)",
+      "description": "Upload photo of the VIN plate for verification"
+    },
+    {
+      "fieldname": "subsystems",
+      "label": "Subsystems Affected",
+      "fieldtype": "Table MultiSelect",
+      "options": "Job Card Subsystem",
+      "depends_on": "eval:['Only Repair','Breakdown','Software Update'].includes(doc.job_card_type)",
+      "description": "Select all affected subsystems (Brakes, HVAC, Powertrain, etc.)"
+    },
+    {
+      "fieldname": "subsystem_affected",
+      "label": "Subsystems Affected (legacy)",
+      "fieldtype": "Small Text",
+      "hidden": 1,
+      "read_only": 1,
+      "description": "Deprecated free-text field retained for backwards compatibility with pre-M1 job cards."
+    },
+
+    {
+      "fieldname": "section_odometer",
+      "label": "Odometer",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "odometer_reading",
+      "label": "Odometer Reading (km)",
+      "fieldtype": "Int",
+      "reqd": 1,
+      "description": "Enter the reading shown on the dashboard"
+    },
+    {
+      "fieldname": "odometer_photo",
+      "label": "Odometer Photo",
+      "fieldtype": "Attach Image",
+      "description": "Capture the odometer dashboard for verification"
+    },
+    {
+      "fieldname": "column_break_odo1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "check_sheet",
+      "label": "Inspection Check Sheet",
+      "fieldtype": "Select",
+      "options": "\nSheet A (0-20,000 km)\nSheet B (20,001-40,000 km)\nSheet C (40,001-80,000 km)\nSheet D (80,001+ km)",
+      "read_only": 1,
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'",
+      "description": "Auto-selected from odometer reading — thresholds 20K / 40K / 80K per PRD"
+    },
+    {
+      "fieldname": "service_type",
+      "label": "Service Type",
+      "fieldtype": "Select",
+      "options": "\nScheduled Maintenance\nBreakdown Repair\nBody & Paint\nElectrical\nTyre & Alignment\nGeneral Inspection\nSoftware Update\nOther",
+      "reqd": 1,
+      "read_only": 1,
+      "description": "Auto-set from Job Card Type"
+    },
+    {
+      "fieldname": "pms_tolerance_level",
+      "label": "PMS Tolerance Level",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'",
+      "description": "Auto-populated from service contract"
+    },
+
+    {
+      "fieldname": "section_customer",
+      "label": "Customer",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "reqd": 1,
+      "in_standard_filter": 1,
+      "fetch_from": "vehicle.customer",
+      "description": "Auto-filled from vehicle. Change only if needed."
+    },
+    {
+      "fieldname": "customer_name",
+      "label": "Customer Name",
+      "fieldtype": "Data",
+      "fetch_from": "customer.customer_name",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_cust1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "customer_phone",
+      "label": "Customer Phone",
+      "fieldtype": "Data",
+      "fetch_from": "customer.mobile_no",
+      "read_only": 1
+    },
+    {
+      "fieldname": "service_contract",
+      "label": "Service Contract",
+      "fieldtype": "Link",
+      "options": "Service Contract",
+      "description": "Auto-filled from customer. Drives SLA and warranty terms."
+    },
+
+    {
+      "fieldname": "section_location",
+      "label": "Location & Assignment",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "depot",
+      "label": "Depot / Workshop",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "reqd": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_loc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "assigned_service_engineer",
+      "label": "Assigned Service Engineer",
+      "fieldtype": "Link",
+      "options": "User",
+      "in_standard_filter": 1,
+      "permlevel": 1,
+      "description": "Only Depot Manager can assign"
+    },
+    {
+      "fieldname": "assigned_technician",
+      "label": "Assigned Technician",
+      "fieldtype": "Link",
+      "options": "User",
+      "permlevel": 1,
+      "description": "Only Depot Manager can assign"
+    },
+
+    {
+      "fieldname": "section_inspection_poc",
+      "label": "Inspection POC",
+      "fieldtype": "Section Break",
+      "description": "Who performed the inspection (SE self-inspection or a Technician)"
+    },
+    {
+      "fieldname": "inspection_poc_self",
+      "label": "Self-Inspection by SE",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Tick if the Service Engineer is doing the inspection themselves"
+    },
+    {
+      "fieldname": "column_break_poc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "inspection_poc",
+      "label": "Inspection Technician",
+      "fieldtype": "Link",
+      "options": "User",
+      "mandatory_depends_on": "eval:!doc.inspection_poc_self && doc.workflow_state && doc.workflow_state!='Open'",
+      "description": "Technician responsible for the inspection. Can be set alongside Self-Inspection for Software Updates (PRD: Technician Name or Self or both)."
+    },
+
+    {
+      "fieldname": "section_last_service",
+      "label": "Last Service Info",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'",
+      "description": "Auto-filled from vehicle's last PMS job card"
+    },
+    {
+      "fieldname": "last_pms_date",
+      "label": "Last PMS Date",
+      "fieldtype": "Date",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_pms_odometer",
+      "label": "Last Serviced Odometer (km)",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_last_svc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "last_service_tolerance_level",
+      "label": "Last Service Tolerance Level",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_serviced_by",
+      "label": "Last Serviced By",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "description": "SE + Technician names from the previous job card"
+    },
+
+    {
+      "fieldname": "section_voc",
+      "label": "Voice of Customer (VOC)",
+      "fieldtype": "Section Break",
+      "description": "Record what the driver/customer reported vs what SE found"
+    },
+    {
+      "fieldname": "complaint_description",
+      "label": "Driver / Customer Complaints",
+      "fieldtype": "Text",
+      "reqd": 1,
+      "description": "Record ALL issues reported by the driver or customer, system-wise"
+    },
+    {
+      "fieldname": "column_break_voc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "se_observations",
+      "label": "SE Observations",
+      "fieldtype": "Text",
+      "description": "Issues found by the SE during initial inspection (distinct from customer complaints)"
+    },
+
+    {
+      "fieldname": "section_pre_photos",
+      "label": "Vehicle Arrival Photos",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "arrival_photo_front",
+      "label": "Front View",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "arrival_photo_rear",
+      "label": "Rear View",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "column_break_photos1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "arrival_photo_left",
+      "label": "Left Side",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "arrival_photo_right",
+      "label": "Right Side",
+      "fieldtype": "Attach Image"
+    },
+
+    {
+      "fieldname": "section_breakdown_incident",
+      "label": "Breakdown Incident",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'"
+    },
+    {
+      "fieldname": "incident_place",
+      "label": "Incident Place",
+      "fieldtype": "Select",
+      "options": "\nDepot\nEn Route"
+    },
+    {
+      "fieldname": "groups_impacted",
+      "label": "Groups Impacted",
+      "fieldtype": "Table MultiSelect",
+      "options": "Job Card Group Impacted",
+      "description": "PRD p.15 step 4 — multi-select of Part Groups affected by the breakdown"
+    },
+    {
+      "fieldname": "fault_code_1",
+      "label": "Fault Code 1",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "column_break_fc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "fault_code_2",
+      "label": "Fault Code 2",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "fault_code_3",
+      "label": "Fault Code 3",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "section_remote_resolution",
+      "label": "Remote Resolution (30-min SLA)",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'",
+      "description": "SE must attempt remote diagnosis first. After 30 minutes, SE + Central Ops + Aftersales Eng are notified."
+    },
+    {
+      "fieldname": "remote_resolution_started_at",
+      "label": "Remote Diagnosis Started",
+      "fieldtype": "Datetime",
+      "description": "Start of the 30-min remote-resolution timer"
+    },
+    {
+      "fieldname": "remote_resolution_status",
+      "label": "Remote Resolution Status",
+      "fieldtype": "Select",
+      "options": "\nIn Progress\nResolved\nFailed",
+      "default": "In Progress"
+    },
+    {
+      "fieldname": "column_break_rr1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "remote_resolution_failed_at",
+      "label": "Remote Resolution Failed At",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "description": "Stamped when the 30-min SLA elapsed without resolution"
+    },
+    {
+      "fieldname": "remote_resolution_escalation_sent",
+      "label": "Remote Escalation Sent",
+      "fieldtype": "Check",
+      "default": "0",
+      "read_only": 1,
+      "hidden": 1
+    },
+
+    {
+      "fieldname": "section_breakdown_travel",
+      "label": "Breakdown Travel & Diagnosis",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'"
+    },
+    {
+      "fieldname": "travel_started_at",
+      "label": "Travel Started At",
+      "fieldtype": "Datetime",
+      "description": "When SE left for the breakdown location"
+    },
+    {
+      "fieldname": "arrived_at_location",
+      "label": "Arrived at BD Location",
+      "fieldtype": "Datetime"
+    },
+    {
+      "fieldname": "column_break_travel1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "travel_duration_minutes",
+      "label": "Travel Duration (min)",
+      "fieldtype": "Float",
+      "read_only": 1,
+      "description": "Auto-computed from travel timestamps"
+    },
+    {
+      "fieldname": "section_breakdown_override",
+      "label": "SOP Override",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'",
+      "description": "Use when the troubleshooting process doesn't exist or doesn't resolve the issue (PRD p.15 step 8)"
+    },
+    {
+      "fieldname": "force_override",
+      "label": "Force Override (no SOP available)",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Tick when no documented process exists for this group; SE proceeded without one"
+    },
+    {
+      "fieldname": "force_override_reason",
+      "label": "Force Override Reason",
+      "fieldtype": "Small Text",
+      "depends_on": "force_override",
+      "mandatory_depends_on": "force_override"
+    },
+    {
+      "fieldname": "column_break_override1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "process_override",
+      "label": "Process Override (SOP didn't resolve)",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Tick when the documented process was attempted but did not resolve the issue"
+    },
+    {
+      "fieldname": "process_override_steps",
+      "label": "Alternate Steps Performed",
+      "fieldtype": "Long Text",
+      "depends_on": "process_override",
+      "mandatory_depends_on": "process_override",
+      "description": "Steps SE took to resolve after the documented process failed"
+    },
+
+    {
+      "fieldname": "section_breakdown_resolution",
+      "label": "Breakdown Resolution",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'"
+    },
+    {
+      "fieldname": "fix_type",
+      "label": "Fix Type",
+      "fieldtype": "Select",
+      "options": "\nPermanent\nTemporary\nForce Closed"
+    },
+    {
+      "fieldname": "next_level_engineer",
+      "label": "Next Level Engineer (if Temporary)",
+      "fieldtype": "Link",
+      "options": "User",
+      "depends_on": "eval:doc.fix_type=='Temporary'"
+    },
+    {
+      "fieldname": "column_break_res1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "recurrence_risk",
+      "label": "Recurrence Risk (this vehicle)",
+      "fieldtype": "Select",
+      "options": "\nLow\nHigh"
+    },
+    {
+      "fieldname": "occurrence_risk",
+      "label": "Occurrence Risk (fleet-wide)",
+      "fieldtype": "Select",
+      "options": "\nLow\nHigh"
+    },
+    {
+      "fieldname": "section_trial_trip",
+      "label": "Trial Trip",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'"
+    },
+    {
+      "fieldname": "trial_trip_started_at",
+      "label": "Trial Trip Start",
+      "fieldtype": "Datetime"
+    },
+    {
+      "fieldname": "trial_trip_start_km",
+      "label": "Trip Start (km)",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "column_break_trip1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "trial_trip_ended_at",
+      "label": "Trial Trip End",
+      "fieldtype": "Datetime"
+    },
+    {
+      "fieldname": "trial_trip_end_km",
+      "label": "Trip End (km)",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "column_break_trip2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "trial_trip_distance_km",
+      "label": "Dead KMs",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "trial_trip_duration_minutes",
+      "label": "Trip Duration (min)",
+      "fieldtype": "Float",
+      "read_only": 1
+    },
+    {
+      "fieldname": "total_downtime_minutes",
+      "label": "Total Downtime (min)",
+      "fieldtype": "Float",
+      "read_only": 1,
+      "description": "From breakdown info received to customer handover"
+    },
+    {
+      "fieldname": "vehicle_handover_at",
+      "label": "Vehicle Handed Over At",
+      "fieldtype": "Datetime",
+      "depends_on": "eval:doc.job_card_type=='Breakdown'",
+      "description": "Marked when customer takes the vehicle back after a successful trial trip"
+    },
+    {
+      "fieldname": "section_rca",
+      "label": "Root Cause Analysis (Aftersales)",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Breakdown'",
+      "description": "Filled by the Aftersales Engineer post-closure (PRD p.16)"
+    },
+    {
+      "fieldname": "rca_notes",
+      "label": "RCA Notes",
+      "fieldtype": "Text",
+      "permlevel": 1,
+      "description": "Permlevel 1 — only Aftersales Eng / DM / N. Maint. Head can write"
+    },
+    {
+      "fieldname": "rca_received_at",
+      "label": "RCA Received At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+
+    {
+      "fieldname": "section_repair_jobs",
+      "label": "Repair Jobs",
+      "fieldtype": "Section Break",
+      "description": "Parts replacement, denting, labour repair items"
+    },
+    {
+      "fieldname": "repair_items",
+      "label": "Repair Jobs",
+      "fieldtype": "Table",
+      "options": "Job Card Repair Item"
+    },
+
+    {
+      "fieldname": "section_maintenance_jobs",
+      "label": "Maintenance Jobs",
+      "fieldtype": "Section Break",
+      "description": "Oil/grease/coolant top-up or replacement, filter cleaning/replacement"
+    },
+    {
+      "fieldname": "maintenance_items",
+      "label": "Maintenance Jobs",
+      "fieldtype": "Table",
+      "options": "Job Card Maintenance Item"
+    },
+
+    {
+      "fieldname": "section_software_update",
+      "label": "Software Update",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='Software Update'",
+      "description": "Components whose firmware/software is being updated"
+    },
+    {
+      "fieldname": "software_components",
+      "label": "Software Components",
+      "fieldtype": "Table",
+      "options": "Job Card Software Component"
+    },
+    {
+      "fieldname": "send_report_to_customer",
+      "label": "Send Report to Customer",
+      "fieldtype": "Check",
+      "default": "1",
+      "depends_on": "eval:doc.job_card_type=='Software Update'",
+      "description": "PRD p.14 step 17 — Software Update reports are OPTIONAL to send to the customer. Uncheck to keep the report internal."
+    },
+
+    {
+      "fieldname": "section_costs",
+      "label": "Costs",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "estimated_cost",
+      "label": "Estimated Cost",
+      "fieldtype": "Currency",
+      "read_only": 1
+    },
+    {
+      "fieldname": "actual_cost",
+      "label": "Actual Cost",
+      "fieldtype": "Currency",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_cost1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "service_estimate",
+      "label": "Service Estimate",
+      "fieldtype": "Link",
+      "options": "Service Estimate"
+    },
+    {
+      "fieldname": "requires_customer_approval",
+      "label": "Requires Customer Approval (Parts > 1K)",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0"
+    },
+    {
+      "fieldname": "customer_approval_requested_at",
+      "label": "Customer Approval Requested At",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "description": "Start of 30-min approval SLA timer"
+    },
+    {
+      "fieldname": "customer_approval_token",
+      "label": "Customer Approval Token",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "hidden": 1,
+      "description": "Random token issued when approval is requested; enables a tokenised external link for the customer (PRD p.11 Only Repair step 9)"
+    },
+    {
+      "fieldname": "customer_approval_received_at",
+      "label": "Customer Approval Received At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "customer_rejection_feedback",
+      "label": "Customer Rejection Feedback (JC-level)",
+      "fieldtype": "Text",
+      "description": "PRD p.11 Only Repair step 10 — optional JC-level rejection note (separate from per-part feedback on repair items)"
+    },
+
+    {
+      "fieldname": "section_health_score",
+      "label": "Vehicle Health Score",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'"
+    },
+    {
+      "fieldname": "pre_pms_score",
+      "label": "Pre-PMS Health Score (%)",
+      "fieldtype": "Percent",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_score1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "post_pms_score",
+      "label": "Post-PMS Health Score (%)",
+      "fieldtype": "Percent",
+      "read_only": 1
+    },
+    {
+      "fieldname": "score_improvement",
+      "label": "Improvement (%)",
+      "fieldtype": "Percent",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_category_scores",
+      "label": "Per-Category Breakdown",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'"
+    },
+    {
+      "fieldname": "category_scores",
+      "label": "Category Scores",
+      "fieldtype": "Table",
+      "options": "Job Card Category Score",
+      "read_only": 1,
+      "description": "Auto-computed from repair items grouped by Bus System"
+    },
+    {
+      "fieldname": "health_card",
+      "label": "Vehicle Health Card",
+      "fieldtype": "Link",
+      "options": "Vehicle Health Card",
+      "read_only": 1,
+      "description": "Generated on Service-Engineer closure (Milestone 2)"
+    },
+
+    {
+      "fieldname": "section_timestamps",
+      "label": "Timestamps & SLA",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "opened_at",
+      "label": "Start Time",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "description": "Job Card opened timestamp (PRD: start_time)"
+    },
+    {
+      "fieldname": "work_started_at",
+      "label": "Work Started At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "completed_at",
+      "label": "Technician Closed At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "closed_at",
+      "label": "End Time",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "description": "SE-verified closure timestamp (PRD: end_time)"
+    },
+    {
+      "fieldname": "column_break_ts1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "sla_target_hours",
+      "label": "SLA Target (Hours)",
+      "fieldtype": "Float",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sla_deadline",
+      "label": "SLA Deadline",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sla_breached",
+      "label": "SLA Breached",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "in_list_view": 1,
+      "bold": 1
+    },
+    {
+      "fieldname": "sla_breached_at",
+      "label": "Breached At",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "depends_on": "sla_breached"
+    },
+
+    {
+      "fieldname": "section_closure",
+      "label": "Closure & Force Close",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "force_closed",
+      "label": "Force Closed",
+      "fieldtype": "Check",
+      "default": "0"
+    },
+    {
+      "fieldname": "force_close_severity",
+      "label": "Severity",
+      "fieldtype": "Select",
+      "options": "\nMinor\nMajor\nCritical",
+      "depends_on": "force_closed",
+      "mandatory_depends_on": "force_closed"
+    },
+    {
+      "fieldname": "column_break_closure1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "force_close_reason",
+      "label": "Force Close Reason",
+      "fieldtype": "Small Text",
+      "depends_on": "force_closed",
+      "mandatory_depends_on": "force_closed"
+    },
+    {
+      "fieldname": "closed_edit_reason",
+      "label": "Reason for Closed-State Edit",
+      "fieldtype": "Small Text",
+      "description": "Required when editing a Closed Job Card (Depot Manager only). Cleared after each edit."
+    },
+    {
+      "fieldname": "followup_job_card",
+      "label": "Critical Follow-up Job Card",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "read_only": 1,
+      "description": "Auto-created when force-closed as Critical (PRD p.6 severity matrix)"
+    },
+    {
+      "fieldname": "source_force_close_job_card",
+      "label": "Source (Critical Force Close)",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "read_only": 1,
+      "description": "When this JC was auto-created as a 24h Critical follow-up, this links back to the force-closed original"
+    },
+
+    {
+      "fieldname": "section_qr",
+      "label": "QR Code",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "qr_code_image",
+      "label": "QR Code",
+      "fieldtype": "Attach Image",
+      "read_only": 1,
+      "description": "Scan to view job card details"
+    },
+
+    {
+      "fieldname": "section_flags",
+      "label": "",
+      "fieldtype": "Section Break",
+      "hidden": 1
+    },
+    {
+      "fieldname": "parts_allocation_blocked",
+      "label": "Parts Allocation Blocked",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "hidden": 1
+    },
+    {
+      "fieldname": "sla_warning_sent",
+      "label": "SLA Warning Sent",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "hidden": 1
+    },
+    {
+      "fieldname": "sla_breach_sent",
+      "label": "SLA Breach Sent",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "hidden": 1
+    },
+    {
+      "fieldname": "customer_approval_escalated",
+      "label": "Customer Approval Escalated",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "hidden": 1
+    },
+    {
+      "fieldname": "critical_followup_required",
+      "label": "Critical Force-Close Follow-up Required",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "hidden": 1
+    },
+    {
+      "fieldname": "feedback_request_sent",
+      "label": "Feedback Request Sent",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "hidden": 1
+    },
+    {
+      "fieldname": "fleet_broadcast_sent",
+      "label": "Fleet Broadcast Sent",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "default": "0",
+      "hidden": 1,
+      "description": "Idempotency flag for the fleet-wide breakdown broadcast"
+    },
+    {
+      "fieldname": "pending_inventory_request",
+      "label": "Pending Inventory Request",
+      "fieldtype": "Long Text",
+      "hidden": 1,
+      "read_only": 1
+    },
+    {
+      "fieldname": "workflow_state",
+      "label": "Status",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "amended_from",
+      "label": "Amended From",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "read_only": 1,
+      "hidden": 1
+    }
+  ],
+  "permissions": [
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 0, "report": 1, "export": 1, "permlevel": 0},
+    {"role": "Depot Manager", "read": 1, "write": 1, "permlevel": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1, "delete": 0, "report": 1, "permlevel": 0},
+    {"role": "Technician", "read": 1, "write": 1, "create": 0, "delete": 0, "permlevel": 0},
+    {"role": "Central Ops", "read": 1, "write": 0, "create": 0, "delete": 0, "report": 1, "export": 1, "permlevel": 0},
+    {"role": "Aftersales Eng", "read": 1, "write": 1, "create": 0, "delete": 0, "report": 1, "export": 1, "permlevel": 0},
+    {"role": "Aftersales Eng", "read": 1, "write": 1, "permlevel": 1},
+    {"role": "N. Maintenance Head", "read": 1, "write": 1, "create": 0, "delete": 0, "report": 1, "export": 1, "permlevel": 0},
+    {"role": "N. Maintenance Head", "read": 1, "write": 1, "permlevel": 1},
+    {"role": "Customer", "read": 1, "write": 0, "create": 0, "delete": 0, "permlevel": 0}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "vehicle_number"
+}

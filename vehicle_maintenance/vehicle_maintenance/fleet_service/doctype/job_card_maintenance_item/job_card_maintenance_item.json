@@ -1,0 +1,24 @@
+{
+  "name": "Job Card Maintenance Item",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {"fieldname": "maintenance_type", "label": "Type", "fieldtype": "Select", "options": "\nOil/Lubricant\nCoolant\nGrease\nFilter\nConsumable", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "description", "label": "Description", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "action", "label": "Action", "fieldtype": "Select", "options": "\nTop-up\nReplacement\nCleaning", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "column_break_mi1", "fieldtype": "Column Break"},
+    {"fieldname": "qty", "label": "Qty / Volume", "fieldtype": "Float", "default": "1"},
+    {"fieldname": "unit", "label": "Unit", "fieldtype": "Select", "options": "\nLitres\nKg\nPcs\nSet", "default": "Litres"},
+    {"fieldname": "rate", "label": "Rate", "fieldtype": "Currency"},
+    {"fieldname": "estimated_amount", "label": "Estimated Amount", "fieldtype": "Currency", "in_list_view": 1},
+    {"fieldname": "actual_amount", "label": "Actual Amount", "fieldtype": "Currency"},
+    {"fieldname": "section_mi_photos", "label": "Evidence Photos", "fieldtype": "Section Break", "collapsible": 1, "description": "Required for oil/coolant replacement and filter cleaning/replacement"},
+    {"fieldname": "pre_photo", "label": "Pre-Service Photo", "fieldtype": "Attach Image", "description": "Photo of drained oil/coolant or dirty filter"},
+    {"fieldname": "post_photo", "label": "Post-Service Photo", "fieldtype": "Attach Image", "description": "Photo of new oil/coolant or cleaned/new filter"},
+    {"fieldname": "section_mi_status", "label": "", "fieldtype": "Section Break"},
+    {"fieldname": "item_status", "label": "Status", "fieldtype": "Select", "options": "Pending\nIn Progress\nCompleted", "default": "Pending", "in_list_view": 1}
+  ],
+  "permissions": []
+}

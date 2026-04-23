@@ -1,0 +1,44 @@
+{
+  "name": "Subsystem",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:subsystem_name",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "subsystem_name",
+      "label": "Subsystem Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "category",
+      "label": "Category",
+      "fieldtype": "Select",
+      "options": "\nMechanical\nElectrical\nBody\nSoftware\nHVAC\nPowertrain\nBrakes\nSuspension\nOther",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "subsystem_name",
+  "sort_order": "ASC",
+  "title_field": "subsystem_name"
+}

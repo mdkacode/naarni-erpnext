@@ -1,0 +1,207 @@
+{
+  "name": "Inventory Request",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "is_submittable": 0,
+  "track_changes": 1,
+  "autoname": "format:INVR-{YYYY}-{#####}",
+  "naming_rule": "Expression",
+  "fields": [
+    {
+      "fieldname": "job_card_ref",
+      "label": "Job Card",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "The Job Card this part request belongs to"
+    },
+    {
+      "fieldname": "column_break_header1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "request_date",
+      "label": "Request Date",
+      "fieldtype": "Datetime",
+      "default": "now",
+      "read_only": 1,
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_part",
+      "label": "Part Details",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "part",
+      "label": "Part",
+      "fieldtype": "Link",
+      "options": "Part",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Canonical part from the Parts master. Stores Part Code."
+    },
+    {
+      "fieldname": "part_name",
+      "label": "Part Name",
+      "fieldtype": "Data",
+      "fetch_from": "part.part_name",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "part_group",
+      "label": "Part Group",
+      "fieldtype": "Link",
+      "options": "Part Group",
+      "fetch_from": "part.part_group",
+      "read_only": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_part1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "quantity",
+      "label": "Quantity",
+      "fieldtype": "Float",
+      "precision": "3",
+      "reqd": 1,
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "uom",
+      "label": "UOM",
+      "fieldtype": "Data",
+      "fetch_from": "part.stock_uom",
+      "default": "Nos"
+    },
+    {
+      "fieldname": "section_flow",
+      "label": "Workflow",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "urgency_level",
+      "label": "Urgency Level",
+      "fieldtype": "Select",
+      "options": "\nLow\nMedium\nHigh\nCritical",
+      "default": "Medium",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "bold": 1
+    },
+    {
+      "fieldname": "column_break_flow1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Requested\nParts Allocated\nParts Issued\nReceived",
+      "default": "Requested",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "bold": 1
+    },
+    {
+      "fieldname": "section_requester",
+      "label": "Requester & Fulfilment",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "requested_by",
+      "label": "Requested By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1,
+      "default": "__user"
+    },
+    {
+      "fieldname": "column_break_req1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "allocated_by",
+      "label": "Allocated By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "issued_by",
+      "label": "Issued By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "received_by",
+      "label": "Received By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_timestamps",
+      "label": "Status Timestamps",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "allocated_at",
+      "label": "Allocated At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "issued_at",
+      "label": "Issued At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_ts1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "received_at",
+      "label": "Received At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_notes",
+      "label": "Notes",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "notes",
+      "label": "Notes",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 0, "report": 1, "export": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1, "delete": 0, "report": 1},
+    {"role": "Technician", "read": 1, "write": 1, "create": 1, "delete": 0},
+    {"role": "Central Ops", "read": 1, "write": 0, "create": 0, "delete": 0, "report": 1, "export": 1},
+    {"role": "Customer", "read": 0}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "part_name"
+}

@@ -1,0 +1,103 @@
+{
+  "name": "Customer Feedback",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "format:FB-{YYYY}-{#####}",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "job_card",
+      "label": "Job Card",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "unique": 1,
+      "description": "Feedback is captured once per Job Card (PRD p.2)"
+    },
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "fetch_from": "job_card.customer",
+      "read_only": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_fb1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "submitted_by",
+      "label": "Submitted By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1,
+      "default": "__user"
+    },
+    {
+      "fieldname": "submitted_at",
+      "label": "Submitted At",
+      "fieldtype": "Datetime",
+      "default": "Now",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_scores",
+      "label": "Ratings",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "rating",
+      "label": "Service Rating (1-5)",
+      "fieldtype": "Int",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Overall service rating from 1 (poor) to 5 (excellent)"
+    },
+    {
+      "fieldname": "column_break_fb2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "nps_score",
+      "label": "NPS (0-10)",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "description": "\"How likely are you to recommend us?\" 0 = not at all, 10 = extremely"
+    },
+    {
+      "fieldname": "section_comments",
+      "label": "Comments",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "comments",
+      "label": "Comments",
+      "fieldtype": "Text"
+    },
+    {
+      "fieldname": "would_recommend",
+      "label": "Would Recommend?",
+      "fieldtype": "Select",
+      "options": "\nYes\nNo\nMaybe",
+      "default": "Yes"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Depot Manager", "read": 1, "write": 0, "create": 0, "export": 1, "report": 1},
+    {"role": "Service Engineer", "read": 1, "write": 0, "create": 0, "report": 1},
+    {"role": "Central Ops", "read": 1, "write": 0, "create": 0, "export": 1, "report": 1},
+    {"role": "N. Maintenance Head", "read": 1, "write": 0, "create": 0, "export": 1, "report": 1},
+    {"role": "Customer", "read": 1, "write": 1, "create": 1, "delete": 0}
+  ],
+  "sort_field": "submitted_at",
+  "sort_order": "DESC",
+  "title_field": "job_card"
+}

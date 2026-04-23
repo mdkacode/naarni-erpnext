@@ -1,0 +1,36 @@
+
+> vehicle-maintenance-frontend@0.1.0 dev
+> vite
+
+No common_site_config.json found, using default port 8000
+
+  VITE v5.4.21  ready in 196 ms
+
+  ➜  Local:   http://localhost:8080/
+  ➜  Network: use --host to expose
+12:20:23 AM [vite] hmr update /src/pages/JobCardDetail.vue, /src/index.css
+12:20:31 AM [vite] hmr update /src/pages/JobCardDetail.vue, /src/index.css
+12:44:13 AM [vite] http proxy error: /api/method/frappe.auth.get_logged_user
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+12:44:20 AM [vite] http proxy error: /api/method/login
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+12:44:22 AM [vite] http proxy error: /api/method/login
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+12:44:28 AM [vite] http proxy error: /api/method/login
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+12:44:28 AM [vite] http proxy error: /api/method/login
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+12:45:30 AM [vite] http proxy error: /api/method/login
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+12:45:31 AM [vite] http proxy error: /api/method/login
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+12:45:32 AM [vite] http proxy error: /api/method/frappe.auth.get_logged_user
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)

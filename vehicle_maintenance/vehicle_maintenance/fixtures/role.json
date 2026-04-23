@@ -1,0 +1,93 @@
+[
+ {
+  "desk_access": 1,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Role",
+  "home_page": null,
+  "is_custom": 0,
+  "modified": "2026-04-07 14:24:44.975047",
+  "name": "Depot Manager",
+  "restrict_to_domain": null,
+  "role_name": "Depot Manager",
+  "two_factor_auth": 0
+ },
+ {
+  "desk_access": 1,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Role",
+  "home_page": null,
+  "is_custom": 0,
+  "modified": "2026-04-07 14:24:45.179488",
+  "name": "Service Engineer",
+  "restrict_to_domain": null,
+  "role_name": "Service Engineer",
+  "two_factor_auth": 0
+ },
+ {
+  "desk_access": 1,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Role",
+  "home_page": null,
+  "is_custom": 0,
+  "modified": "2026-04-07 14:24:45.181754",
+  "name": "Technician",
+  "restrict_to_domain": null,
+  "role_name": "Technician",
+  "two_factor_auth": 0
+ },
+ {
+  "desk_access": 1,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Role",
+  "home_page": null,
+  "is_custom": 0,
+  "modified": "2026-04-07 14:24:45.183299",
+  "name": "Central Ops",
+  "restrict_to_domain": null,
+  "role_name": "Central Ops",
+  "two_factor_auth": 0
+ },
+ {
+  "desk_access": 1,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Role",
+  "home_page": null,
+  "is_custom": 0,
+  "modified": "2026-04-07 14:24:45.184732",
+  "name": "Customer",
+  "restrict_to_domain": null,
+  "role_name": "Customer",
+  "two_factor_auth": 0
+ },
+ {
+  "desk_access": 1,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Role",
+  "home_page": null,
+  "is_custom": 0,
+  "modified": "2026-04-22 16:13:34.564273",
+  "name": "N. Maintenance Head",
+  "restrict_to_domain": null,
+  "role_name": "N. Maintenance Head",
+  "two_factor_auth": 0
+ },
+ {
+  "desk_access": 1,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Role",
+  "home_page": null,
+  "is_custom": 0,
+  "modified": "2026-04-22 16:13:34.622815",
+  "name": "Aftersales Eng",
+  "restrict_to_domain": null,
+  "role_name": "Aftersales Eng",
+  "two_factor_auth": 0
+ }
+]

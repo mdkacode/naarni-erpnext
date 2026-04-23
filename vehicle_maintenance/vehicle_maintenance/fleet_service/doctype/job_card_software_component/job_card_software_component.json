@@ -1,0 +1,99 @@
+{
+  "name": "Job Card Software Component",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {
+      "fieldname": "component",
+      "label": "Component",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Component/ECU whose software is being updated (e.g., BMS, VCU, HVAC)"
+    },
+    {
+      "fieldname": "reason",
+      "label": "Reason",
+      "fieldtype": "Select",
+      "options": "\nPerformance Improvement\nRegular Update\nEmergency Update (Bug Fix)",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_swc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Pending\nIn Progress\nSuccess\nFailed",
+      "default": "Pending",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "retry_count",
+      "label": "Retries",
+      "fieldtype": "Int",
+      "default": "0",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_versions",
+      "label": "Versions",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "pre_version",
+      "label": "Pre Version",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "pre_version_photo",
+      "label": "Pre Version Photo",
+      "fieldtype": "Attach Image",
+      "description": "Photo of the odometer/screen showing the current version"
+    },
+    {
+      "fieldname": "column_break_swc2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "post_version",
+      "label": "Post Version",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "post_version_photo",
+      "label": "Post Version Photo",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "section_calibration",
+      "label": "Calibration",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "calibration_values",
+      "label": "Calibration Values",
+      "fieldtype": "Small Text",
+      "description": "SOP calibration values applied (not visible to customer)"
+    },
+    {
+      "fieldname": "calibration_photo",
+      "label": "Calibration Photo",
+      "fieldtype": "Attach Image",
+      "description": "Photo of the values on the tool screen (not visible to customer)"
+    },
+    {
+      "fieldname": "failure_notes",
+      "label": "Failure Notes",
+      "fieldtype": "Small Text",
+      "description": "Captured when status = Failed so next retry has context"
+    }
+  ],
+  "permissions": []
+}

@@ -1,0 +1,131 @@
+{# Vehicle Health Card — customer-facing PDF per PRD p.8 #}
+<div class="health-card">
+  <style>
+    .health-card { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2937; }
+    .hc-header { display: flex; justify-content: space-between; align-items: flex-end;
+                 border-bottom: 3px solid #0369a1; padding-bottom: 12px; margin-bottom: 18px; }
+    .hc-title { font-size: 24px; font-weight: 700; color: #0369a1; margin: 0; }
+    .hc-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .hc-meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+                    padding: 12px; background: #f3f4f6; border-radius: 6px; margin-bottom: 18px; }
+    .hc-meta-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hc-meta-value { font-size: 14px; font-weight: 600; color: #111827; margin-top: 2px; }
+    .hc-score-block { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+                      margin-bottom: 20px; }
+    .hc-score { padding: 14px; border-radius: 8px; text-align: center; }
+    .hc-score.pre { background: #fef3c7; color: #92400e; }
+    .hc-score.post { background: #d1fae5; color: #065f46; }
+    .hc-score.impr { background: #dbeafe; color: #1e40af; }
+    .hc-score-value { font-size: 26px; font-weight: 700; }
+    .hc-score-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+                      margin-top: 2px; }
+    .hc-section-title { font-size: 14px; font-weight: 700; color: #111827;
+                        border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;
+                        margin-top: 16px; margin-bottom: 10px; text-transform: uppercase;
+                        letter-spacing: 0.5px; }
+    table.hc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .hc-table th { text-align: left; padding: 8px; background: #f9fafb;
+                   border-bottom: 2px solid #e5e7eb; font-weight: 600; }
+    .hc-table td { padding: 8px; border-bottom: 1px solid #f3f4f6; }
+    .hc-summary { background: #f9fafb; border-left: 4px solid #0369a1;
+                  padding: 12px 14px; border-radius: 0 4px 4px 0;
+                  font-size: 12px; line-height: 1.6; white-space: pre-line; }
+    .hc-footer { margin-top: 26px; padding-top: 10px; border-top: 1px solid #e5e7eb;
+                 font-size: 10px; color: #9ca3af; text-align: center; }
+    .bar-container { width: 100%; background: #e5e7eb; border-radius: 3px; height: 8px;
+                     position: relative; overflow: hidden; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); }
+  </style>
+
+  <div class="hc-header">
+    <div>
+      <h1 class="hc-title">Vehicle Health Card</h1>
+      <div class="hc-sub">
+        Generated {{ frappe.utils.format_datetime(doc.generated_on, "medium") }}
+      </div>
+    </div>
+    <div style="text-align: right;">
+      <div class="hc-meta-label">Card No.</div>
+      <div class="hc-meta-value">{{ doc.name }}</div>
+    </div>
+  </div>
+
+  <div class="hc-meta-grid">
+    <div>
+      <div class="hc-meta-label">Vehicle</div>
+      <div class="hc-meta-value">{{ doc.vehicle_number or doc.vehicle }}</div>
+    </div>
+    <div>
+      <div class="hc-meta-label">Odometer</div>
+      <div class="hc-meta-value">{{ "{:,}".format(doc.odometer_reading or 0) }} km</div>
+    </div>
+    <div>
+      <div class="hc-meta-label">Source Job Card</div>
+      <div class="hc-meta-value">{{ doc.job_card }}</div>
+    </div>
+  </div>
+
+  <div class="hc-score-block">
+    <div class="hc-score pre">
+      <div class="hc-score-value">{{ "%.1f"|format(doc.overall_pre_score or 0) }}%</div>
+      <div class="hc-score-label">Pre-PMS Health</div>
+    </div>
+    <div class="hc-score post">
+      <div class="hc-score-value">{{ "%.1f"|format(doc.overall_post_score or 0) }}%</div>
+      <div class="hc-score-label">Post-PMS Health</div>
+    </div>
+    <div class="hc-score impr">
+      <div class="hc-score-value">
+        {% if (doc.improvement or 0) >= 0 %}+{% endif %}{{ "%.1f"|format(doc.improvement or 0) }}%
+      </div>
+      <div class="hc-score-label">Improvement</div>
+    </div>
+  </div>
+
+  <div class="hc-section-title">Per-Category Breakdown</div>
+  {% if doc.category_scores %}
+  <table class="hc-table">
+    <thead>
+      <tr>
+        <th style="width: 30%;">Category</th>
+        <th style="width: 10%;">Components</th>
+        <th style="width: 15%;">Pre-PMS</th>
+        <th style="width: 15%;">Post-PMS</th>
+        <th style="width: 15%;">Improvement</th>
+        <th style="width: 15%;">Health</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in doc.category_scores %}
+      <tr>
+        <td><strong>{{ row.category }}</strong></td>
+        <td>{{ row.component_count or 0 }}</td>
+        <td>{{ "%.1f"|format(row.pre_pms_score or 0) }}%</td>
+        <td>{{ "%.1f"|format(row.post_pms_score or 0) }}%</td>
+        <td>
+          {% set impr = row.improvement or 0 %}
+          {% if impr > 0 %}+{% endif %}{{ "%.1f"|format(impr) }}%
+        </td>
+        <td>
+          <div class="bar-container">
+            <div class="bar-fill" style="width: {{ row.post_pms_score or 0 }}%"></div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="font-size: 12px; color: #6b7280;">No category breakdown recorded for this service.</p>
+  {% endif %}
+
+  {% if doc.summary_notes %}
+  <div class="hc-section-title">Summary</div>
+  <div class="hc-summary">{{ doc.summary_notes }}</div>
+  {% endif %}
+
+  <div class="hc-footer">
+    This Health Card is generated automatically from Job Card {{ doc.job_card }}.
+    For any questions regarding this service, please contact your depot.
+  </div>
+</div>

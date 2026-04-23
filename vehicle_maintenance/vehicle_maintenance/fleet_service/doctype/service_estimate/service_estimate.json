@@ -1,0 +1,97 @@
+{
+  "name": "Service Estimate",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "naming_series:",
+  "naming_rule": "By naming series",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "naming_series",
+      "label": "Series",
+      "fieldtype": "Select",
+      "options": "SE-.YYYY.-.#####",
+      "default": "SE-.YYYY.-.#####",
+      "reqd": 1
+    },
+    {
+      "fieldname": "job_card",
+      "label": "Job Card",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "fetch_from": "job_card.customer",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_se1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "estimate_date",
+      "label": "Estimate Date",
+      "fieldtype": "Date",
+      "default": "Today",
+      "reqd": 1
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "\nDraft\nSent to Customer\nApproved\nRejected",
+      "default": "Draft",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "section_items",
+      "label": "Estimate Lines",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "items",
+      "label": "Items",
+      "fieldtype": "Table",
+      "options": "Service Estimate Item"
+    },
+    {
+      "fieldname": "section_totals",
+      "label": "Totals",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "total_amount",
+      "label": "Total Amount",
+      "fieldtype": "Currency",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_se2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "customer_remarks",
+      "label": "Customer Remarks",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1},
+    {"role": "Customer", "read": 1, "write": 0, "create": 0, "delete": 0}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC"
+}

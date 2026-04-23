@@ -1,0 +1,241 @@
+{
+  "doctype": "Workflow",
+  "name": "Job Card Workflow",
+  "document_type": "Job Card",
+  "is_active": 1,
+  "override_status": 1,
+  "send_email_alert": 0,
+  "workflow_state_field": "workflow_state",
+  "states": [
+    {
+      "state": "Open",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Depot Manager",
+      "style": "Primary"
+    },
+    {
+      "state": "WIP",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Service Engineer",
+      "style": "Warning"
+    },
+    {
+      "state": "Awaiting Customer Approval",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Service Engineer",
+      "style": "Info"
+    },
+    {
+      "state": "Awaiting Parts",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Service Engineer",
+      "style": "Warning"
+    },
+    {
+      "state": "Parts Fitted",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Technician",
+      "style": "Info"
+    },
+    {
+      "state": "Closure from Technician",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Technician",
+      "style": "Info"
+    },
+    {
+      "state": "Verification Pending",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Service Engineer",
+      "style": "Warning"
+    },
+    {
+      "state": "Closed",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Depot Manager",
+      "style": "Green"
+    },
+    {
+      "state": "Reopened",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Service Engineer",
+      "style": "Warning"
+    },
+    {
+      "state": "Force Closed",
+      "doc_status": 0,
+      "is_optional_state": 0,
+      "allow_edit": "Depot Manager",
+      "style": "Danger"
+    }
+  ],
+  "transitions": [
+    {
+      "state": "Open",
+      "action": "Start Work",
+      "next_state": "WIP",
+      "allowed": "Depot Manager",
+      "allow_self_approval": 1,
+      "condition": ""
+    },
+    {
+      "state": "Open",
+      "action": "Start Work",
+      "next_state": "WIP",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1,
+      "condition": ""
+    },
+    {
+      "state": "WIP",
+      "action": "Send Estimate",
+      "next_state": "Awaiting Customer Approval",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1,
+      "condition": "doc.service_estimate"
+    },
+    {
+      "state": "Awaiting Customer Approval",
+      "action": "Customer Approves",
+      "next_state": "Awaiting Parts",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Awaiting Customer Approval",
+      "action": "Customer Rejects",
+      "next_state": "WIP",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "WIP",
+      "action": "Request Parts",
+      "next_state": "Awaiting Parts",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "WIP",
+      "action": "Request Parts",
+      "next_state": "Awaiting Parts",
+      "allowed": "Technician",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Awaiting Parts",
+      "action": "Parts Received & Fitted",
+      "next_state": "Parts Fitted",
+      "allowed": "Technician",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Awaiting Parts",
+      "action": "Parts Received & Fitted",
+      "next_state": "Parts Fitted",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Parts Fitted",
+      "action": "Continue Work",
+      "next_state": "WIP",
+      "allowed": "Technician",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Parts Fitted",
+      "action": "Continue Work",
+      "next_state": "WIP",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "WIP",
+      "action": "Technician Closure",
+      "next_state": "Closure from Technician",
+      "allowed": "Technician",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Parts Fitted",
+      "action": "Technician Closure",
+      "next_state": "Closure from Technician",
+      "allowed": "Technician",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Closure from Technician",
+      "action": "Submit for Verification",
+      "next_state": "Verification Pending",
+      "allowed": "Technician",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Closure from Technician",
+      "action": "Submit for Verification",
+      "next_state": "Verification Pending",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Verification Pending",
+      "action": "Verification Failed",
+      "next_state": "WIP",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Verification Pending",
+      "action": "Close Job Card",
+      "next_state": "Closed",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Verification Pending",
+      "action": "Aftersales Verification (Breakdown)",
+      "next_state": "Closed",
+      "allowed": "Aftersales Eng",
+      "allow_self_approval": 1,
+      "condition": "doc.job_card_type=='Breakdown'"
+    },
+    {
+      "state": "Closed",
+      "action": "Reopen",
+      "next_state": "Reopened",
+      "allowed": "Customer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Closed",
+      "action": "Reopen",
+      "next_state": "Reopened",
+      "allowed": "Central Ops",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Reopened",
+      "action": "Resume Work",
+      "next_state": "WIP",
+      "allowed": "Service Engineer",
+      "allow_self_approval": 1
+    },
+    {
+      "state": "Reopened",
+      "action": "Resume Work",
+      "next_state": "WIP",
+      "allowed": "Depot Manager",
+      "allow_self_approval": 1
+    }
+  ]
+}

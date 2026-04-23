@@ -1,0 +1,43 @@
+{
+  "name": "Service Estimate Item",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "item_type",
+      "label": "Type",
+      "fieldtype": "Select",
+      "options": "\nPart\nLabour\nConsumable\nExternal Service",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "qty",
+      "label": "Qty",
+      "fieldtype": "Float",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "rate",
+      "label": "Rate",
+      "fieldtype": "Currency",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "amount",
+      "label": "Amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1
+    }
+  ],
+  "permissions": []
+}

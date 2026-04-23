@@ -1,0 +1,163 @@
+{
+  "name": "Job Card Closure Record",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "format:CR-{YYYY}-{#####}",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "job_card",
+      "label": "Job Card",
+      "fieldtype": "Link",
+      "options": "Job Card",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "closed_at",
+      "label": "Closed At",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_cr1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "closed_by",
+      "label": "Closed By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "sequence",
+      "label": "Closure #",
+      "fieldtype": "Int",
+      "read_only": 1,
+      "default": "1",
+      "description": "1 = first closure, 2 = after first reopen, etc."
+    },
+    {
+      "fieldname": "section_scores",
+      "label": "Scores at Closure",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "pre_pms_score",
+      "label": "Pre-PMS %",
+      "fieldtype": "Percent",
+      "read_only": 1
+    },
+    {
+      "fieldname": "post_pms_score",
+      "label": "Post-PMS %",
+      "fieldtype": "Percent",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_cr2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "estimated_cost",
+      "label": "Estimated Cost",
+      "fieldtype": "Currency",
+      "read_only": 1
+    },
+    {
+      "fieldname": "actual_cost",
+      "label": "Actual Cost",
+      "fieldtype": "Currency",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_summary",
+      "label": "Closure Summary",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "workflow_state_at_close",
+      "label": "State at Close",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "force_closed",
+      "label": "Force Closed",
+      "fieldtype": "Check",
+      "read_only": 1
+    },
+    {
+      "fieldname": "force_close_severity",
+      "label": "Force Close Severity",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "force_close_reason",
+      "label": "Force Close Reason",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_snapshot",
+      "label": "Full Snapshot",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "snapshot_json",
+      "label": "Snapshot",
+      "fieldtype": "Long Text",
+      "read_only": 1,
+      "description": "JSON-encoded snapshot of the Job Card fields + child tables at the moment of closure"
+    },
+    {
+      "fieldname": "section_reopen",
+      "label": "Reopen Info",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "reopened_at",
+      "label": "Reopened At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reopened_by",
+      "label": "Reopened By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_cr3",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "reopen_reason",
+      "label": "Reopen Reason",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Depot Manager", "read": 1, "export": 1, "report": 1},
+    {"role": "Service Engineer", "read": 1, "report": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1, "export": 1, "report": 1},
+    {"role": "Aftersales Eng", "read": 1, "export": 1, "report": 1},
+    {"role": "N. Maintenance Head", "read": 1, "export": 1, "report": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "closed_at",
+  "sort_order": "DESC",
+  "title_field": "job_card"
+}

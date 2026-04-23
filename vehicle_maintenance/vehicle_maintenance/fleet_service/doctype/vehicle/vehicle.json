@@ -1,0 +1,96 @@
+{
+  "name": "Vehicle",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "field:registration_number",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "registration_number",
+      "label": "Registration Number",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "make_model",
+      "label": "Make / Model",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_v1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "year_of_manufacture",
+      "label": "Year of Manufacture",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "vin",
+      "label": "VIN / Chassis Number",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "engine_number",
+      "label": "Engine Number",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "oem",
+      "label": "OEM",
+      "fieldtype": "Link",
+      "options": "OEM",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Original Equipment Manufacturer (e.g., Azad, NaArNi)"
+    },
+    {
+      "fieldname": "section_owner",
+      "label": "Ownership",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "customer",
+      "label": "Owner / Customer",
+      "fieldtype": "Link",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "fuel_type",
+      "label": "Fuel Type",
+      "fieldtype": "Select",
+      "options": "\nPetrol\nDiesel\nCNG\nElectric\nHybrid"
+    },
+    {
+      "fieldname": "column_break_v2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "color",
+      "label": "Color",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "insurance_expiry",
+      "label": "Insurance Expiry",
+      "fieldtype": "Date"
+    }
+  ],
+  "permissions": [
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 0},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "registration_number"
+}

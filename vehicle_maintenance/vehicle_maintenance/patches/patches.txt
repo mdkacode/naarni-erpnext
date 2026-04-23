@@ -1,0 +1,3 @@
+# Patches list
+# Each line is a dotted path to a patch module
+# e.g., vehicle_maintenance.patches.v0_2.update_job_card_status

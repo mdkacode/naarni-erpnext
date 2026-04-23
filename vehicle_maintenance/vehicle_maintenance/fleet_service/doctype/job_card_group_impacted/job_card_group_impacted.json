@@ -1,0 +1,26 @@
+{
+  "name": "Job Card Group Impacted",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {
+      "fieldname": "part_group",
+      "label": "Part Group",
+      "fieldtype": "Link",
+      "options": "Part Group",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "bus_system",
+      "label": "Bus System",
+      "fieldtype": "Data",
+      "fetch_from": "part_group.bus_system",
+      "read_only": 1,
+      "in_list_view": 1
+    }
+  ],
+  "permissions": []
+}

@@ -1,0 +1,108 @@
+{
+  "name": "Customer",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "field:customer_name",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "customer_name",
+      "label": "Customer Name",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "customer_code",
+      "label": "Customer Code",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "length": 10,
+      "description": "Short code used in Job Card naming series (e.g., ACME). Uppercase alphanumeric."
+    },
+    {
+      "fieldname": "customer_type",
+      "label": "Customer Type",
+      "fieldtype": "Select",
+      "options": "\nIndividual\nCompany",
+      "default": "Individual",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "mobile_no",
+      "label": "Mobile No",
+      "fieldtype": "Data",
+      "options": "Phone",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "email_id",
+      "label": "Email",
+      "fieldtype": "Data",
+      "options": "Email"
+    },
+    {
+      "fieldname": "section_address",
+      "label": "Address",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "address",
+      "label": "Address",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "city",
+      "label": "City",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "column_break_addr",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "state",
+      "label": "State",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "pincode",
+      "label": "Pincode",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "section_link",
+      "label": "Portal Access",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "user",
+      "label": "Linked User",
+      "fieldtype": "Link",
+      "options": "User"
+    }
+  ],
+  "permissions": [
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "customer_name"
+}

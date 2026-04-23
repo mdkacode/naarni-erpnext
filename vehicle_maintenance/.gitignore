@@ -1,0 +1,24 @@
+# ── Secrets — NEVER commit ──
+.env
+.env.*
+*.env
+m365.txt
+credentials*.json
+*.pem
+*.key
+
+# ── Build / cache artifacts ──
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+dist/
+.vite/
+.DS_Store
+
+# ── Local config overrides ──
+local.env
+.env.local

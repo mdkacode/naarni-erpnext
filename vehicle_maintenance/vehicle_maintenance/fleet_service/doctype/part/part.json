@@ -1,0 +1,129 @@
+{
+  "name": "Part",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "autoname": "field:part_code",
+  "naming_rule": "By fieldname",
+  "fields": [
+    {
+      "fieldname": "part_code",
+      "label": "Part Code",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "length": 40,
+      "description": "SKU / manufacturer part number. Uppercase alphanumeric with dashes."
+    },
+    {
+      "fieldname": "part_name",
+      "label": "Part Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Human-readable description, e.g., 'Air Filter 12in'"
+    },
+    {
+      "fieldname": "column_break_header1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "part_group",
+      "label": "Part Group",
+      "fieldtype": "Link",
+      "options": "Part Group",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Is Active",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_standard_filter": 1,
+      "description": "Uncheck to discontinue this part without deleting historical references."
+    },
+    {
+      "fieldname": "section_uom",
+      "label": "Units & Stock",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "stock_uom",
+      "label": "Stock UOM",
+      "fieldtype": "Data",
+      "default": "Nos",
+      "reqd": 1,
+      "description": "Unit of measure in which stock is counted (Nos, L, Kg, m, etc.)"
+    },
+    {
+      "fieldname": "column_break_uom1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "standard_cost",
+      "label": "Standard Cost",
+      "fieldtype": "Currency",
+      "description": "Reference purchase cost per stock UOM. Used for estimate calculations."
+    },
+    {
+      "fieldname": "section_vendor",
+      "label": "Supplier",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "preferred_vendor",
+      "label": "Preferred Vendor",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "manufacturer",
+      "label": "Manufacturer / OEM",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "column_break_vendor1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "lead_time_days",
+      "label": "Lead Time (Days)",
+      "fieldtype": "Int",
+      "default": "0",
+      "description": "Typical procurement lead time. Used for parts planning."
+    },
+    {
+      "fieldname": "section_desc",
+      "label": "Description & Specs",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "image",
+      "label": "Image",
+      "fieldtype": "Attach Image"
+    }
+  ],
+  "permissions": [
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1, "delete": 0, "report": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1, "write": 0, "create": 0, "delete": 0, "report": 1, "export": 1},
+    {"role": "Customer", "read": 0}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "part_name",
+  "search_fields": "part_name,part_group,manufacturer"
+}

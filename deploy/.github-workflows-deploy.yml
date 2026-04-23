@@ -1,0 +1,38 @@
+# Copy this file to .github/workflows/deploy.yml in your vehicle_service GitHub repo.
+# Triggers on push to main — SSHes into the VM, pulls, migrates, restarts.
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/id_ed25519 frappe@${{ secrets.VM_HOST }} <<'EOF'
+            set -e
+            export PATH="$HOME/.local/bin:$PATH"
+            cd ~/frappe-bench
+            bench --site ${{ secrets.SITE_NAME }} set-maintenance-mode on
+            cd apps/vehicle_service && git pull origin main && cd ../..
+            bench --site ${{ secrets.SITE_NAME }} migrate
+            bench build --app vehicle_service
+            bench --site ${{ secrets.SITE_NAME }} set-maintenance-mode off
+            sudo supervisorctl restart all
+          EOF
+
+# Required GitHub repo secrets:
+#   VM_HOST       — public IP of the VM (from provisioning output)
+#   VM_SSH_KEY    — private key matching the SSH key used in VM creation
+#   SITE_NAME     — e.g. service.naarni.com

@@ -1,0 +1,67 @@
+#cloud-config
+# Bootstraps Ubuntu 22.04 VM with Frappe bench prerequisites.
+# Heavy lifting (bench init, site creation, app install) runs after first login
+# via deploy/bench-setup.sh so we have control over DB credentials.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - git
+  - curl
+  - build-essential
+  - python3-dev
+  - python3-pip
+  - python3-venv
+  - python3-setuptools
+  - software-properties-common
+  - mariadb-client
+  - redis-server
+  - xvfb
+  - libfontconfig
+  - wkhtmltopdf
+  - libmysqlclient-dev
+  - libffi-dev
+  - libssl-dev
+  - libjpeg-dev
+  - zlib1g-dev
+  - nginx
+  - supervisor
+  - certbot
+  - python3-certbot-nginx
+  - fail2ban
+  - ufw
+
+runcmd:
+  # Node.js 18 via NodeSource
+  - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+  - apt-get install -y nodejs
+  - npm install -g yarn
+
+  # Firewall
+  - ufw allow OpenSSH
+  - ufw allow 'Nginx Full'
+  - ufw --force enable
+
+  # Redis
+  - systemctl enable --now redis-server
+
+  # Create frappe user
+  - useradd -m -s /bin/bash frappe || true
+  - usermod -aG sudo frappe
+  - echo "frappe ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/frappe
+
+  # Copy azureuser's SSH key to frappe
+  - mkdir -p /home/frappe/.ssh
+  - cp /home/azureuser/.ssh/authorized_keys /home/frappe/.ssh/authorized_keys
+  - chown -R frappe:frappe /home/frappe/.ssh
+  - chmod 700 /home/frappe/.ssh
+  - chmod 600 /home/frappe/.ssh/authorized_keys
+
+  # Install bench as frappe user
+  - sudo -u frappe -H pip3 install --user frappe-bench
+
+  # Signal readiness
+  - touch /var/log/cloud-init-done.flag
+
+final_message: "Cloud-init complete. SSH as frappe@<ip> and run deploy/bench-setup.sh"

@@ -4,13 +4,17 @@ import frappe
 from frappe import _
 
 
-def _normalize_phone(raw: str) -> str:
+def normalize_phone(raw: str) -> str:
+	"""Canonical phone: last 10 digits, country code and separators stripped.
+
+	Matches the convention used by the service portal login flow so that
+	'+91 98765 43210', '+919876543210', '98765-43210' and '9876543210' all
+	resolve to the same stored value.
+	"""
 	digits = re.sub(r"\D", "", raw or "")
-	if not digits:
-		frappe.throw(_("Phone number must contain digits."))
 	if len(digits) < 10:
 		frappe.throw(_("Phone number must be at least 10 digits."))
-	return digits
+	return digits[-10:]
 
 
 def validate_user(doc, method=None):
@@ -24,7 +28,7 @@ def validate_user(doc, method=None):
 	if not (doc.mobile_no or "").strip():
 		frappe.throw(_("Phone number is mandatory."))
 
-	normalized = _normalize_phone(doc.mobile_no)
+	normalized = normalize_phone(doc.mobile_no)
 	doc.mobile_no = normalized
 
 	existing = frappe.db.get_all(

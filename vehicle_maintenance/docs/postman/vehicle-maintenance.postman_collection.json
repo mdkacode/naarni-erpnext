@@ -1,0 +1,1185 @@
+{
+  "info": {
+    "name": "Vehicle Maintenance API",
+    "description": "Complete API reference for the NaArNi Vehicle Maintenance Frappe app deployed at https://service.naarni.com.\n\n**Quick start:**\n\n1. Import the companion environment: `vehicle-maintenance.postman_environment.json`.\n2. Set `phone` + `password` in the environment to your credentials.\n3. Run the **Auth → Login with Phone** request — it automatically stores `sid`, `system_user`, and `csrf_token` in environment variables.\n4. All other requests use those variables via the Authorization + Cookie headers.\n\n**Legend:** ✅ deployed · 🆕 pending backend work (placeholder requests included).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "4c3a2b0e-vm-frappe-2026-04-24"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://service.naarni.com", "type": "string" },
+    { "key": "site", "value": "service.naarni.com", "type": "string" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Attach Host header when hitting the VM IP directly (pre-DNS).",
+          "const url = pm.request.url.getHost();",
+          "if (url && /^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(url)) {",
+          "  pm.request.headers.upsert({ key: 'Host', value: pm.variables.get('site') });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Phone-based sign-in and session management.",
+      "item": [
+        {
+          "name": "Login with Phone ✅",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('success envelope', () => pm.expect(body.message.success).to.eql(true));",
+                  "",
+                  "// Persist session cookies so subsequent requests auth automatically.",
+                  "const sid = pm.cookies.get('sid');",
+                  "const systemUser = pm.cookies.get('system_user');",
+                  "if (sid) pm.environment.set('sid', sid);",
+                  "if (systemUser) pm.environment.set('system_user', systemUser);",
+                  "pm.environment.set('user', body.message.data.user);",
+                  "pm.environment.set('full_name', body.message.data.full_name);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "phone", "value": "{{phone}}" },
+                { "key": "password", "value": "{{password}}" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/method/vehicle_maintenance.api.auth.login_with_phone",
+              "host": ["{{base_url}}"],
+              "path": ["api", "method", "vehicle_maintenance.api.auth.login_with_phone"]
+            },
+            "description": "Authenticate by phone + password. Phone is normalized to last 10 digits server-side — any of `9876543210`, `+91 98765 43210`, `+919876543210`, `98765-43210` work."
+          },
+          "response": [
+            {
+              "name": "200 · success",
+              "originalRequest": { "method": "POST", "header": [], "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.login_with_phone" },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "Set-Cookie", "value": "sid=abc123...; HttpOnly; Path=/" },
+                { "key": "Set-Cookie", "value": "system_user=yes; Path=/" },
+                { "key": "Set-Cookie", "value": "full_name=Mayank Dwivedi; Path=/" }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\n      \"user\": \"mayank.dwivedi@naarni.com\",\n      \"full_name\": \"Mayank Dwivedi\",\n      \"user_type\": \"System User\",\n      \"roles\": [\"System Manager\", \"Service Engineer\", \"All\", \"Guest\", \"Desk User\"]\n    },\n    \"message\": \"Logged in.\"\n  },\n  \"home_page\": \"/app/home\",\n  \"full_name\": \"Mayank Dwivedi\"\n}"
+            },
+            {
+              "name": "401 · wrong password",
+              "originalRequest": { "method": "POST", "header": [], "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.login_with_phone" },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exception\": \"frappe.exceptions.AuthenticationError\",\n  \"exc_type\": \"AuthenticationError\",\n  \"message\": \"Invalid login credentials\"\n}"
+            },
+            {
+              "name": "401 · phone not registered",
+              "originalRequest": { "method": "POST", "header": [], "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.login_with_phone" },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exception\": \"frappe.exceptions.AuthenticationError\",\n  \"exc_type\": \"AuthenticationError\",\n  \"message\": \"No account found for that phone number.\",\n  \"_server_messages\": \"[\\\"{\\\\\\\"message\\\\\\\": \\\\\\\"No account found for that phone number.\\\\\\\"}\\\"]\"\n}"
+            },
+            {
+              "name": "417 · malformed phone",
+              "originalRequest": { "method": "POST", "header": [], "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.login_with_phone" },
+              "status": "Expectation Failed",
+              "code": 417,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exception\": \"frappe.exceptions.ValidationError\",\n  \"exc_type\": \"ValidationError\",\n  \"message\": \"Phone number must be at least 10 digits.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get CSRF Token ✅",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.message) pm.environment.set('csrf_token', body.message);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" }
+            ],
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.get_csrf_token",
+            "description": "Fetch the CSRF token for the current session. Attach as `X-Frappe-CSRF-Token` on every non-GET."
+          },
+          "response": [
+            {
+              "name": "200 · token returned",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": \"abc123def456...\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Logout ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" }
+            ],
+            "url": "{{base_url}}/api/method/logout",
+            "description": "Ends the current session and clears cookies."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Logged User ✅",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" }
+            ],
+            "url": "{{base_url}}/api/method/frappe.auth.get_logged_user",
+            "description": "Sanity check that the stored session/token is still valid."
+          },
+          "response": [
+            {
+              "name": "200 · user id",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": \"mayank.dwivedi@naarni.com\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Issue API Key 🆕 (pending backend)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" }
+            ],
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.issue_api_key",
+            "description": "🆕 Pending — mints a long-lived `(api_key, api_secret)` pair on the logged-in user. Returns the secret once; the client must persist it. After this, skip cookies and send `Authorization: token <api_key>:<api_secret>` on every request."
+          },
+          "response": [
+            {
+              "name": "200 · expected shape",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\n      \"api_key\": \"abcd1234ef56\",\n      \"api_secret\": \"x7y8z9a0b1c2d3e4\"\n    },\n    \"message\": \"API key issued. Store both values; the secret is only shown once.\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Revoke API Key 🆕 (pending backend)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "token {{api_key}}:{{api_secret}}" }],
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.revoke_api_key",
+            "description": "🆕 Pending — rotates the caller's api_secret. Used on logout from mobile."
+          },
+          "response": []
+        },
+        {
+          "name": "Register FCM Device 🆕 (pending backend)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "token {{api_key}}:{{api_secret}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "token", "value": "<fcm-token>" },
+                { "key": "device_id", "value": "<unique-device-id>" },
+                { "key": "platform", "value": "android" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.auth.register_fcm_device",
+            "description": "🆕 Pending — registers an FCM token against the logged-in user so push notifications fan out to this device."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Job Card",
+      "description": "Core card lifecycle — lookup, creation support, workflow transitions, progressive updates.",
+      "item": [
+        {
+          "name": "Get My Job Cards ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "status", "value": "WIP" },
+                { "key": "limit", "value": "20" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.get_my_job_cards",
+            "description": "Paginated list of Job Cards visible to the caller, filtered by role."
+          },
+          "response": [
+            {
+              "name": "200 · page of WIP cards",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": [\n      {\n        \"name\": \"BHT-DEPOT-2026-00007\",\n        \"vehicle_number\": \"KA-01-AB-1234\",\n        \"job_card_type\": \"PMS + Repair\",\n        \"workflow_state\": \"WIP\",\n        \"priority\": \"Medium\",\n        \"opened_at\": \"2026-04-23 09:12:04\",\n        \"sla_breached\": 0,\n        \"estimated_cost\": 4800.0\n      }\n    ],\n    \"message\": \"\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Job Card Summary ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.get_job_card_summary",
+            "description": "Full JC detail with role-filtered fields + child tables + breakdown panel."
+          },
+          "response": [
+            {
+              "name": "200 · full summary",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\n      \"name\": \"BHT-DEPOT-2026-00007\",\n      \"viewer_roles\": [\"Service Engineer\"],\n      \"viewer_is_depot_manager\": false,\n      \"job_card_type\": \"PMS + Repair\",\n      \"vehicle\": \"VEH-0042\",\n      \"vehicle_number\": \"KA-01-AB-1234\",\n      \"vehicle_make_model\": \"Ashok Leyland Lynx Smart\",\n      \"customer_name\": \"Bangalore Metro Transport\",\n      \"priority\": \"Medium\",\n      \"workflow_state\": \"WIP\",\n      \"complaint_description\": \"Oil leak + brake vibration\",\n      \"estimated_cost\": 4800.0,\n      \"actual_cost\": 0.0,\n      \"opened_at\": \"2026-04-23 09:12:04\",\n      \"closed_at\": null,\n      \"depot\": \"Bangalore Depot 2\",\n      \"pre_pms_score\": 68.5,\n      \"post_pms_score\": 0.0,\n      \"score_improvement\": 0.0,\n      \"force_closed\": 0,\n      \"sla_breached\": 0,\n      \"requires_customer_approval\": 1,\n      \"subsystems\": [\"Engine\", \"Brake\"],\n      \"repair_items\": [\n        {\n          \"part_group\": \"Brake Pads\",\n          \"activity_type\": \"Spare Replacement\",\n          \"qty\": 2,\n          \"rate\": 800.0,\n          \"amount\": 1600.0\n        }\n      ],\n      \"maintenance_items\": [\n        {\n          \"category\": \"Engine Oil\",\n          \"action\": \"Replace\",\n          \"capacity_l\": 12.5,\n          \"drained_photo\": \"/files/drain-xyz.jpg\"\n        }\n      ],\n      \"category_scores\": [\n        { \"category\": \"Engine\", \"pre\": 70, \"post\": null },\n        { \"category\": \"Brake\", \"pre\": 55, \"post\": null }\n      ]\n    }\n  }\n}"
+            },
+            {
+              "name": "404 · not found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exc_type\": \"DoesNotExistError\",\n  \"message\": \"Job Card BHT-DEPOT-2026-99999 not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Available Actions ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.get_available_actions",
+            "description": "Role- + state-aware action chips the client should render."
+          },
+          "response": [
+            {
+              "name": "200 · actions for WIP + SE",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": [\n      { \"action\": \"Send Estimate\", \"label\": \"Send for Approval\", \"enabled\": true },\n      { \"action\": \"Submit for Verification\", \"label\": \"Submit for Verification\", \"enabled\": false, \"disabled_reason\": \"No repair items saved.\" },\n      { \"action\": \"Force Close\", \"label\": \"Force Close (Minor)\", \"enabled\": true }\n    ],\n    \"message\": \"\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Transition Job Card ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" },
+                { "key": "action", "value": "Start Work" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.transition_job_card",
+            "description": "Advance the workflow. Action names come from the Frappe Workflow fixture; see §7 of mobile-api-integration.md."
+          },
+          "response": [
+            {
+              "name": "200 · state advanced",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": { \"name\": \"BHT-DEPOT-2026-00007\", \"workflow_state\": \"WIP\" },\n    \"message\": \"Job card moved to WIP.\"\n  }\n}"
+            },
+            {
+              "name": "417 · illegal transition",
+              "status": "Expectation Failed",
+              "code": 417,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exc_type\": \"ValidationError\",\n  \"message\": \"Action 'Close' is not valid from state 'Open'.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Search Vehicles ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "query", "value": "KA-01" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.search_vehicles",
+            "description": "Autocomplete by registration number or VIN."
+          },
+          "response": [
+            {
+              "name": "200 · hits",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": [\n      { \"name\": \"VEH-0042\", \"vehicle_number\": \"KA-01-AB-1234\", \"make_model\": \"Ashok Leyland Lynx Smart\", \"customer\": \"Bangalore Metro Transport\" },\n      { \"name\": \"VEH-0059\", \"vehicle_number\": \"KA-01-CZ-7788\", \"make_model\": \"Tata Ultra 1014\", \"customer\": \"KSRTC\" }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Last PMS Info ✅ (Breakdown banner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "vehicle", "value": "VEH-0042" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.get_last_pms_info",
+            "description": "Populates the Breakdown intake banner with the vehicle's last PMS context."
+          },
+          "response": [
+            {
+              "name": "200 · banner payload",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\n      \"last_pms_date\": \"2026-03-15\",\n      \"last_pms_odometer_km\": 48200,\n      \"tolerance_km\": 5000,\n      \"last_serviced_by\": \"priya.eng@naarni.com\",\n      \"days_since_pms\": 40\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Save Repair Items ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" },
+                { "key": "items", "value": "[{\"part_group\":\"Brake Pads\",\"activity_type\":\"Spare Replacement\",\"qty\":2,\"rate\":800}]" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.save_repair_items",
+            "description": "Replaces the full repair_items list on the JC. Items must be a JSON-serialized array."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Breakdown Diagnosis ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00011" },
+                { "key": "incident_place", "value": "En Route" },
+                { "key": "remote_resolution_result", "value": "Failed" },
+                { "key": "travel_started_at", "value": "2026-04-24 05:30:00" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.update_breakdown_diagnosis",
+            "description": "Progressive Breakdown update — each wizard screen POSTs a delta."
+          },
+          "response": []
+        },
+        {
+          "name": "Force Close Job Card ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" },
+                { "key": "severity", "value": "Minor" },
+                { "key": "reason", "value": "Customer requested temporary close; revisit scheduled.\"" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.force_close_job_card",
+            "description": "Role-gated: Minor→SE, Major→DM, Critical→N. Maintenance Head. Critical severity auto-creates a 24h follow-up JC."
+          },
+          "response": [
+            {
+              "name": "403 · severity not permitted",
+              "status": "Forbidden",
+              "code": 403,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exc_type\": \"PermissionError\",\n  \"message\": \"Only Depot Manager can Force Close at Major severity.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reopen Job Card ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" },
+                { "key": "reason", "value": "Brake vibration returned after 2 days." }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.reopen_job_card",
+            "description": "Customer-triggered reopen within the allowed window; mandatory reason."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Customer",
+      "description": "Portal flows: approval, feedback, health card.",
+      "item": [
+        {
+          "name": "Record Customer Approval Decision ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00011" },
+                { "key": "decision", "value": "approved" },
+                { "key": "remarks", "value": "Proceed.\"" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.record_customer_approval_decision",
+            "description": "In-person approval entered by SE on behalf of the customer."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Approval Link Payload ✅ (guest + token)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00011" },
+                { "key": "token", "value": "<customer_approval_token>" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.get_approval_link_payload",
+            "description": "Unauthenticated read for the tokenised customer-approval deep link."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Customer Feedback ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" },
+                { "key": "rating", "value": "5" },
+                { "key": "nps", "value": "9" },
+                { "key": "recommend", "value": "Yes" },
+                { "key": "comments", "value": "Quick turnaround.\"" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.submit_customer_feedback",
+            "description": "Post-closure feedback; rating 1-5, nps 0-10."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "description": "Parts request → allocate → issue → receive.",
+      "item": [
+        {
+          "name": "Search Parts ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "query", "value": "brake pad" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.fleet_service.doctype.part.part.search_parts",
+            "description": "Autocomplete parts by name/code."
+          },
+          "response": [
+            {
+              "name": "200 · hits",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": [\n      { \"name\": \"PART-0091\", \"part_name\": \"Brake Pad (Front)\", \"part_group\": \"Brake Pads\", \"rate\": 800.0 }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Inventory Request ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" },
+                { "key": "items", "value": "[{\"part\":\"PART-0091\",\"qty\":2,\"urgency\":\"High\"}]" },
+                { "key": "notes", "value": "Needed by end of shift.\"" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.create_inventory_request",
+            "description": "Raises a request against the JC. If line total > ₹1,000, customer approval is required before allocation."
+          },
+          "response": [
+            {
+              "name": "200 · created",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": { \"name\": \"IR-2026-00123\", \"status\": \"Pending Allocation\", \"requires_customer_approval\": true },\n    \"message\": \"Request created.\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Advance Inventory Status ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "request_name", "value": "IR-2026-00123" },
+                { "key": "action", "value": "Allocate" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.advance_inventory_status",
+            "description": "Actions: `Allocate` (DM) → `Issue` (DM) → `Receive` (Tech)."
+          },
+          "response": []
+        },
+        {
+          "name": "List Inventory for Job Card ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.fleet_service.doctype.inventory_request.inventory_request.list_for_job_card",
+            "description": "All inventory requests for a JC with their current status."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "description": "TAT + repeated issues analytics.",
+      "item": [
+        {
+          "name": "TAT Adherence Report ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "from_date", "value": "2026-04-01" },
+                { "key": "to_date", "value": "2026-04-30" },
+                { "key": "depot", "value": "" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.tat_adherence_report",
+            "description": "Adherence rollup by job-card type + overall."
+          },
+          "response": [
+            {
+              "name": "200 · monthly rollup",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\n      \"overall_percent\": 87.3,\n      \"by_type\": [\n        { \"job_card_type\": \"PMS + Repair\", \"total\": 45, \"met_sla\": 41, \"percent\": 91.1 },\n        { \"job_card_type\": \"Only Repair\",  \"total\": 58, \"met_sla\": 47, \"percent\": 81.0 },\n        { \"job_card_type\": \"Breakdown\",    \"total\": 12, \"met_sla\": 11, \"percent\": 91.7 }\n      ]\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Repeated Issues for Vehicle ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "vehicle", "value": "VEH-0042" },
+                { "key": "window_days", "value": "90" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.job_card.repeated_issues_for_vehicle",
+            "description": "Bus systems with ≥2 occurrences in window."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Photos & Media",
+      "description": "Photo upload + tamper evidence.",
+      "item": [
+        {
+          "name": "Upload File ✅ (Frappe built-in)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "doctype", "value": "Job Card", "type": "text" },
+                { "key": "docname", "value": "BHT-DEPOT-2026-00007", "type": "text" },
+                { "key": "is_private", "value": "1", "type": "text" },
+                { "key": "fieldname", "value": "odometer_photo", "type": "text" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/upload_file",
+            "description": "Attach a file to a DocType row. Pick a file in Postman's body → form-data → file row."
+          },
+          "response": [
+            {
+              "name": "200 · uploaded",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"name\": \"1a2b3c\",\n    \"file_url\": \"/private/files/odometer-1a2b3c.jpg\",\n    \"is_private\": 1,\n    \"file_size\": 482133,\n    \"file_name\": \"odometer.jpg\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Register Photo Metadata 🆕 (pending backend)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "token {{api_key}}:{{api_secret}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "file_url", "value": "/private/files/odometer-1a2b3c.jpg" },
+                { "key": "sha256", "value": "af12de…" },
+                { "key": "lat", "value": "12.9716" },
+                { "key": "lng", "value": "77.5946" },
+                { "key": "accuracy", "value": "4.2" },
+                { "key": "captured_at_iso", "value": "2026-04-24T05:42:11Z" },
+                { "key": "device_id", "value": "android-abc123" },
+                { "key": "jc_name", "value": "BHT-DEPOT-2026-00007" },
+                { "key": "child_field", "value": "odometer_photo" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.media.register_photo_metadata",
+            "description": "🆕 Pending — tamper-evidence record: server-side hash, GPS, and trusted timestamp. Deduped by sha256."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "Inbox mirror of server-side Notification Log.",
+      "item": [
+        {
+          "name": "List My Notifications ✅ (via frappe.client.get_list)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "doctype", "value": "Notification Log" },
+                { "key": "fields", "value": "[\"name\",\"subject\",\"type\",\"document_name\",\"read\",\"creation\"]" },
+                { "key": "filters", "value": "[[\"for_user\",\"=\",\"{{user}}\"]]" },
+                { "key": "order_by", "value": "creation desc" },
+                { "key": "limit_page_length", "value": "20" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/frappe.client.get_list",
+            "description": "Paginated notifications for the logged-in user."
+          },
+          "response": [
+            {
+              "name": "200 · page",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": [\n    {\n      \"name\": \"NL-2026-00342\",\n      \"subject\": \"🚨 Breakdown Declared: BHT-DEPOT-2026-00011\",\n      \"type\": \"Alert\",\n      \"document_name\": \"BHT-DEPOT-2026-00011\",\n      \"read\": 0,\n      \"creation\": \"2026-04-24 05:30:00\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mark Notification Read ✅ (via frappe.client.set_value)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "doctype", "value": "Notification Log" },
+                { "key": "name", "value": "NL-2026-00342" },
+                { "key": "fieldname", "value": "read" },
+                { "key": "value", "value": "1" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/frappe.client.set_value"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health Card & Closures",
+      "item": [
+        {
+          "name": "Get Vehicle Health Card ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.fleet_service.doctype.vehicle_health_card.vehicle_health_card.get_for_job_card",
+            "description": "Post-closure health card for a PMS job card."
+          },
+          "response": []
+        },
+        {
+          "name": "List Closure Records ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "job_card_name", "value": "BHT-DEPOT-2026-00007" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.fleet_service.doctype.job_card_closure_record.job_card_closure_record.list_for_job_card",
+            "description": "Reopen/force-close chain history for the JC."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CRM (Leads) ✅",
+      "description": "Lead pipeline for sales pitches — capture, qualify, log activities, schedule email reminders, convert winners to Customer. All endpoints require Sales Executive, Central Ops, or Administrator (read endpoints additionally allow Service Engineer). Every response uses the {success, data, message} envelope.",
+      "item": [
+        {
+          "name": "Get Lead Dropdowns ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": { "mode": "urlencoded", "urlencoded": [] },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.get_lead_dropdowns",
+            "description": "Single round-trip to fetch every Lead-form dropdown: sources, statuses, sales users, depots, email templates. Cached client-side."
+          },
+          "response": [
+            {
+              "name": "200 · dropdowns",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\n      \"sources\": [{\"name\": \"Referral\", \"source_name\": \"Referral\"}],\n      \"statuses\": [{\"name\": \"New\", \"status_name\": \"New\", \"stage\": \"Open\", \"display_order\": 10, \"is_terminal\": 0}],\n      \"sales_users\": [{\"name\": \"ravi@example.com\", \"full_name\": \"Ravi Kumar\", \"email\": \"ravi@example.com\"}],\n      \"depots\": [{\"name\": \"Bangalore Depot 2\", \"depot_name\": \"Bangalore Depot 2\"}],\n      \"email_templates\": [{\"name\": \"CRM — Quote reminder\", \"subject\": \"Quote for {{ lead_name }} — awaiting your review\"}]\n    },\n    \"message\": \"\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Lead List ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "filters", "value": "{\"status\":\"Qualified\",\"priority\":\"High\"}" },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" },
+                { "key": "search", "value": "" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.get_lead_list",
+            "description": "Paginated Lead list. filters accepts any of: status, lead_source, assigned_to, priority, depot. search matches lead_name / phone / company_name."
+          },
+          "response": [
+            {
+              "name": "200 · page",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\n      \"rows\": [\n        {\n          \"name\": \"LEAD-2026-00042\",\n          \"lead_name\": \"Ravi Kumar\",\n          \"phone\": \"9876543210\",\n          \"email\": \"ravi@acme.test\",\n          \"company_name\": \"Acme Transport\",\n          \"lead_source\": \"Referral\",\n          \"status\": \"Qualified\",\n          \"priority\": \"High\",\n          \"estimated_value\": 250000.0,\n          \"expected_close_date\": \"2026-05-30\",\n          \"assigned_to\": \"ravi@example.com\",\n          \"depot\": \"Bangalore Depot 2\",\n          \"modified\": \"2026-04-24 09:15:00\"\n        }\n      ],\n      \"total\": 1,\n      \"page\": 1,\n      \"page_size\": 20\n    },\n    \"message\": \"\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Lead ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "name", "value": "LEAD-2026-00042" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.get_lead",
+            "description": "Full Lead detail + embedded activities + attachments + pending reminders."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Lead ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "payload", "value": "{\"lead_name\":\"Ravi Kumar\",\"phone\":\"+91 98765 43210\",\"email\":\"ravi@acme.test\",\"company_name\":\"Acme Transport\",\"lead_source\":\"Referral\",\"industry\":\"Logistics\",\"interested_in\":\"AMC\",\"fleet_size_bucket\":\"21-50\",\"priority\":\"High\",\"estimated_value\":250000,\"state\":\"Karnataka\",\"city\":\"Bangalore\",\"depot\":\"Bangalore Depot 2\",\"assigned_to\":\"ravi@example.com\",\"expected_close_date\":\"2026-05-30\",\"notes\":\"Wants AMC demo next week\"}" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.create_lead",
+            "description": "Create a Lead from the SPA wizard. Phone is normalised to last 10 digits on insert (matches existing auth convention). Status defaults to the lowest-display-order Open status when omitted."
+          },
+          "response": [
+            {
+              "name": "200 · created",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\"name\": \"LEAD-2026-00043\"},\n    \"message\": \"Lead created.\"\n  }\n}"
+            },
+            {
+              "name": "417 · short phone",
+              "status": "Expectation Failed",
+              "code": 417,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exc_type\": \"ValidationError\",\n  \"message\": \"Phone must contain at least 10 digits.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Lead Status ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "name", "value": "LEAD-2026-00042" },
+                { "key": "new_status", "value": "Qualified" },
+                { "key": "note", "value": "Budget confirmed" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.update_lead_status",
+            "description": "Advance the Lead status. Auto-appends a Lead Activity row. If new_status has stage == 'Won', the Lead is auto-converted to a Customer record."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Activity ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "lead", "value": "LEAD-2026-00042" },
+                { "key": "payload", "value": "{\"activity_type\":\"Call\",\"outcome\":\"Interested\",\"next_action\":\"Send Quote\",\"summary\":\"30-min intro call; wants quote by Friday\"}" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.add_activity",
+            "description": "Log a call/visit/demo/etc on a Lead. activity_type ∈ {Call, Visit, Demo, Quote Sent, Email, WhatsApp, Other}."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Lead Attachment ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "lead", "value": "LEAD-2026-00042" },
+                { "key": "file_url", "value": "/private/files/business-card.jpg" },
+                { "key": "caption", "value": "Business card from trade show" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.upload_lead_attachment",
+            "description": "Links an already-uploaded File (via /api/method/upload_file) to a Lead's attachments table. Enforces 5 MB cap and MIME whitelist (jpeg/png/webp/pdf)."
+          },
+          "response": []
+        },
+        {
+          "name": "Convert Lead to Customer ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "name", "value": "LEAD-2026-00042" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.convert_lead_to_customer",
+            "description": "Creates a Customer record from the Lead (derives customer_code from the company/lead name) and records the link back on the Lead. Idempotent — re-calls return the existing customer name."
+          },
+          "response": [
+            {
+              "name": "200 · converted",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"message\": {\n    \"success\": true,\n    \"data\": {\"lead\": \"LEAD-2026-00042\", \"customer\": \"Acme Transport\"},\n    \"message\": \"Lead converted to customer.\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Schedule Reminder ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "payload", "value": "{\"lead\":\"LEAD-2026-00042\",\"reminder_datetime\":\"2026-04-26 10:00:00\",\"channel\":\"Email\",\"subject\":\"Follow up on AMC quote\",\"message_template\":\"CRM — Quote reminder\",\"recipient_email\":\"ravi@acme.test\"}" }
+              ]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.schedule_reminder",
+            "description": "Creates a Lead Reminder row. The */15 * * * * scheduler job dispatch_due_reminders renders the Email Template (vars: lead_name, company_name, assigned_to, estimated_value, expected_close_date, phone) and sends via frappe.sendmail. reminder_datetime must be in the future; either message_template or message_body is required."
+          },
+          "response": [
+            {
+              "name": "417 · past datetime",
+              "status": "Expectation Failed",
+              "code": 417,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\n  \"exc_type\": \"ValidationError\",\n  \"message\": \"Reminder time must be in the future.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancel Reminder ✅",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "sid={{sid}}; system_user={{system_user}}" },
+              { "key": "X-Frappe-CSRF-Token", "value": "{{csrf_token}}" },
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "name", "value": "LR-2026-00011" }]
+            },
+            "url": "{{base_url}}/api/method/vehicle_maintenance.api.crm.cancel_reminder",
+            "description": "Soft-cancels a pending (Scheduled) Lead Reminder. Sent/Failed/already-Cancelled reminders return 417."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -44,6 +44,15 @@ jobs:
             rm -rf "$TMP"
 
             bench --site "$SITE" migrate
+
+            # Build the Vite/Vue SPA (bench build doesn't touch the frontend dir)
+            if [ -f apps/vehicle_maintenance/frontend/package.json ]; then
+              pushd apps/vehicle_maintenance/frontend >/dev/null
+              yarn install --frozen-lockfile
+              yarn build
+              popd >/dev/null
+            fi
+
             bench build --app vehicle_maintenance
             bench --site "$SITE" clear-cache
             bench --site "$SITE" set-maintenance-mode off

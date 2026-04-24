@@ -3,8 +3,6 @@ import re
 import frappe
 from frappe import _
 
-STAFF_EMAIL_DOMAIN = "staff.naarni.com"
-
 
 def _normalize_phone(raw: str) -> str:
 	digits = re.sub(r"\D", "", raw or "")
@@ -16,8 +14,8 @@ def _normalize_phone(raw: str) -> str:
 
 
 def validate_user(doc, method=None):
-	# Administrator is the only built-in bypass — it has no phone and must stay
-	# creatable. All other users (staff and portal) authenticate by phone.
+	# Administrator bootstraps the site before any human user exists and
+	# therefore can't carry a phone; all other users authenticate by phone.
 	if doc.name == "Administrator":
 		return
 	if getattr(doc, "flags", None) and doc.flags.get("ignore_phone_requirement"):
@@ -28,9 +26,6 @@ def validate_user(doc, method=None):
 
 	normalized = _normalize_phone(doc.mobile_no)
 	doc.mobile_no = normalized
-
-	if not (doc.email or "").strip():
-		doc.email = f"{normalized}@{STAFF_EMAIL_DOMAIN}"
 
 	existing = frappe.db.get_all(
 		"User",

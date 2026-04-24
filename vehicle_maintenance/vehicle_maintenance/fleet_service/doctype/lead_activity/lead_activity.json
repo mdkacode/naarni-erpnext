@@ -1,0 +1,55 @@
+{
+  "name": "Lead Activity",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {
+      "fieldname": "activity_type",
+      "label": "Activity Type",
+      "fieldtype": "Select",
+      "options": "Call\nVisit\nDemo\nQuote Sent\nEmail\nWhatsApp\nOther",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "activity_date",
+      "label": "Activity Date",
+      "fieldtype": "Datetime",
+      "default": "Now",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "outcome",
+      "label": "Outcome",
+      "fieldtype": "Select",
+      "options": "\nInterested\nNot Interested\nCallback Requested\nMeeting Scheduled\nConverted\nNo Response",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "next_action",
+      "label": "Next Action",
+      "fieldtype": "Select",
+      "options": "\nCall Back\nSend Quote\nSchedule Demo\nClose as Lost\nNone",
+      "default": "None"
+    },
+    {
+      "fieldname": "performed_by",
+      "label": "Performed By",
+      "fieldtype": "Link",
+      "options": "User",
+      "default": "__user",
+      "read_only": 1
+    },
+    {
+      "fieldname": "summary",
+      "label": "Summary",
+      "fieldtype": "Small Text",
+      "description": "Short note (<= 500 chars)."
+    }
+  ],
+  "sort_field": "activity_date",
+  "sort_order": "DESC"
+}

@@ -20,21 +20,32 @@ jobs:
           ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 frappe@${{ secrets.VM_HOST }} <<'EOF'
+          ssh -i ~/.ssh/id_ed25519 frappe@${{ secrets.VM_HOST }} \
+            SITE="${{ secrets.SITE_NAME }}" BRANCH="$BRANCH" bash <<'EOF'
             set -e
             export PATH="$HOME/.local/bin:$PATH"
             cd ~/frappe-bench
-            bench --site ${{ secrets.SITE_NAME }} set-maintenance-mode on
-            cd apps/vehicle_maintenance && git pull origin ${GITHUB_REF_NAME:-develop} && cd ../..
-            bench --site ${{ secrets.SITE_NAME }} migrate
+
+            bench --site "$SITE" set-maintenance-mode on
+
+            # Re-sync vehicle_maintenance from the fork's subdirectory
+            TMP=$(mktemp -d)
+            git clone --depth 1 --branch "$BRANCH" \
+              https://github.com/mdkacode/naarni-erpnext.git "$TMP/repo"
+            rsync -a --delete \
+              --exclude='.git' \
+              --exclude='__pycache__' \
+              --exclude='node_modules' \
+              "$TMP/repo/vehicle_maintenance/" \
+              apps/vehicle_maintenance/
+            rm -rf "$TMP"
+
+            bench --site "$SITE" migrate
             bench build --app vehicle_maintenance
-            bench --site ${{ secrets.SITE_NAME }} clear-cache
-            bench --site ${{ secrets.SITE_NAME }} set-maintenance-mode off
+            bench --site "$SITE" clear-cache
+            bench --site "$SITE" set-maintenance-mode off
             sudo supervisorctl restart all
           EOF
-
-# Required GitHub repo secrets:
-#   VM_HOST      — 20.219.136.19
-#   VM_SSH_KEY   — contents of ~/.ssh/id_ed25519 (private key, full file including BEGIN/END lines)
-#   SITE_NAME    — service.naarni.com

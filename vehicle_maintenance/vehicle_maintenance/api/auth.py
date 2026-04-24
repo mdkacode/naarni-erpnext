@@ -1,9 +1,9 @@
-import re
-
 import frappe
 import frappe.sessions
 from frappe import _
 from frappe.auth import LoginManager
+
+from vehicle_maintenance.overrides.user import normalize_phone
 
 
 @frappe.whitelist()
@@ -15,15 +15,14 @@ def get_csrf_token() -> str:
 @frappe.whitelist(allow_guest=True)
 def login_with_phone(phone: str, password: str) -> dict:
 	"""Authenticate a staff user by phone number + password."""
-	digits = re.sub(r"\D", "", phone or "")
-	if not digits:
-		frappe.throw(_("Phone number is required."), frappe.AuthenticationError)
 	if not password:
 		frappe.throw(_("Password is required."), frappe.AuthenticationError)
 
+	normalized = normalize_phone(phone)
+
 	candidates = frappe.db.get_all(
 		"User",
-		filters={"mobile_no": digits, "enabled": 1},
+		filters={"mobile_no": normalized, "enabled": 1},
 		fields=["name", "full_name", "user_type"],
 		limit=2,
 	)
@@ -38,7 +37,10 @@ def login_with_phone(phone: str, password: str) -> dict:
 	user = candidates[0]
 	lm = LoginManager()
 	lm.authenticate(user=user.name, pwd=password)
-	lm.post_login()
+	# post_login sets cookies via frappe.local.response; guard for non-HTTP callers
+	# (tests, console) where that context doesn't exist.
+	if getattr(frappe.local, "request", None) is not None:
+		lm.post_login()
 
 	roles = frappe.get_roles(user.name)
 	return {

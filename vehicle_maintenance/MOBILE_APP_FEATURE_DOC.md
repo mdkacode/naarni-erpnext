@@ -127,25 +127,26 @@ app/
 
 ## 4. Authentication & Session Management
 
-### Login flow — phone-based (matches the recently-fixed web Login.vue)
+### Login flow — phone-based (live endpoint)
 
 ```
 ┌─────────────────┐
-│ Splash (1.5s)   │  → check stored API key
+│ Splash (1.5s)   │  → check stored API key pair
 └────────┬────────┘
-         │ no key                  with key
+         │ no pair                 with pair
          ▼                          ▼
 ┌─────────────────┐         ┌──────────────┐
 │ LoginScreen     │         │ Bootstrap    │
-│ +91 [10-digits] │         │ /get_logged_ │
-│ [Password]      │         │  user        │
-│ [Sign In]       │         │ + roles      │
-└────────┬────────┘         └──────┬───────┘
-         │ POST /api/method/login          │
+│ +91 [10-digits] │         │ frappe.auth. │
+│ [Password]      │         │ get_logged_  │
+│ [Sign In]       │         │ user         │
+└────────┬────────┘         │ + roles      │
+         │                  └──────┬───────┘
+         │ POST vehicle_maintenance.api.auth.login_with_phone │
          ▼                                  ▼
 ┌────────────────────────────┐    ┌────────────────────┐
 │ POST issue_api_key         │    │ HomeScreen routed  │
-│ (NEW endpoint — see §14)   │    │ by primary role    │
+│ (🆕 NEW — see §14)          │    │ by primary role    │
 │ → store in Keystore        │    └────────────────────┘
 └──────┬─────────────────────┘
        ▼
@@ -154,13 +155,14 @@ app/
 
 ### Token strategy
 
-- **Login** uses Frappe's session-cookie endpoint (`/api/method/login`).
-- Immediately after login, mobile calls a **NEW** whitelisted endpoint `vehicle_maintenance.api.auth.issue_api_key()` that:
+- **Login** uses our phone endpoint `vehicle_maintenance.api.auth.login_with_phone` (✅ deployed) which accepts `phone` + `password` form fields. Phone accepts any format — server normalizes to the last 10 digits before lookup.
+- Immediately after login, mobile calls a **🆕 NEW** whitelisted endpoint `vehicle_maintenance.api.auth.issue_api_key()` that:
   1. Generates an `api_key`/`api_secret` pair on the User record
   2. Returns them once
 - App stores the pair in **EncryptedSharedPreferences** (hardware-backed via Keystore on supported devices).
 - All subsequent requests use the `Authorization: token <api_key>:<api_secret>` header — **no cookies, no CSRF needed**.
-- Logout calls a new `/revoke_api_key` endpoint and wipes local storage.
+- Logout calls a 🆕 `revoke_api_key` endpoint and wipes local storage.
+- Until `issue_api_key` ships, dev builds can use keys minted via Desk UI (User → API Access → Generate Keys); see [`docs/mobile-api-integration.md §2.2`](docs/mobile-api-integration.md#22-api-key--secret-recommended-for-mobile-new-endpoint-pending) for the interim workflow.
 
 ### Session bootstrap on launch
 1. Fetch `/api/method/frappe.auth.get_logged_user` → confirms key still works
@@ -678,13 +680,17 @@ App handles `data` payloads only (not `notification` blocks) so it controls the 
 Every screen → endpoints it depends on. Existing endpoints unless flagged **NEW**.
 
 ### Auth
-- `POST /api/method/login` — phone-based (existing Frappe)
-- **NEW** `POST vehicle_maintenance.api.auth.issue_api_key` — returns `{api_key, api_secret}` after successful login
-- **NEW** `POST vehicle_maintenance.api.auth.revoke_api_key`
-- **NEW** `POST vehicle_maintenance.api.auth.register_fcm_device` — `{token, device_id, platform: "android"}`
-- **NEW** `POST vehicle_maintenance.api.auth.unregister_fcm_device`
-- `GET /api/method/frappe.auth.get_logged_user`
-- `GET vehicle_maintenance.fleet_service.doctype.job_card.job_card.get_user_roles`
+- ✅ `POST vehicle_maintenance.api.auth.login_with_phone` — phone-based sign-in; form fields `phone` + `password`; returns `{user, full_name, user_type, roles}` and sets `sid`/`system_user` cookies
+- ✅ `GET vehicle_maintenance.api.auth.get_csrf_token` — CSRF token for cookie-auth sessions
+- ✅ `POST logout` — Frappe built-in; ends session
+- 🆕 `POST vehicle_maintenance.api.auth.issue_api_key` — returns `{api_key, api_secret}` after successful login
+- 🆕 `POST vehicle_maintenance.api.auth.revoke_api_key`
+- 🆕 `POST vehicle_maintenance.api.auth.register_fcm_device` — `{token, device_id, platform: "android"}`
+- 🆕 `POST vehicle_maintenance.api.auth.unregister_fcm_device`
+- ✅ `GET frappe.auth.get_logged_user`
+- ✅ `GET vehicle_maintenance.fleet_service.doctype.job_card.job_card.get_user_roles`
+
+> For the wire-level contract (request shapes, response envelopes, error codes, sample Kotlin code) see [`docs/mobile-api-integration.md`](docs/mobile-api-integration.md).
 
 ### Job Card lifecycle
 - `vehicle_maintenance.api.job_card.search_vehicles`

@@ -2,3 +2,4 @@
 # Each line is a dotted path to a patch module
 # e.g., vehicle_maintenance.patches.v0_2.update_job_card_status
 vehicle_maintenance.patches.v0_3.make_user_mobile_no_mandatory
+vehicle_maintenance.patches.v0_4.seed_crm_masters

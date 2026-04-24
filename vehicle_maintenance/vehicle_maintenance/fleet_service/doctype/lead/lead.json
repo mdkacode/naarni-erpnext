@@ -1,0 +1,233 @@
+{
+  "name": "Lead",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "format:LEAD-{YYYY}-{#####}",
+  "track_changes": 1,
+  "title_field": "lead_name",
+  "fields": [
+    {
+      "fieldname": "section_identity",
+      "label": "Identity",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "lead_name",
+      "label": "Lead Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "phone",
+      "label": "Phone",
+      "fieldtype": "Data",
+      "options": "Phone",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "10-digit mobile number; must match platform phone-auth convention."
+    },
+    {
+      "fieldname": "column_break_id",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "email",
+      "label": "Email",
+      "fieldtype": "Data",
+      "options": "Email"
+    },
+    {
+      "fieldname": "company_name",
+      "label": "Company",
+      "fieldtype": "Data"
+    },
+
+    {
+      "fieldname": "section_qualification",
+      "label": "Qualification",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "lead_source",
+      "label": "Source",
+      "fieldtype": "Link",
+      "options": "Lead Source",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "industry",
+      "label": "Industry",
+      "fieldtype": "Select",
+      "options": "\nLogistics\nMining\nConstruction\nMunicipal\nAgriculture\nPrivate Fleet\nOther"
+    },
+    {
+      "fieldname": "fleet_size_bucket",
+      "label": "Fleet Size",
+      "fieldtype": "Select",
+      "options": "\n1-5\n6-20\n21-50\n51-100\n100+"
+    },
+    {
+      "fieldname": "interested_in",
+      "label": "Interested In",
+      "fieldtype": "Select",
+      "options": "\nAMC\nSpot Repair\nFull Maintenance Contract\nParts Only\nInspection Only"
+    },
+    {
+      "fieldname": "column_break_qual",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Link",
+      "options": "Lead Status",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "priority",
+      "label": "Priority",
+      "fieldtype": "Select",
+      "options": "Low\nMedium\nHigh",
+      "default": "Medium",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "estimated_value",
+      "label": "Estimated Value",
+      "fieldtype": "Currency"
+    },
+    {
+      "fieldname": "expected_close_date",
+      "label": "Expected Close Date",
+      "fieldtype": "Date"
+    },
+
+    {
+      "fieldname": "section_assignment",
+      "label": "Assignment",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "assigned_to",
+      "label": "Assigned To",
+      "fieldtype": "Link",
+      "options": "User",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_assign",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "depot",
+      "label": "Depot",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "in_standard_filter": 1
+    },
+
+    {
+      "fieldname": "section_location",
+      "label": "Location",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "state",
+      "label": "State",
+      "fieldtype": "Select",
+      "options": "\nAndhra Pradesh\nArunachal Pradesh\nAssam\nBihar\nChhattisgarh\nGoa\nGujarat\nHaryana\nHimachal Pradesh\nJharkhand\nKarnataka\nKerala\nMadhya Pradesh\nMaharashtra\nManipur\nMeghalaya\nMizoram\nNagaland\nOdisha\nPunjab\nRajasthan\nSikkim\nTamil Nadu\nTelangana\nTripura\nUttar Pradesh\nUttarakhand\nWest Bengal\nAndaman and Nicobar Islands\nChandigarh\nDadra and Nagar Haveli and Daman and Diu\nDelhi\nJammu and Kashmir\nLadakh\nLakshadweep\nPuducherry"
+    },
+    {
+      "fieldname": "city",
+      "label": "City",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "column_break_loc",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "address_line",
+      "label": "Address",
+      "fieldtype": "Small Text"
+    },
+
+    {
+      "fieldname": "section_activities",
+      "label": "Activities",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "activities",
+      "label": "Activities",
+      "fieldtype": "Table",
+      "options": "Lead Activity"
+    },
+
+    {
+      "fieldname": "section_attachments",
+      "label": "Attachments",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "attachments",
+      "label": "Attachments",
+      "fieldtype": "Table",
+      "options": "Lead Attachment"
+    },
+
+    {
+      "fieldname": "section_conversion",
+      "label": "Conversion",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "converted_to_customer",
+      "label": "Converted To Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "read_only": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "converted_on",
+      "label": "Converted On",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+
+    {
+      "fieldname": "section_notes",
+      "label": "Notes",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "notes",
+      "label": "Notes",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Sales Executive", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Service Engineer", "read": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC"
+}

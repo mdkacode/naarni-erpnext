@@ -1,0 +1,110 @@
+{
+  "name": "Lead Reminder",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "format:LR-{YYYY}-{#####}",
+  "track_changes": 1,
+  "title_field": "subject",
+  "fields": [
+    {
+      "fieldname": "lead",
+      "label": "Lead",
+      "fieldtype": "Link",
+      "options": "Lead",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "reminder_datetime",
+      "label": "Remind At",
+      "fieldtype": "Datetime",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_rem1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "channel",
+      "label": "Channel",
+      "fieldtype": "Select",
+      "options": "Email\nSystem Notification",
+      "default": "Email",
+      "reqd": 1
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Scheduled\nSent\nFailed\nCancelled",
+      "default": "Scheduled",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "section_content",
+      "label": "Content",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "subject",
+      "label": "Subject",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "message_template",
+      "label": "Email Template",
+      "fieldtype": "Link",
+      "options": "Email Template"
+    },
+    {
+      "fieldname": "message_body",
+      "label": "Message",
+      "fieldtype": "Text Editor",
+      "description": "Used when no template is selected."
+    },
+    {
+      "fieldname": "section_delivery",
+      "label": "Delivery",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "recipient_email",
+      "label": "Recipient Email",
+      "fieldtype": "Data",
+      "options": "Email",
+      "description": "Defaults to the Lead's email on dispatch if blank."
+    },
+    {
+      "fieldname": "column_break_rem2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "sent_at",
+      "label": "Sent At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "failure_reason",
+      "label": "Failure Reason",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Sales Executive", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1}
+  ],
+  "sort_field": "reminder_datetime",
+  "sort_order": "ASC"
+}

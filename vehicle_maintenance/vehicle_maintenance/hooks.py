@@ -14,6 +14,12 @@ doc_events: dict = {
 	},
 }
 
+# Idempotent seeders run after every migrate. Each function checks existence
+# before inserting, so this is safe to invoke repeatedly.
+after_migrate = [
+	"vehicle_maintenance.patches.v0_4.seed_crm_masters.execute",
+]
+
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
 APP_ROLES = [
 	"Depot Manager",
@@ -23,6 +29,7 @@ APP_ROLES = [
 	"Aftersales Eng",
 	"N. Maintenance Head",
 	"Customer",
+	"Sales Executive",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.
@@ -45,7 +52,13 @@ CUSTOMIZED_DOCTYPES = [
 fixtures = [
 	{
 		"dt": "Workflow",
-		"filters": [["document_type", "in", ["Job Card", "Inventory Request"]]],
+		"filters": [["document_type", "in", ["Job Card", "Inventory Request", "Lead"]]],
+	},
+	{
+		"dt": "Lead Source",
+	},
+	{
+		"dt": "Lead Status",
 	},
 	{"dt": "Workflow State"},
 	{"dt": "Workflow Action Master"},
@@ -84,6 +97,9 @@ scheduler_events = {
 			"vehicle_maintenance.fleet_service.tasks.monitor_customer_approval_sla",
 			"vehicle_maintenance.fleet_service.tasks.monitor_remote_resolution_sla",
 			"vehicle_maintenance.fleet_service.tasks.monitor_critical_followups",
+		],
+		"*/15 * * * *": [
+			"vehicle_maintenance.api.crm.dispatch_due_reminders",
 		],
 	},
 	# Feedback requests trickle out hourly — a 5-minute cadence is overkill

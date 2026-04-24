@@ -16,11 +16,15 @@ def _normalize_phone(raw: str) -> str:
 
 
 def validate_user(doc, method=None):
-	if doc.name == "Administrator" or getattr(doc, "user_type", "") == "Website User":
+	# Administrator is the only built-in bypass — it has no phone and must stay
+	# creatable. All other users (staff and portal) authenticate by phone.
+	if doc.name == "Administrator":
+		return
+	if getattr(doc, "flags", None) and doc.flags.get("ignore_phone_requirement"):
 		return
 
 	if not (doc.mobile_no or "").strip():
-		frappe.throw(_("Phone number is mandatory for staff users."))
+		frappe.throw(_("Phone number is mandatory."))
 
 	normalized = _normalize_phone(doc.mobile_no)
 	doc.mobile_no = normalized

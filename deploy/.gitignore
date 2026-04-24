@@ -1,3 +1,5 @@
 secrets.env
+github-secrets.txt
 *.pem
 *.key
+*.log

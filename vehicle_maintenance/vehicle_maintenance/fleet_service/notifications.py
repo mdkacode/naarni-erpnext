@@ -483,16 +483,16 @@ def _dispatch_sms(user: str, subject: str, body: str,
 
 def _dispatch_email(user: str, subject: str, body: str,
                     doc_name: str | None, priority: str) -> None:
-    """Enqueue a branded NaArNi email for `user` via Microsoft Graph.
+    """Enqueue a branded NaArNi email for `user` via Brevo.
 
-    Gated on `enable_email_notifications` + full M365 credential set in
+    Gated on `enable_email_notifications` + full Brevo credential set in
     site_config. Background-enqueued so the sending pipeline never blocks the
-    save/transition path — if Graph is slow or down, notifications still fire
-    In-App immediately.
+    save/transition path — if Brevo is slow or down, notifications still
+    fire In-App immediately.
     """
     try:
-        from vehicle_maintenance.fleet_service import m365_client
-        if not m365_client.is_enabled():
+        from vehicle_maintenance.fleet_service import brevo_client
+        if not brevo_client.is_enabled():
             return
         email_addr = _user_email(user)
         if not email_addr:
@@ -520,13 +520,15 @@ def _dispatch_email_job(
     to: str, subject: str, body: str,
     doc_name: str | None, priority: str,
 ) -> None:
-    """Background worker — renders the branded HTML and calls Graph sendMail.
+    """Background worker — renders the branded HTML and calls Brevo sendMail.
 
     Invoked only via `frappe.enqueue`; do not call directly.
     """
     from html import escape
-    from vehicle_maintenance.fleet_service.email_templates import render_branded_email
-    from vehicle_maintenance.fleet_service import m365_client
+    from vehicle_maintenance.fleet_service.email_templates import (
+        render_branded_email, to_plain_text,
+    )
+    from vehicle_maintenance.fleet_service import brevo_client
 
     # Build safe body HTML from the plain-text body the trigger function
     # supplied. Paragraphs split on blank lines; inline \n → <br/>.
@@ -544,8 +546,8 @@ def _dispatch_email_job(
     if doc_name:
         site_url = frappe.utils.get_url()
         cta_label = "Open Job Card"
-        # Desk route by default; Customer portal users should follow the
-        # link too since Frappe will redirect them appropriately.
+        # Desk route by default; Customer portal users follow the same link
+        # — Frappe redirects them appropriately.
         cta_url = f"{site_url}/app/job-card/{doc_name}"
 
     html = render_branded_email(
@@ -557,16 +559,19 @@ def _dispatch_email_job(
         priority=priority,
         meta_rows=[("Job Card", doc_name)] if doc_name else None,
     )
+    text = to_plain_text(subject, body or "", cta_label, cta_url)
 
     try:
-        m365_client.send_mail(
+        brevo_client.send_mail(
             to=[to],
             subject=subject,
             html_body=html,
+            text_body=text,
+            tags=[f"priority:{priority.lower()}", "fleet-service"],
         )
     except Exception:
         frappe.log_error(
-            title=f"M365 sendMail failed (to={to})",
+            title=f"Brevo sendMail failed (to={to})",
             message=frappe.get_traceback(),
         )
 

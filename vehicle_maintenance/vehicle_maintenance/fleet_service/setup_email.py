@@ -1,17 +1,20 @@
-"""One-shot configuration helpers for the M365 email pipeline.
+"""One-shot configuration helpers for the Brevo email pipeline.
 
-Use exactly once per site to lift the Microsoft credentials out of a local,
-gitignored text file and into Frappe's site_config (which is stored on the
-server, not the repo). Subsequent code reads them via `frappe.conf`.
+Reads the `BREVO_EMAIL_KEY` (and optional sender overrides) from a gitignored
+`.env` file and persists them into Frappe's site_config — the runtime source
+of truth. The `.env` itself is never read by the app at runtime.
 
 Typical first-run:
 
     bench --site dev.localhost execute \\
-        vehicle_maintenance.fleet_service.setup_email.configure_from_file \\
-        --kwargs '{"path": "/Users/mayank/Documents/frappe/m365.txt", "sender": "admin@naarni.com"}'
+        vehicle_maintenance.fleet_service.setup_email.configure_brevo_from_env \\
+        --kwargs "{'env_path': '/Users/mayank/Documents/frappe/vehicle_maintenance/.env', 'sender_email': 'mayank.dwivedi@naarni.com', 'sender_name': 'NaArNi Fleet Service'}"
 
-After this, the M365 client will pick up the creds from `frappe.conf` and
-`enable_email_notifications` will be toggled on.
+Or directly with a key (for CI / scripts):
+
+    bench --site dev.localhost execute \\
+        vehicle_maintenance.fleet_service.setup_email.configure_brevo \\
+        --kwargs "{'api_key': 'xkeysib-...', 'sender_email': '...', 'sender_name': '...'}"
 """
 
 from __future__ import annotations
@@ -21,146 +24,150 @@ import re
 
 import frappe
 
-# Matches UUID v4 (tenant id / client id) on its own line or in prose.
-_UUID_RE = re.compile(
-    r"\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b",
-    re.IGNORECASE,
-)
+# Keys we recognise in the .env file (case-insensitive).
+_API_KEY_NAMES = ("BREVO_EMAIL_KEY", "BREVO_API_KEY", "BREVO_KEY")
+_SENDER_EMAIL_NAMES = ("BREVO_SENDER_EMAIL", "SENDER_EMAIL")
+_SENDER_NAME_NAMES = ("BREVO_SENDER_NAME", "SENDER_NAME")
 
 
-def _parse_credentials_text(text: str) -> dict[str, str]:
-    """Extract credentials from a free-form text file.
+def _parse_env_file(path: str) -> dict[str, str]:
+    """Minimal .env parser: KEY=VALUE per line, `#` comments, `export` ok.
 
-    Expected content — any combination of:
-      • 'Application id - <guid>'  or  'Client id - <guid>'
-      • 'seceret - <value>'        or  'Client Secret - <value>'
-      • 'seceter id - <guid>'      (metadata only, ignored)
-      • An openid-configuration URL containing the tenant id in its path.
-
-    The parser is intentionally forgiving because the file was hand-typed.
+    Does not execute the file. Does not log values.
     """
-    tenant_id: str | None = None
-    client_id: str | None = None
-    client_secret: str | None = None
+    if not os.path.exists(path):
+        raise FileNotFoundError(f".env not found: {path}")
+    result: dict[str, str] = {}
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            # Strip matching quotes but preserve embedded content.
+            value = value.strip().strip("'\"")
+            if key:
+                result[key] = value
+    return result
 
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
-    for line in lines:
-        low = line.lower()
-        if "login.microsoftonline.com" in low:
-            m = _UUID_RE.search(line)
-            if m:
-                tenant_id = m.group(1)
-            continue
+def _first_set(env: dict[str, str], names: tuple[str, ...]) -> str | None:
+    """Return the first non-empty value among `names` in the env dict."""
+    for n in names:
+        v = env.get(n)
+        if v:
+            return v
+    return None
 
-        if "application id" in low or "client id" in low or "app id" in low:
-            m = _UUID_RE.search(line)
-            if m:
-                client_id = m.group(1)
-            continue
 
-        # "seceter id" in the source file is metadata; skip so it doesn't
-        # shadow client_id.
-        if "seceter id" in low or "secret id" in low:
-            continue
+@frappe.whitelist()
+def configure_brevo(
+    api_key: str,
+    sender_email: str,
+    sender_name: str = "NaArNi Fleet Service",
+    enable: bool = True,
+) -> dict:
+    """Write Brevo credentials to site_config and toggle email on.
 
-        if ("secret" in low and "id" not in low) or "seceret" in low:
-            # Strip any leading "... - " prefix and take the last non-space token.
-            parts = re.split(r"\s*[-–=:]\s*", line, maxsplit=1)
-            candidate = parts[-1].strip() if len(parts) > 1 else line
-            # Microsoft secrets look like `ABC1~…~XYZ`; strip stray quotes.
-            candidate = candidate.strip(" '\"")
-            if candidate and 10 < len(candidate) < 200:
-                client_secret = candidate
+    Only site_config is touched — never any repo file. The API key is
+    accepted via the arg; the caller (`configure_brevo_from_env` below) is
+    where the .env read happens.
+    """
+    frappe.only_for(["Administrator", "System Manager"])
 
+    if not (api_key or "").strip():
+        frappe.throw("api_key is required.")
+    if not sender_email or "@" not in sender_email:
+        frappe.throw("A valid sender_email is required (must be verified in Brevo).")
+
+    # Light sanity check — Brevo v3 keys start with 'xkeysib-'.
+    key = api_key.strip()
+    if not re.match(r"^xkeysib-[A-Za-z0-9]{40,}", key):
+        # Not fatal, but flag so typos are caught.
+        frappe.msgprint(
+            "API key format doesn't look like a Brevo v3 key (expected "
+            "'xkeysib-…'). Proceeding anyway — verify with verify_connection.",
+            alert=True, indicator="orange",
+        )
+
+    from frappe.installer import update_site_config
+    update_site_config("brevo_api_key", key)
+    update_site_config("brevo_sender_email", sender_email.strip())
+    update_site_config("brevo_sender_name", sender_name.strip())
+    if enable:
+        update_site_config("enable_email_notifications", 1)
+
+    # Reload frappe.conf so the current process sees the new values.
+    frappe.conf.update({
+        "brevo_api_key": key,
+        "brevo_sender_email": sender_email.strip(),
+        "brevo_sender_name": sender_name.strip(),
+        "enable_email_notifications": 1 if enable else 0,
+    })
+
+    from vehicle_maintenance.fleet_service import brevo_client
     return {
-        "tenant_id": tenant_id or "",
-        "client_id": client_id or "",
-        "client_secret": client_secret or "",
+        "success": True,
+        "data": {
+            "sender_email": sender_email.strip(),
+            "sender_name": sender_name.strip(),
+            "api_key_set": True,
+            "is_enabled": brevo_client.is_enabled(),
+        },
+        "message": "Brevo email pipeline configured.",
     }
 
 
 @frappe.whitelist()
-def configure_from_file(path: str, sender: str,
-                        enable: bool = True) -> dict:
-    """Load M365 credentials from a local text file into site_config.
+def configure_brevo_from_env(
+    env_path: str,
+    sender_email: str | None = None,
+    sender_name: str | None = None,
+    enable: bool = True,
+) -> dict:
+    """Load Brevo config from a local `.env` file into site_config.
 
-    Args:
-        path:   Absolute path to the credentials file. Parsed leniently.
-        sender: Mailbox the notification emails originate from
-                (e.g. 'admin@naarni.com'). Must match a real mailbox in the
-                tenant with granted Mail.Send permission.
-        enable: Whether to flip `enable_email_notifications` on after writing
-                the creds. Defaults to True.
-
-    Writes to site_config (via `frappe.installer.update_site_config`), NOT to
-    any file in the repo. The script itself never keeps the secrets in
-    memory beyond this call and never logs them.
-
-    Returns:
-        Envelope with the non-sensitive values and an `is_enabled` flag.
+    The API key is read from `BREVO_EMAIL_KEY` (or `BREVO_API_KEY`). Sender
+    overrides may come from `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` in the
+    .env, or from the kwargs (kwargs take precedence). Kwargs are required if
+    the .env doesn't carry a sender.
     """
     frappe.only_for(["Administrator", "System Manager"])
 
-    if not path or not os.path.exists(path):
-        frappe.throw(f"Credentials file not found: {path}")
-    if not sender or "@" not in sender:
-        frappe.throw("A valid sender email is required (e.g., admin@naarni.com).")
-
-    with open(path, "r", encoding="utf-8") as f:
-        raw = f.read()
-
-    creds = _parse_credentials_text(raw)
-    missing = [k for k, v in creds.items() if not v]
-    if missing:
+    env = _parse_env_file(env_path)
+    api_key = _first_set(env, _API_KEY_NAMES)
+    if not api_key:
         frappe.throw(
-            "Could not locate the following fields in the credentials file: "
-            + ", ".join(missing)
+            "Brevo API key not found in .env. Expected one of: "
+            + ", ".join(_API_KEY_NAMES)
+        )
+    final_sender = (sender_email or _first_set(env, _SENDER_EMAIL_NAMES) or "").strip()
+    final_name = (
+        sender_name or _first_set(env, _SENDER_NAME_NAMES) or "NaArNi Fleet Service"
+    ).strip()
+
+    if not final_sender:
+        frappe.throw(
+            "Sender email missing. Pass `sender_email` as a kwarg OR add "
+            "BREVO_SENDER_EMAIL to the .env file."
         )
 
-    from frappe.installer import update_site_config
-    update_site_config("m365_tenant_id", creds["tenant_id"])
-    update_site_config("m365_client_id", creds["client_id"])
-    update_site_config("m365_client_secret", creds["client_secret"])
-    update_site_config("m365_sender_email", sender.strip())
-    if enable:
-        update_site_config("enable_email_notifications", 1)
-
-    # Reload frappe.conf so the same process sees the new values immediately.
-    frappe.conf.update({
-        "m365_tenant_id": creds["tenant_id"],
-        "m365_client_id": creds["client_id"],
-        "m365_client_secret": creds["client_secret"],
-        "m365_sender_email": sender.strip(),
-        "enable_email_notifications": 1 if enable else 0,
-    })
-
-    # Drop any cached access token so the next send uses the new creds.
-    try:
-        frappe.cache().delete_value("vm_m365_access_token")
-    except Exception:
-        pass
-
-    from vehicle_maintenance.fleet_service import m365_client
-
-    return {
-        "success": True,
-        "data": {
-            "tenant_id": creds["tenant_id"],
-            "client_id": creds["client_id"],
-            "sender_email": sender.strip(),
-            "client_secret_set": True,
-            "is_enabled": m365_client.is_enabled(),
-        },
-        "message": "M365 email pipeline configured.",
-    }
+    return configure_brevo(
+        api_key=api_key,
+        sender_email=final_sender,
+        sender_name=final_name,
+        enable=enable,
+    )
 
 
 @frappe.whitelist()
 def disable_email_notifications() -> dict:
-    """Kill switch — flips `enable_email_notifications` off. The credentials
-    stay in site_config so re-enabling is a single-line flip later.
-    """
+    """Kill switch — keeps credentials in place but stops outbound email."""
     frappe.only_for(["Administrator", "System Manager"])
     from frappe.installer import update_site_config
     update_site_config("enable_email_notifications", 0)
@@ -170,18 +177,43 @@ def disable_email_notifications() -> dict:
 
 @frappe.whitelist()
 def email_status() -> dict:
-    """Non-sensitive status check — reports which M365 config keys are present,
-    without revealing the secret.
-    """
+    """Non-sensitive status — reports which Brevo keys are present."""
     frappe.only_for(["Administrator", "System Manager"])
     conf = frappe.conf or {}
     return {
         "success": True,
         "data": {
+            "provider": "brevo",
             "enabled": bool(conf.get("enable_email_notifications")),
-            "tenant_id_set": bool(conf.get("m365_tenant_id")),
-            "client_id_set": bool(conf.get("m365_client_id")),
-            "client_secret_set": bool(conf.get("m365_client_secret")),
-            "sender_email": conf.get("m365_sender_email") or None,
+            "api_key_set": bool(conf.get("brevo_api_key")),
+            "sender_email": conf.get("brevo_sender_email") or None,
+            "sender_name": conf.get("brevo_sender_name") or None,
         },
+    }
+
+
+@frappe.whitelist()
+def purge_m365_config() -> dict:
+    """Clean M365 keys out of site_config after the Brevo switch.
+
+    Idempotent. Does not delete the m365_client.py file — do that manually
+    with `git rm` once you're confident the switch is stable.
+    """
+    frappe.only_for(["Administrator", "System Manager"])
+    from frappe.installer import update_site_config
+    removed = []
+    for key in ("m365_tenant_id", "m365_client_id", "m365_client_secret",
+                "m365_sender_email"):
+        if frappe.conf.get(key):
+            update_site_config(key, None)
+            frappe.conf.pop(key, None)
+            removed.append(key)
+    try:
+        frappe.cache().delete_value("vm_m365_access_token")
+    except Exception:
+        pass
+    return {
+        "success": True,
+        "data": {"removed_keys": removed},
+        "message": f"Purged {len(removed)} M365 key(s) from site_config.",
     }

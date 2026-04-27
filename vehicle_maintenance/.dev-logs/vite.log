@@ -34,3 +34,4 @@ Error: connect ECONNREFUSED 127.0.0.1:8000
 12:45:32 AM [vite] http proxy error: /api/method/frappe.auth.get_logged_user
 Error: connect ECONNREFUSED 127.0.0.1:8000
     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+11:56:03 AM [vite] hmr update /src/pages/Login.vue, /src/index.css

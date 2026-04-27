@@ -82,6 +82,11 @@ fixtures = [
 		"dt": "Client Script",
 		"filters": [["dt", "in", CUSTOMIZED_DOCTYPES]],
 	},
+	# PMS structured checklist templates (Sheet A seeded; B/C added incrementally).
+	{
+		"dt": "Check Sheet Template",
+		"filters": [["template_code", "in", ["SHEET_A", "SHEET_B", "SHEET_C", "SHEET_D"]]],
+	},
 ]
 
 # Client Scripts for Desk forms

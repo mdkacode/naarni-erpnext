@@ -160,6 +160,20 @@
       "description": "Auto-selected from odometer reading — thresholds 20K / 40K / 80K per PRD"
     },
     {
+      "fieldname": "check_sheet_template",
+      "label": "Check Sheet Template",
+      "fieldtype": "Link",
+      "options": "Check Sheet Template",
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'",
+      "description": "Structured 103-item template (Sheet A/B/C). Drives mobile inspection UI."
+    },
+    {
+      "fieldname": "inspection_completed_at",
+      "label": "Inspection Completed At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
       "fieldname": "service_type",
       "label": "Service Type",
       "fieldtype": "Select",
@@ -640,6 +654,29 @@
       "fieldname": "rca_received_at",
       "label": "RCA Received At",
       "fieldtype": "Datetime",
+      "read_only": 1
+    },
+
+    {
+      "fieldname": "section_pms_inspection",
+      "label": "PMS Inspection",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'",
+      "description": "Per-item responses (OK / RR / RI) and per-section timing captured from the technician mobile app"
+    },
+    {
+      "fieldname": "inspection_responses",
+      "label": "Inspection Responses",
+      "fieldtype": "Table",
+      "options": "Job Card Inspection Response",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_timings",
+      "label": "Section Timings",
+      "fieldtype": "Table",
+      "options": "Job Card Section Timing",
       "read_only": 1
     },
 

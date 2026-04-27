@@ -324,19 +324,39 @@ def get_my_job_cards(
 	user = frappe.session.user
 	user_roles = set(frappe.get_roles(user))
 
-	filters: dict = {}
+	# Oversight roles see every Job Card in their scope — no per-user filter applied.
+	OVERSIGHT_ROLES = {
+		"Depot Manager",
+		"Central Ops",
+		"N. Maintenance Head",
+		"Aftersales Eng",
+		"Administrator",
+	}
+	is_oversight = bool(user_roles & OVERSIGHT_ROLES)
 
-	# Role-based scoping
+	filters: dict = {}
+	or_filters: list = []
+
+	# Customer is mutually exclusive — they only see their own JCs and never combine
+	# with SE/Tech filters even if their account also has those roles attached.
 	if "Customer" in user_roles and not user_roles & {"Depot Manager", "Central Ops"}:
-		# Customers see only their own job cards
 		customer_name = frappe.db.get_value("Customer", {"user": user}, "name")
 		if not customer_name:
 			return {"success": True, "data": [], "message": _("No linked customer account.")}
 		filters["customer"] = customer_name
-	elif "Technician" in user_roles and not user_roles & {"Depot Manager", "Central Ops"}:
-		filters["assigned_technician"] = user
-	elif "Service Engineer" in user_roles and not user_roles & {"Depot Manager", "Central Ops"}:
-		filters["assigned_service_engineer"] = user
+	elif not is_oversight:
+		# Field roles: OR-combine the assignment filters so a user with BOTH
+		# Service Engineer and Technician roles sees JCs they created/own as SE
+		# AND JCs they were tagged into as Technician. Earlier the cascade
+		# preferred Technician over SE, which hid an SE's own job cards from
+		# them whenever their account also had the Technician role.
+		if "Service Engineer" in user_roles:
+			or_filters.append(["assigned_service_engineer", "=", user])
+		if "Technician" in user_roles:
+			or_filters.append(["assigned_technician", "=", user])
+		# If somehow neither field role applies and they're not oversight, fall
+		# through with empty filters — `frappe.has_permission` on Job Card already
+		# gates what they can read at the doctype level.
 
 	if status:
 		filters["workflow_state"] = status
@@ -344,6 +364,7 @@ def get_my_job_cards(
 	job_cards = frappe.get_list(
 		"Job Card",
 		filters=filters,
+		or_filters=or_filters or None,
 		fields=[
 			"name",
 			"vehicle_number",

@@ -1,0 +1,17 @@
+{
+ "name": "PMS Section Timing",
+ "doctype": "Report",
+ "report_name": "PMS Section Timing",
+ "ref_doctype": "Job Card Section Timing",
+ "report_type": "Script Report",
+ "module": "Fleet Service",
+ "is_standard": "Yes",
+ "disabled": 0,
+ "letter_head": null,
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Depot Manager"},
+  {"role": "Central Ops"},
+  {"role": "Service Engineer"}
+ ]
+}

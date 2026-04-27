@@ -30,6 +30,10 @@ APP_ROLES = [
 	"N. Maintenance Head",
 	"Customer",
 	"Sales Executive",
+	# EV-bus specialty roles
+	"Battery Specialist",
+	"Charging Infra Tech",
+	"Quality Inspector",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.

@@ -32,7 +32,9 @@ repos:
                 cypress/.*|
                 .*node_modules.*|
                 .*boilerplate.*|
-                erpnext/templates/includes/.*
+                erpnext/templates/includes/.*|
+                vehicle_maintenance/vehicle_maintenance/public/.*|
+                vehicle_maintenance/.dev-logs/.*
             )$
 
   - repo: https://github.com/pre-commit/mirrors-eslint
@@ -50,7 +52,9 @@ repos:
                 .*boilerplate.*|
                 erpnext/public/js/controllers/.*|
                 erpnext/templates/pages/order.js|
-                erpnext/templates/includes/.*
+                erpnext/templates/includes/.*|
+                vehicle_maintenance/vehicle_maintenance/public/.*|
+                vehicle_maintenance/.dev-logs/.*
             )$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

@@ -100,6 +100,28 @@ class JobCard(Document):
 		# before the framework's mandatory-field validator runs.
 		self._auto_set_service_type()
 		self._autofill_last_pms_info()
+		self._auto_assign_creator()
+
+	def _auto_assign_creator(self) -> None:
+		"""Auto-assign the Job Card to its creator so it shows up in their
+		"My Job Cards" list immediately. Mirrors the per-role filter that
+		`get_my_job_cards` applies (assigned_service_engineer for SEs,
+		assigned_technician for Technicians).
+
+		Both fields are permlevel:1 — the framework's permlevel validator
+		strips them from client inserts for non-DM users. Setting them
+		inside the controller runs after that filter, so the assignment
+		sticks. Only fires when the field is blank (preserves explicit
+		picks the Depot Manager may have made).
+		"""
+		user = frappe.session.user
+		if not user or user in ("Guest", "Administrator"):
+			return
+		roles = set(frappe.get_roles(user))
+		if "Service Engineer" in roles and not self.assigned_service_engineer:
+			self.assigned_service_engineer = user
+		if "Technician" in roles and not self.assigned_technician:
+			self.assigned_technician = user
 
 	def autoname(self) -> None:
 		"""Name: [CustomerCode]-[LocationCode]-YYYY-##### (per PRD).
@@ -632,37 +654,59 @@ class JobCard(Document):
 			self._enforce_onboarding_complete()
 
 	def _enforce_onboarding_complete(self) -> None:
-		"""Refuse to leave Open/Reopened until the 4 onboarding gates pass."""
-		# Lazy import to avoid circular load.
-		from vehicle_maintenance.api.onboarding import (
-			REQUIRED_BEFORE_PHOTOS,
-			_compute_completion,
-			_expected_sr_nos,
-		)
+		"""Soft gate for Open/Reopened → WIP.
 
-		# Step 2 — Assigned
+		Only the assignment check is hard — work cannot start unassigned. The
+		inspection check is hard for the *new* Vue onboarding flow (which
+		populates `inspection_responses` rows), but legacy mobile JCs created
+		via `create_job_card_with_inspection` audit their answers as a comment
+		instead — those are recognized and pass. Photos are fully optional
+		(user can upload but is never blocked).
+		"""
+		# Lazy import to avoid circular load.
+		from vehicle_maintenance.api.onboarding import _compute_completion, _expected_sr_nos
+
+		# Hard: must be assigned to someone. Both flows satisfy this
+		# (SE/Technician creators are auto-assigned in before_insert).
 		if not (self.assigned_service_engineer or self.assigned_technician):
 			frappe.throw(_("Cannot start work: assign a Service Engineer or Technician first."))
 
-		# Step 3 — Checklist (PMS + Repair only)
-		if self.job_card_type == "PMS + Repair":
+		# Inspection check — only enforce for PMS + Repair, and only if the JC
+		# is on the new flow. Legacy mobile JCs include an "Inspection Sheet"
+		# audit comment that satisfies the gate.
+		if self.job_card_type == "PMS + Repair" and not self._has_legacy_inspection_audit():
 			pct, missing = _compute_completion(self)
 			if pct < 100.0:
 				total = len(_expected_sr_nos(self))
-				done = total - len(missing)
-				frappe.throw(
-					_("Cannot start work: inspection {0}/{1} complete. Finish all checks first.").format(
-						done, total
+				if total > 0:
+					done = total - len(missing)
+					frappe.throw(
+						_("Cannot start work: inspection {0}/{1} complete. Finish all checks first.").format(
+							done, total
+						)
 					)
-				)
 
-		# Step 4 — Before-Images
-		labels = {"chassis_photo": "Chassis / VIN plate", "odometer_photo": "Odometer dashboard"}
-		missing_photos = [labels.get(f, f) for f in REQUIRED_BEFORE_PHOTOS if not self.get(f)]
-		if missing_photos:
-			frappe.throw(
-				_("Cannot start work: upload Before-Image(s) — {0}.").format(", ".join(missing_photos))
-			)
+		# Photos: optional. The Vue onboarding wizard nudges users to upload,
+		# but the gate never blocks on a missing chassis_photo / odometer_photo.
+
+	def _has_legacy_inspection_audit(self) -> bool:
+		"""True if a `create_job_card_with_inspection`-style audit comment exists.
+
+		That endpoint stores the checklist as a structured comment beginning
+		with "Inspection Sheet". When present, treat the inspection step as
+		legacy-completed so the new gate doesn't block mobile JCs.
+		"""
+		if self.is_new() or not self.name:
+			return False
+		count = frappe.db.count(
+			"Comment",
+			{
+				"reference_doctype": "Job Card",
+				"reference_name": self.name,
+				"content": ["like", "%Inspection Sheet%"],
+			},
+		)
+		return bool(count)
 
 	def _validate_force_close(self) -> None:
 		"""Enforce the PRD Force-Close severity matrix.

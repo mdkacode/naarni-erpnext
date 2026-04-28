@@ -1,0 +1,33 @@
+{
+  "name": "PMS Check Sheet",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "field:template_code",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "template_code", "label": "Template Code", "fieldtype": "Data", "unique": 1, "reqd": 1, "in_list_view": 1, "description": "SHEET_A / SHEET_B / SHEET_C / SHEET_D"},
+    {"fieldname": "title", "label": "Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "is_active", "label": "Active", "fieldtype": "Check", "default": "1", "in_list_view": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "applicable_km_min", "label": "Applicable KM (min)", "fieldtype": "Int", "default": "0"},
+    {"fieldname": "applicable_km_max", "label": "Applicable KM (max)", "fieldtype": "Int", "default": "0", "description": "0 means no upper bound"},
+    {"fieldname": "section_items", "fieldtype": "Section Break", "label": "Items"},
+    {"fieldname": "items", "label": "Check Items", "fieldtype": "Table", "options": "PMS Check Item", "reqd": 1, "description": "Master list of inspection items, grouped by section_code"}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Central Ops", "read": 1, "report": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Quality Inspector", "read": 1},
+    {"role": "Battery Specialist", "read": 1},
+    {"role": "Charging Infra Tech", "read": 1}
+  ],
+  "sort_field": "template_code",
+  "sort_order": "ASC",
+  "title_field": "title"
+}

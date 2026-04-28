@@ -54,6 +54,13 @@ const routes = [
 		meta: { requiresAuth: true },
 	},
 	{
+		path: "/service-portal/job-card/:jobCard/onboarding",
+		name: "JobCardOnboarding",
+		component: () => import("./pages/JobCardOnboarding.vue"),
+		meta: { requiresAuth: true },
+		props: true,
+	},
+	{
 		path: "/service-portal/crm/leads",
 		name: "LeadsList",
 		component: () => import("./pages/LeadsList.vue"),

@@ -86,6 +86,11 @@ fixtures = [
 		"dt": "Client Script",
 		"filters": [["dt", "in", CUSTOMIZED_DOCTYPES]],
 	},
+	# PMS Check Sheets — version-controlled master templates (Sheet A/B/C, 371 items).
+	{
+		"dt": "PMS Check Sheet",
+		"filters": [["template_code", "in", ["SHEET_A", "SHEET_B", "SHEET_C", "SHEET_D"]]],
+	},
 ]
 
 # Client Scripts for Desk forms

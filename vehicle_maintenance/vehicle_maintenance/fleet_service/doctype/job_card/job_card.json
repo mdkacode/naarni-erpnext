@@ -279,6 +279,43 @@
       "mandatory_depends_on": "eval:!doc.inspection_poc_self && doc.workflow_state && doc.workflow_state!='Open'",
       "description": "Technician responsible for the inspection. Can be set alongside Self-Inspection for Software Updates (PRD: Technician Name or Self or both)."
     },
+    {
+      "fieldname": "pms_check_sheet",
+      "label": "PMS Check Sheet",
+      "fieldtype": "Link",
+      "options": "PMS Check Sheet",
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'",
+      "description": "Auto-resolved from odometer (SHEET_A/B/C). Drives the structured 103/125/143-item checklist."
+    },
+    {
+      "fieldname": "section_inspection_responses",
+      "fieldtype": "Section Break",
+      "label": "Inspection Responses",
+      "collapsible": 1,
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'"
+    },
+    {
+      "fieldname": "inspection_responses",
+      "label": "Inspection Responses",
+      "fieldtype": "Table",
+      "options": "Job Card Inspection Response",
+      "read_only": 1,
+      "description": "One row per checklist item — populated by the onboarding wizard."
+    },
+    {
+      "fieldname": "inspection_completion_pct",
+      "label": "Inspection Completion %",
+      "fieldtype": "Float",
+      "read_only": 1,
+      "default": "0"
+    },
+    {
+      "fieldname": "onboarding_completed_at",
+      "label": "Onboarding Completed At",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "description": "Stamped when assignment + inspection + before-images are all done and the JC moves Open→WIP."
+    },
 
     {
       "fieldname": "section_last_service",

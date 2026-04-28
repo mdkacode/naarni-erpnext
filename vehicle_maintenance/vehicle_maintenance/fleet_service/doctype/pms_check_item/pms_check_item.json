@@ -1,0 +1,15 @@
+{
+  "name": "PMS Check Item",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {"fieldname": "sr_no", "label": "Sr. No", "fieldtype": "Int", "reqd": 1, "in_list_view": 1, "columns": 1},
+    {"fieldname": "section_code", "label": "Section", "fieldtype": "Data", "reqd": 1, "in_list_view": 1, "columns": 1, "description": "Roman numeral, e.g. I, II, III"},
+    {"fieldname": "section_title", "label": "Section Title", "fieldtype": "Data", "in_list_view": 1, "columns": 2},
+    {"fieldname": "parameter", "label": "Check Parameter", "fieldtype": "Small Text", "reqd": 1, "in_list_view": 1, "columns": 6},
+    {"fieldname": "inspection_method", "label": "Method", "fieldtype": "Select", "options": "Visual\nFunctional\nRepair\nLubrication\nClean\nMeasure\nVisual & Functional\nVisual/Top up", "in_list_view": 1, "columns": 2}
+  ],
+  "permissions": []
+}

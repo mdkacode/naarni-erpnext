@@ -19,6 +19,7 @@ declare module 'vue' {
     LeadReminderModal: typeof import('./src/components/LeadReminderModal.vue')['default']
     MaintenanceJobTable: typeof import('./src/components/MaintenanceJobTable.vue')['default']
     NavBar: typeof import('./src/components/NavBar.vue')['default']
+    PhotoSlot: typeof import('./src/components/PhotoSlot.vue')['default']
     ReopenButton: typeof import('./src/components/ReopenButton.vue')['default']
     RepairJobTable: typeof import('./src/components/RepairJobTable.vue')['default']
     RoleBoundary: typeof import('./src/components/RoleBoundary.vue')['default']

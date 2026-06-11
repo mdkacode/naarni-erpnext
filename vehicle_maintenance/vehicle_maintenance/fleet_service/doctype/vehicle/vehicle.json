@@ -38,6 +38,14 @@
       "fieldtype": "Data"
     },
     {
+      "fieldname": "device_id",
+      "label": "Telemetry Device ID",
+      "fieldtype": "Data",
+      "in_standard_filter": 1,
+      "search_index": 1,
+      "description": "Maps this vehicle to its telemetry stream (vehicle_recent_info_silver.device_id). The bridge between Frappe and the alert engine."
+    },
+    {
       "fieldname": "engine_number",
       "label": "Engine Number",
       "fieldtype": "Data"

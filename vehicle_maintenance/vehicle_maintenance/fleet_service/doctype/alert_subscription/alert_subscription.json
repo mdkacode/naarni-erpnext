@@ -1,0 +1,117 @@
+{
+  "name": "Alert Subscription",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "ALSUB-.#####",
+  "track_changes": 1,
+  "description": "Per-customer configuration for one Alert Type: enable/disable, threshold, channels and which vehicles it applies to. The alert engine reads these (compiled) instead of rules.yaml/customers.yaml.",
+  "fields": [
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "alert_type",
+      "label": "Alert Type",
+      "fieldtype": "Link",
+      "options": "Alert Type",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "enabled",
+      "label": "Enabled",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_as1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "threshold",
+      "label": "Threshold",
+      "fieldtype": "Float",
+      "description": "Customer override of the Alert Type default threshold."
+    },
+    {
+      "fieldname": "sustained_min",
+      "label": "Sustained For (min)",
+      "fieldtype": "Int",
+      "default": "5",
+      "description": "Condition must hold this long before firing. Minimum 5 (telemetry refresh floor)."
+    },
+    {
+      "fieldname": "suppression_min",
+      "label": "Suppress After Ack (min)",
+      "fieldtype": "Int",
+      "default": "15"
+    },
+    {
+      "fieldname": "section_channels",
+      "label": "Channels",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "notify_in_app",
+      "label": "In-app Inbox",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "notify_email",
+      "label": "Email",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "column_break_as2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "notify_chat",
+      "label": "Chat (Teams/Slack)",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "notify_webhook",
+      "label": "Webhook",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "section_scope",
+      "label": "Vehicle Scope",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "vehicle_scope",
+      "label": "Applies To",
+      "fieldtype": "Select",
+      "options": "All\nSelected",
+      "default": "All",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "vehicles",
+      "label": "Vehicles",
+      "fieldtype": "Table",
+      "options": "Alert Subscription Vehicle",
+      "depends_on": "eval:doc.vehicle_scope=='Selected'"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Customer", "read": 1, "write": 1, "create": 1, "delete": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC"
+}

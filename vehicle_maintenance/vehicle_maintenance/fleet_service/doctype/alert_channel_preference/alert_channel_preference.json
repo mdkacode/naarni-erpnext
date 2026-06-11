@@ -1,0 +1,74 @@
+{
+  "name": "Alert Channel Preference",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "field:customer",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "description": "Per-customer delivery recipients and channel endpoints used by the alert engine. One per Customer.",
+  "fields": [
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "novu_subscriber_id",
+      "label": "Novu Subscriber ID",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "description": "Provisioned by Naarni. The customer's identity in Novu (Inbox/email/chat routing)."
+    },
+    {
+      "fieldname": "email",
+      "label": "Notification Email",
+      "fieldtype": "Data",
+      "options": "Email"
+    },
+    {
+      "fieldname": "column_break_cp1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "teams_enabled",
+      "label": "MS Teams",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "slack_enabled",
+      "label": "Slack",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "section_webhook",
+      "label": "Outbound Webhook",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "webhook_url",
+      "label": "Webhook URL",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "webhook_secret",
+      "label": "Webhook Secret",
+      "fieldtype": "Password",
+      "description": "HMAC signing secret for outbound alert POSTs. Write-only; never returned to clients."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Customer", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "customer"
+}

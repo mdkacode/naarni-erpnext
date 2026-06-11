@@ -1,0 +1,111 @@
+{
+  "name": "Alert Type",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Setup",
+  "engine": "InnoDB",
+  "autoname": "field:alert_id",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "description": "Naarni-managed catalog of telemetry alert types. Customers subscribe to these (Alert Subscription); they do not author the parameter/operator themselves.",
+  "fields": [
+    {
+      "fieldname": "alert_id",
+      "label": "Alert ID",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Stable machine id, e.g. pack_overheat. Lowercase snake_case. Used as the rule id by the alert engine."
+    },
+    {
+      "fieldname": "alert_name",
+      "label": "Alert Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "enabled",
+      "label": "Available",
+      "fieldtype": "Check",
+      "default": "1",
+      "description": "When unchecked, this alert type is hidden from the customer catalog."
+    },
+    {
+      "fieldname": "column_break_at1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "severity",
+      "label": "Severity",
+      "fieldtype": "Select",
+      "options": "critical\nwarning",
+      "reqd": 1,
+      "default": "warning",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_rule",
+      "label": "Rule",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "parameter",
+      "label": "Telemetry Parameter",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Column from vehicle_recent_info_silver, e.g. pack1_cellmax_temperature."
+    },
+    {
+      "fieldname": "op",
+      "label": "Operator",
+      "fieldtype": "Select",
+      "options": ">\n>=\n<\n<=\n==\n!=",
+      "reqd": 1,
+      "default": ">"
+    },
+    {
+      "fieldname": "column_break_at2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "default_threshold",
+      "label": "Default Threshold",
+      "fieldtype": "Float",
+      "reqd": 1
+    },
+    {
+      "fieldname": "unit",
+      "label": "Unit",
+      "fieldtype": "Data",
+      "description": "Display unit shown beside the threshold, e.g. °C, km/h, %, V."
+    },
+    {
+      "fieldname": "section_display",
+      "label": "Display",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "title",
+      "label": "Display Title",
+      "fieldtype": "Data",
+      "description": "Human-facing title shown in notifications. Falls back to Alert Name."
+    },
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1},
+    {"role": "Depot Manager", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "alert_name",
+  "sort_order": "ASC",
+  "title_field": "alert_name"
+}

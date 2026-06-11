@@ -18,6 +18,7 @@ doc_events: dict = {
 # before inserting, so this is safe to invoke repeatedly.
 after_migrate = [
 	"vehicle_maintenance.patches.v0_4.seed_crm_masters.execute",
+	"vehicle_maintenance.patches.v0_5.seed_alert_types.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

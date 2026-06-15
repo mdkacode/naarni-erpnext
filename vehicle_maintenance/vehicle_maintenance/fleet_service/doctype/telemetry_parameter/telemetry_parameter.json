@@ -1,0 +1,68 @@
+{
+  "name": "Telemetry Parameter",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Setup",
+  "engine": "InnoDB",
+  "autoname": "field:parameter_name",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "description": "Catalog of telemetry columns (from vehicle_recent_info_silver) that an Alert Type can watch. Numeric params use a threshold; Categorical/Boolean params match a value from a dropdown.",
+  "fields": [
+    {
+      "fieldname": "parameter_name",
+      "label": "Parameter (column)",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Exact column name in vehicle_recent_info_silver."
+    },
+    {
+      "fieldname": "label",
+      "label": "Label",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "data_type",
+      "label": "Type",
+      "fieldtype": "Select",
+      "options": "Numeric\nCategorical\nBoolean",
+      "default": "Numeric",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_tp1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "unit",
+      "label": "Unit",
+      "fieldtype": "Data",
+      "description": "For Numeric params, e.g. °C, km/h, %, V."
+    },
+    {
+      "fieldname": "allowed_values",
+      "label": "Allowed Values",
+      "fieldtype": "Small Text",
+      "description": "For Categorical/Boolean params: one value per line (these populate the value dropdown when creating an Alert Type)."
+    },
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1},
+    {"role": "Depot Manager", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "parameter_name",
+  "sort_order": "ASC",
+  "title_field": "label"
+}

@@ -18,6 +18,7 @@ doc_events: dict = {
 # before inserting, so this is safe to invoke repeatedly.
 after_migrate = [
 	"vehicle_maintenance.patches.v0_4.seed_crm_masters.execute",
+	"vehicle_maintenance.patches.v0_6.seed_telemetry_parameters.execute",
 	"vehicle_maintenance.patches.v0_5.seed_alert_types.execute",
 ]
 
@@ -88,6 +89,7 @@ fixtures = [
 # Client Scripts for Desk forms
 doctype_js = {
 	"Job Card": "public/js/job_card.js",
+	"Alert Type": "public/js/alert_type.js",
 }
 
 # Scheduled tasks

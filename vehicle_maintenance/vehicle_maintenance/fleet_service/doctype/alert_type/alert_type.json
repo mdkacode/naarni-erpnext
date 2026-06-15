@@ -53,10 +53,19 @@
     {
       "fieldname": "parameter",
       "label": "Telemetry Parameter",
-      "fieldtype": "Data",
+      "fieldtype": "Link",
+      "options": "Telemetry Parameter",
       "reqd": 1,
       "in_list_view": 1,
-      "description": "Column from vehicle_recent_info_silver, e.g. pack1_cellmax_temperature."
+      "description": "Pick the telemetry column to watch."
+    },
+    {
+      "fieldname": "param_type",
+      "label": "Parameter Type",
+      "fieldtype": "Data",
+      "fetch_from": "parameter.data_type",
+      "read_only": 1,
+      "description": "Numeric → set a threshold. Categorical/Boolean → pick a match value."
     },
     {
       "fieldname": "op",
@@ -74,12 +83,21 @@
       "fieldname": "default_threshold",
       "label": "Default Threshold",
       "fieldtype": "Float",
-      "reqd": 1
+      "depends_on": "eval:doc.param_type=='Numeric' || !doc.param_type",
+      "description": "Numeric params only — the value to compare against."
+    },
+    {
+      "fieldname": "match_value",
+      "label": "Match Value",
+      "fieldtype": "Data",
+      "depends_on": "eval:doc.param_type=='Categorical' || doc.param_type=='Boolean'",
+      "description": "Categorical/Boolean params — the value to match (dropdown of allowed values)."
     },
     {
       "fieldname": "unit",
       "label": "Unit",
       "fieldtype": "Data",
+      "fetch_from": "parameter.unit",
       "description": "Display unit shown beside the threshold, e.g. °C, km/h, %, V."
     },
     {

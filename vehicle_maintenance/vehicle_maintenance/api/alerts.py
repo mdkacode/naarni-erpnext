@@ -71,12 +71,48 @@ def _as_list(value: Any) -> list:
 	return list(value or [])
 
 
-def _current_customer(customer: str | None = None) -> str:
-	"""Resolve the customer this request acts on.
+def _verify_proxy() -> str | None:
+	"""If a trusted proxy signed this request, return the customer it asserts
+	(possibly an empty string); otherwise return None so callers fall back to
+	normal Frappe session auth.
 
-	Customers act on their own linked Customer. Staff may pass an explicit
-	`customer` to administer on someone's behalf.
+	The webApp talks to api.naarni.com (which validates the customer's naarni JWT),
+	and that backend proxies to Frappe with a shared key + the resolved customer.
+	The shared key lives in site_config as `alert_proxy_key` (never committed). This
+	lets browser users reach these methods without a Frappe login, while staying
+	scoped to exactly their customer.
 	"""
+	proxy_key = frappe.get_request_header("X-Naarni-Proxy-Key")
+	expected = frappe.conf.get("alert_proxy_key")
+	if proxy_key and expected and hmac.compare_digest(str(proxy_key), str(expected)):
+		return frappe.get_request_header("X-Naarni-Customer") or ""
+	return None
+
+
+def _require_access() -> None:
+	"""Gate a non-customer-scoped read (the catalog): allow a trusted proxy or any
+	logged-in (non-Guest) Frappe session; reject anonymous callers."""
+	if _verify_proxy() is not None:
+		return
+	if frappe.session.user and frappe.session.user != "Guest":
+		return
+	frappe.throw(_("Authentication required."), frappe.PermissionError)
+
+
+def _current_customer(customer: str | None = None) -> str:
+	"""Resolve the customer this request acts on, in priority order:
+
+	1. Trusted proxy: api.naarni.com asserts the customer via signed headers.
+	2. Staff session: Central Ops / System Manager may pass an explicit `customer`.
+	3. Customer session: the user's own linked Customer.
+	"""
+	proxied = _verify_proxy()
+	if proxied is not None:
+		cust = customer or proxied
+		if not cust or not frappe.db.exists("Customer", cust):
+			frappe.throw(_("Unknown or missing customer."), frappe.PermissionError)
+		return cust
+
 	user = frappe.session.user
 	roles = set(frappe.get_roles(user))
 
@@ -146,9 +182,10 @@ def _subscription_row(at: dict, sub) -> dict:
 # ----------------------------------------------------------------- catalog/read
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_alert_catalog() -> dict:
 	"""Naarni-managed catalog of available alert types (read-only)."""
+	_require_access()
 	rows = frappe.get_all(
 		"Alert Type",
 		filters={"enabled": 1},
@@ -169,7 +206,7 @@ def get_alert_catalog() -> dict:
 	return _ok(rows)
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_my_subscriptions(customer: str | None = None) -> dict:
 	"""One row per enabled catalog type, merged with this customer's saved config."""
 	customer = _current_customer(customer)
@@ -204,7 +241,7 @@ def get_my_subscriptions(customer: str | None = None) -> dict:
 	return _ok(rows)
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_my_vehicles(customer: str | None = None) -> dict:
 	"""This customer's vehicles, for the assignment multiselect. Only those with a
 	device_id can be alert-routed."""
@@ -222,7 +259,7 @@ def get_my_vehicles(customer: str | None = None) -> dict:
 # ----------------------------------------------------------------- subscriptions
 
 
-@frappe.whitelist(methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])
 def upsert_subscription(payload: Any = None, customer: str | None = None, **kwargs) -> dict:
 	"""Create or update this customer's subscription for one alert type."""
 	customer = _current_customer(customer)
@@ -298,14 +335,14 @@ def _prefs_to_dict(doc) -> dict:
 	}
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_channel_prefs(customer: str | None = None) -> dict:
 	customer = _current_customer(customer)
 	doc = _get_or_new_prefs(customer)
 	return _ok(_prefs_to_dict(doc))
 
 
-@frappe.whitelist(methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])
 def save_channel_prefs(payload: Any = None, customer: str | None = None, **kwargs) -> dict:
 	"""Save customer-level recipients/channels. novu_subscriber_id is provisioned by
 	Naarni and is NOT customer-editable here."""
@@ -343,21 +380,25 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		at["name"]: at
 		for at in frappe.get_all(
 			"Alert Type",
-			fields=["name", "parameter", "op", "default_threshold", "severity", "title"],
+			fields=["name", "parameter", "op", "default_threshold", "match_value", "severity", "title"],
 			limit_page_length=0,
 		)
 	}
 
-	# device_id -> customer, and customer -> [device_ids]
+	# device_id -> customer, customer -> [device_ids], device_id -> registration_number
 	vehicle_rows = frappe.get_all(
 		"Vehicle",
 		filters=[["device_id", "is", "set"], ["customer", "is", "set"]],
-		fields=["device_id", "customer"],
+		fields=["device_id", "customer", "registration_number"],
 		limit_page_length=0,
 	)
 	devices_by_customer: dict[str, list[str]] = {}
+	registrations: dict[str, str] = {}
 	for v in vehicle_rows:
-		devices_by_customer.setdefault(v["customer"], []).append(v["device_id"])
+		dev = str(v["device_id"])
+		devices_by_customer.setdefault(v["customer"], []).append(dev)
+		if v.get("registration_number"):
+			registrations[dev] = v["registration_number"]
 
 	customers_out = []
 	prefs_names = frappe.get_all("Alert Channel Preference", pluck="customer", limit_page_length=0)
@@ -393,12 +434,16 @@ def get_engine_config(service_key: str | None = None) -> dict:
 				if sub.vehicle_scope == "Selected"
 				else []
 			)
+			match_value = at.get("match_value")
 			rules.append(
 				{
 					"id": sub.alert_type,
 					"parameter": at["parameter"],
 					"op": at["op"],
+					# Numeric: threshold (customer override or default). Categorical/Boolean:
+					# match_value drives it and threshold is ignored by the engine.
 					"threshold": sub.threshold if sub.threshold is not None else at["default_threshold"],
+					"match_value": match_value or None,
 					"severity": at["severity"],
 					"title": at.get("title"),
 					"duration_min": sub.sustained_min or 5,
@@ -422,4 +467,4 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			}
 		)
 
-	return _ok({"customers": customers_out})
+	return _ok({"customers": customers_out, "registrations": registrations})

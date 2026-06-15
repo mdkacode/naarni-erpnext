@@ -256,13 +256,21 @@ def _classify(col: str, sqltype: str) -> str:
 def execute() -> None:
 	for line in SCHEMA.strip().splitlines():
 		col, sqltype = line.split("\t")
-		if col in SKIP or frappe.db.exists("Telemetry Parameter", col):
+		if col in SKIP:
 			continue
 		data_type = _classify(col, sqltype)
-		if data_type == "Boolean":
-			allowed = ["true", "false"]
-		else:
-			allowed = CATEGORICAL_VALUES.get(col, [])
+		# Booleans use friendly Yes/No (the engine maps Yes->True/No->False).
+		allowed = ["Yes", "No"] if data_type == "Boolean" else CATEGORICAL_VALUES.get(col, [])
+		allowed_str = "\n".join(allowed)
+		if frappe.db.exists("Telemetry Parameter", col):
+			# Idempotent refresh: keep boolean/categorical allowed-values in sync (so an
+			# already-seeded boolean upgrades from true/false to Yes/No on re-run).
+			doc = frappe.get_doc("Telemetry Parameter", col)
+			if allowed and doc.allowed_values != allowed_str:
+				doc.allowed_values = allowed_str
+				doc.data_type = data_type
+				doc.save(ignore_permissions=True)
+			continue
 		frappe.get_doc(
 			{
 				"doctype": "Telemetry Parameter",
@@ -270,6 +278,6 @@ def execute() -> None:
 				"label": col.replace("_", " ").title(),
 				"data_type": data_type,
 				"unit": UNITS.get(col, ""),
-				"allowed_values": "\n".join(allowed),
+				"allowed_values": allowed_str,
 			}
 		).insert(ignore_permissions=True)

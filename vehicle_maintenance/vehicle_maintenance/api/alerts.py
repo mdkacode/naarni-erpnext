@@ -380,7 +380,18 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		at["name"]: at
 		for at in frappe.get_all(
 			"Alert Type",
-			fields=["name", "parameter", "op", "default_threshold", "match_value", "severity", "title"],
+			fields=[
+				"name",
+				"parameter",
+				"op",
+				"default_threshold",
+				"match_value",
+				"unit",
+				"icon",
+				"message_template",
+				"severity",
+				"title",
+			],
 			limit_page_length=0,
 		)
 	}
@@ -444,6 +455,9 @@ def get_engine_config(service_key: str | None = None) -> dict:
 					# match_value drives it and threshold is ignored by the engine.
 					"threshold": sub.threshold if sub.threshold is not None else at["default_threshold"],
 					"match_value": match_value or None,
+					"unit": at.get("unit"),
+					"icon": at.get("icon"),
+					"message_template": at.get("message_template"),
 					"severity": at["severity"],
 					"title": at.get("title"),
 					"duration_min": sub.sustained_min or 5,

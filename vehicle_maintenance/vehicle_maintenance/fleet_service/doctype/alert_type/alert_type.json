@@ -106,10 +106,23 @@
       "fieldtype": "Section Break"
     },
     {
+      "fieldname": "icon",
+      "label": "Icon",
+      "fieldtype": "Select",
+      "options": "\n🔴\n🟠\n⚠️\n🚨\n🌡️\n🔥\n❄️\n🔋\n⚡\n🔌\n📡\n🚌\n💨\n🛑\n🚪\n📍\n🧯\n🩺\n📉\n📈",
+      "description": "Emoji shown in the notification. Leave blank to use the severity default (🔴 critical / 🟠 warning)."
+    },
+    {
       "fieldname": "title",
       "label": "Display Title",
       "fieldtype": "Data",
       "description": "Human-facing title shown in notifications. Falls back to Alert Name."
+    },
+    {
+      "fieldname": "message_template",
+      "label": "Message Template",
+      "fieldtype": "Small Text",
+      "description": "Custom notification line. Placeholders: {vehicle} {registration} {device} {parameter} {value} {unit} {op} {limit} {location} {maps} {time} {severity} {title}. Blank = default '{vehicle}: {parameter} is {value}{unit}'. Vehicle number + position are always shown in the card regardless."
     },
     {
       "fieldname": "description",

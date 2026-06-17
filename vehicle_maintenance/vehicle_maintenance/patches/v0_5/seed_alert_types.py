@@ -8,7 +8,11 @@ threshold/channels/vehicles per Alert Subscription.
 
 import frappe
 
-# (alert_id, alert_name, parameter, op, default_threshold, unit, severity, title, description)
+from vehicle_maintenance.fleet_service.doctype.alert_type.alert_type import SYMBOL_TO_LABEL
+
+# (id, alert_name, parameter, op, default_threshold, unit, severity, title, description)
+# `id` is the engine rule id (preset doc name). `op` uses operator symbols here and
+# is converted to the friendly Operator label the form stores.
 ALERT_TYPES = [
 	(
 		"pack_overheat",
@@ -74,10 +78,10 @@ def execute() -> None:
 		frappe.get_doc(
 			{
 				"doctype": "Alert Type",
-				"alert_id": alert_id,
+				"name": alert_id,  # preset doc name = stable engine rule id
 				"alert_name": alert_name,
 				"parameter": parameter,
-				"op": op,
+				"op": SYMBOL_TO_LABEL.get(op, op),  # store the friendly Operator label
 				"default_threshold": default_threshold,
 				"unit": unit,
 				"severity": severity,

@@ -4,130 +4,171 @@
   "doctype": "DocType",
   "document_type": "Setup",
   "engine": "InnoDB",
-  "autoname": "field:alert_id",
-  "naming_rule": "By fieldname",
+  "autoname": "hash",
   "track_changes": 1,
-  "description": "Naarni-managed catalog of telemetry alert types. Customers subscribe to these (Alert Subscription); they do not author the parameter/operator themselves.",
+  "description": "Naarni-managed catalog of telemetry alerts. Fill it in top to bottom like a short form — name it, choose what to watch, say when it should trigger, then how it looks and where it goes. No technical ID needed; one is generated for you.",
   "fields": [
     {
-      "fieldname": "alert_id",
-      "label": "Alert ID",
-      "fieldtype": "Data",
-      "unique": 1,
-      "reqd": 1,
-      "in_list_view": 1,
-      "description": "Stable machine id, e.g. pack_overheat. Lowercase snake_case. Used as the rule id by the alert engine."
+      "fieldname": "section_step1",
+      "label": "Step 1 · Name this alert",
+      "fieldtype": "Section Break",
+      "description": "Give the alert a clear name your team will recognise, and how serious it is."
     },
     {
       "fieldname": "alert_name",
       "label": "Alert Name",
       "fieldtype": "Data",
       "reqd": 1,
-      "in_list_view": 1
-    },
-    {
-      "fieldname": "enabled",
-      "label": "Available",
-      "fieldtype": "Check",
-      "default": "1",
-      "description": "When unchecked, this alert type is hidden from the customer catalog."
-    },
-    {
-      "fieldname": "column_break_at1",
-      "fieldtype": "Column Break"
+      "in_list_view": 1,
+      "description": "Plain-English name, e.g. 'Battery Pack Overheating' or 'Vehicle Speeding'."
     },
     {
       "fieldname": "severity",
-      "label": "Severity",
+      "label": "How serious is it?",
       "fieldtype": "Select",
-      "options": "critical\nwarning",
+      "options": "warning\ncritical",
       "reqd": 1,
       "default": "warning",
-      "in_list_view": 1
+      "in_list_view": 1,
+      "description": "Warning 🟠 = keep an eye on it. Critical 🔴 = needs action now."
     },
     {
-      "fieldname": "section_rule",
-      "label": "Rule",
-      "fieldtype": "Section Break"
+      "fieldname": "column_break_s1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "enabled",
+      "label": "Available to customers",
+      "fieldtype": "Check",
+      "default": "1",
+      "description": "When unchecked, this alert is hidden from the customer catalog."
+    },
+    {
+      "fieldname": "section_step2",
+      "label": "Step 2 · What to watch",
+      "fieldtype": "Section Break",
+      "description": "Pick the reading coming off the vehicle that this alert should look at."
     },
     {
       "fieldname": "parameter",
-      "label": "Telemetry Parameter",
+      "label": "Vehicle reading to watch",
       "fieldtype": "Link",
       "options": "Telemetry Parameter",
       "reqd": 1,
       "in_list_view": 1,
-      "description": "Pick the telemetry column to watch."
+      "description": "Start typing to search, e.g. 'speed', 'temperature', 'connectivity'."
     },
     {
       "fieldname": "param_type",
-      "label": "Parameter Type",
+      "label": "Kind of reading",
       "fieldtype": "Data",
       "fetch_from": "parameter.data_type",
       "read_only": 1,
-      "description": "Numeric → set a threshold. Categorical/Boolean → pick a match value."
+      "description": "Filled in automatically. Number = compare against a value. Category/Yes-No = match a specific state."
     },
     {
-      "fieldname": "op",
-      "label": "Operator",
-      "fieldtype": "Select",
-      "options": ">\n>=\n<\n<=\n==\n!=",
-      "reqd": 1,
-      "default": ">"
-    },
-    {
-      "fieldname": "column_break_at2",
+      "fieldname": "column_break_s2",
       "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "default_threshold",
-      "label": "Default Threshold",
-      "fieldtype": "Float",
-      "depends_on": "eval:doc.param_type=='Numeric' || !doc.param_type",
-      "description": "Numeric params only — the value to compare against."
-    },
-    {
-      "fieldname": "match_value",
-      "label": "Match Value",
-      "fieldtype": "Data",
-      "depends_on": "eval:doc.param_type=='Categorical' || doc.param_type=='Boolean'",
-      "description": "Categorical/Boolean params — the value to match (dropdown of allowed values)."
     },
     {
       "fieldname": "unit",
       "label": "Unit",
       "fieldtype": "Data",
       "fetch_from": "parameter.unit",
-      "description": "Display unit shown beside the threshold, e.g. °C, km/h, %, V."
+      "description": "Shown next to the value, e.g. °C, km/h, %, V. Filled in automatically; you can adjust it."
     },
     {
-      "fieldname": "section_display",
-      "label": "Display",
-      "fieldtype": "Section Break"
+      "fieldname": "section_step3",
+      "label": "Step 3 · When should it trigger?",
+      "fieldtype": "Section Break",
+      "description": "Choose the condition. Read it as a sentence: “Trigger when <reading> <condition> <value>”."
+    },
+    {
+      "fieldname": "op",
+      "label": "Trigger when the value is…",
+      "fieldtype": "Select",
+      "options": "is greater than (>)\nis greater than or equal to (≥)\nis less than (<)\nis less than or equal to (≤)\nis exactly (=)\nis not (≠)",
+      "reqd": 1,
+      "default": "is greater than (>)",
+      "description": "How to compare the live reading against your value below."
+    },
+    {
+      "fieldname": "default_threshold",
+      "label": "…this number",
+      "fieldtype": "Float",
+      "depends_on": "eval:doc.param_type=='Numeric' || !doc.param_type",
+      "description": "For number readings only. Example: for 'speeding', greater than 80."
+    },
+    {
+      "fieldname": "match_value",
+      "label": "…this value",
+      "fieldtype": "Data",
+      "depends_on": "eval:doc.param_type=='Categorical' || doc.param_type=='Boolean'",
+      "description": "For category / Yes-No readings. Pick from the list of allowed values."
+    },
+    {
+      "fieldname": "column_break_s3",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "op_help",
+      "label": "",
+      "fieldtype": "HTML",
+      "options": "<div style='font-size:12px;line-height:1.7;color:#555;background:#f7f9fc;border:1px solid #e3e8ef;border-radius:8px;padding:10px 12px'><b>Choosing the condition</b><br><b>is greater than (&gt;)</b> &mdash; fires when the reading goes <i>above</i> your number. Use for speed, temperature, voltage.<br><b>is less than (&lt;)</b> &mdash; fires when it drops <i>below</i> your number. Use for low battery %, low pressure.<br><b>≥ / ≤</b> &mdash; same, but also fires exactly at the number.<br><b>is exactly (=)</b> &mdash; fires when the state matches, e.g. connectivity <i>is exactly</i> OFFLINE.<br><b>is not (≠)</b> &mdash; fires when the state is anything other than the value.</div>"
+    },
+    {
+      "fieldname": "rule_preview",
+      "label": "Preview",
+      "fieldtype": "HTML",
+      "options": "<div style='color:#888;font-size:13px'>Fill in the steps above to see a preview of when this alert fires.</div>"
+    },
+    {
+      "fieldname": "section_step4",
+      "label": "Step 4 · How it looks & where it goes",
+      "fieldtype": "Section Break",
+      "description": "Make the notification clear, and choose which Teams channel it posts to. Vehicle number and position are always included automatically."
     },
     {
       "fieldname": "icon",
       "label": "Icon",
       "fieldtype": "Select",
       "options": "\n🔴\n🟠\n⚠️\n🚨\n🌡️\n🔥\n❄️\n🔋\n⚡\n🔌\n📡\n🚌\n💨\n🛑\n🚪\n📍\n🧯\n🩺\n📉\n📈",
-      "description": "Emoji shown in the notification. Leave blank to use the severity default (🔴 critical / 🟠 warning)."
+      "description": "Emoji shown on the notification. Leave blank to use the severity default (🔴 critical / 🟠 warning)."
     },
     {
       "fieldname": "title",
       "label": "Display Title",
       "fieldtype": "Data",
-      "description": "Human-facing title shown in notifications. Falls back to Alert Name."
+      "description": "Headline shown on the notification. Leave blank to use the Alert Name."
     },
     {
       "fieldname": "message_template",
-      "label": "Message Template",
+      "label": "Message",
       "fieldtype": "Small Text",
-      "description": "Custom notification line. Placeholders: {vehicle} {registration} {device} {parameter} {value} {unit} {op} {limit} {location} {maps} {time} {severity} {title}. Blank = default '{vehicle}: {parameter} is {value}{unit}'. Vehicle number + position are always shown in the card regardless."
+      "description": "The line shown in the notification. Use placeholders in {curly braces}: {vehicle} {registration} {parameter} {value} {unit} {op} {limit} {location} {time}. Example: 💨 {vehicle} speeding at {value}{unit} near {location}. Leave blank for a sensible default. Vehicle number + position are always shown regardless."
+    },
+    {
+      "fieldname": "column_break_s4",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "channel",
+      "label": "Teams channel",
+      "fieldtype": "Link",
+      "options": "Notification Channel",
+      "description": "Which Teams channel this alert posts to. Leave blank to use the default channel. Manage channels under Notification Channel."
+    },
+    {
+      "fieldname": "section_notes",
+      "label": "Notes",
+      "fieldtype": "Section Break",
+      "collapsible": 1
     },
     {
       "fieldname": "description",
-      "label": "Description",
-      "fieldtype": "Small Text"
+      "label": "Internal Notes",
+      "fieldtype": "Small Text",
+      "description": "Optional notes for Naarni staff. Not shown to customers."
     }
   ],
   "permissions": [

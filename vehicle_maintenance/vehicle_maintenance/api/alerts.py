@@ -22,6 +22,8 @@ from typing import Any
 import frappe
 from frappe import _
 
+from vehicle_maintenance.fleet_service.doctype.alert_type.alert_type import op_to_symbol
+
 STAFF_ROLES = {"Central Ops", "System Manager", "Administrator"}
 CHANNEL_MAP = (
 	# (DocType fieldname, engine channel token)
@@ -146,7 +148,7 @@ def _subscription_row(at: dict, sub) -> dict:
 			"alert_type": at["name"],
 			"title": at.get("title") or at.get("alert_name"),
 			"parameter": at["parameter"],
-			"op": at["op"],
+			"op": op_to_symbol(at["op"]),
 			"unit": at.get("unit"),
 			"severity": at["severity"],
 			"enabled": bool(sub.enabled),
@@ -203,6 +205,8 @@ def get_alert_catalog() -> dict:
 		order_by="severity asc, alert_name asc",
 		limit_page_length=0,
 	)
+	for r in rows:
+		r["op"] = op_to_symbol(r.get("op"))
 	return _ok(rows)
 
 
@@ -391,10 +395,32 @@ def get_engine_config(service_key: str | None = None) -> dict:
 				"message_template",
 				"severity",
 				"title",
+				"channel",
 			],
 			limit_page_length=0,
 		)
 	}
+
+	# Teams channel registry: friendly name -> decrypted webhook URL. The engine
+	# posts each alert's card to its rule's channel (or the default when unset).
+	teams_channels: dict[str, str] = {}
+	default_teams_channel: str | None = None
+	for ch in frappe.get_all(
+		"Notification Channel",
+		filters={"enabled": 1, "channel_type": "Teams"},
+		fields=["name", "is_default"],
+		limit_page_length=0,
+	):
+		cdoc = frappe.get_doc("Notification Channel", ch["name"])
+		try:
+			url = cdoc.get_password("webhook_url", raise_exception=False)
+		except Exception:
+			url = cdoc.get("webhook_url")
+		if not url:
+			continue
+		teams_channels[ch["name"]] = url
+		if ch.get("is_default") and not default_teams_channel:
+			default_teams_channel = ch["name"]
 
 	# device_id -> customer, customer -> [device_ids], device_id -> registration_number
 	vehicle_rows = frappe.get_all(
@@ -450,7 +476,7 @@ def get_engine_config(service_key: str | None = None) -> dict:
 				{
 					"id": sub.alert_type,
 					"parameter": at["parameter"],
-					"op": at["op"],
+					"op": op_to_symbol(at["op"]),
 					# Numeric: threshold (customer override or default). Categorical/Boolean:
 					# match_value drives it and threshold is ignored by the engine.
 					"threshold": sub.threshold if sub.threshold is not None else at["default_threshold"],
@@ -463,6 +489,7 @@ def get_engine_config(service_key: str | None = None) -> dict:
 					"duration_min": sub.sustained_min or 5,
 					"suppression_min": sub.suppression_min or 15,
 					"channels": _channels_to_list(sub),
+					"channel": at.get("channel") or None,
 					"vehicles": rule_vehicles,  # [] = applies to all of the customer's vehicles
 				}
 			)
@@ -481,4 +508,11 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			}
 		)
 
-	return _ok({"customers": customers_out, "registrations": registrations})
+	return _ok(
+		{
+			"customers": customers_out,
+			"registrations": registrations,
+			"teams_channels": teams_channels,
+			"default_teams_channel": default_teams_channel,
+		}
+	)

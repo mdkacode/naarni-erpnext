@@ -153,10 +153,10 @@
     },
     {
       "fieldname": "channel",
-      "label": "Teams channel",
+      "label": "Channel label",
       "fieldtype": "Link",
       "options": "Notification Channel",
-      "description": "Which Teams channel this alert posts to. Leave blank to use the default channel. Manage channels under Notification Channel."
+      "description": "Optional label for grouping (e.g. Safety, Battery Ops). All Teams alerts go to the single Naarni Teams channel; this does not change the destination."
     },
     {
       "fieldname": "section_notes",

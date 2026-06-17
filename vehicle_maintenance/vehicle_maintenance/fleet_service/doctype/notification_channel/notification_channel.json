@@ -7,7 +7,7 @@
   "autoname": "field:channel_name",
   "naming_rule": "By fieldname",
   "track_changes": 1,
-  "description": "A place alerts are delivered to. Today these are Microsoft Teams channels (each holds a Power Automate 'incoming webhook' URL). Create one row per Teams channel; Alert Types then pick which channel they post to.",
+  "description": "A label for grouping alerts (e.g. 'Safety', 'Battery Ops'). All Teams alerts are delivered to the single Naarni Teams webhook configured on the engine; these labels are for organising Alert Types, not separate destinations.",
   "fields": [
     {
       "fieldname": "channel_name",
@@ -16,7 +16,7 @@
       "unique": 1,
       "reqd": 1,
       "in_list_view": 1,
-      "description": "A friendly name you choose, e.g. 'Safety Team', 'Battery Ops', 'Connectivity'. This is what you'll pick on an Alert Type."
+      "description": "A friendly label, e.g. 'Safety', 'Battery Ops', 'Connectivity'. Pick it on an Alert Type to group/categorise it."
     },
     {
       "fieldname": "channel_type",
@@ -26,7 +26,7 @@
       "default": "Teams",
       "reqd": 1,
       "in_list_view": 1,
-      "description": "Where this delivers. Currently Microsoft Teams."
+      "description": "Delivery medium. Currently Microsoft Teams (single Naarni webhook)."
     },
     {
       "fieldname": "enabled",
@@ -34,32 +34,13 @@
       "fieldtype": "Check",
       "default": "1",
       "in_list_view": 1,
-      "description": "Uncheck to stop sending to this channel without deleting it."
-    },
-    {
-      "fieldname": "is_default",
-      "label": "Default Channel",
-      "fieldtype": "Check",
-      "default": "0",
-      "in_list_view": 1,
-      "description": "Alerts whose Alert Type has no channel chosen will post here. Keep exactly one channel marked as default."
-    },
-    {
-      "fieldname": "column_break_nc1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "webhook_url",
-      "label": "Teams Webhook URL",
-      "fieldtype": "Password",
-      "reqd": 1,
-      "description": "The Power Automate 'When a Teams webhook request is received' URL for this channel. Stored encrypted."
+      "description": "Uncheck to retire this label without deleting it."
     },
     {
       "fieldname": "description",
       "label": "Notes",
       "fieldtype": "Small Text",
-      "description": "Optional: which Teams team/channel this points at, who owns it, etc."
+      "description": "Optional: what this label is for, who owns it, etc."
     }
   ],
   "permissions": [

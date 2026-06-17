@@ -401,27 +401,6 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		)
 	}
 
-	# Teams channel registry: friendly name -> decrypted webhook URL. The engine
-	# posts each alert's card to its rule's channel (or the default when unset).
-	teams_channels: dict[str, str] = {}
-	default_teams_channel: str | None = None
-	for ch in frappe.get_all(
-		"Notification Channel",
-		filters={"enabled": 1, "channel_type": "Teams"},
-		fields=["name", "is_default"],
-		limit_page_length=0,
-	):
-		cdoc = frappe.get_doc("Notification Channel", ch["name"])
-		try:
-			url = cdoc.get_password("webhook_url", raise_exception=False)
-		except Exception:
-			url = cdoc.get("webhook_url")
-		if not url:
-			continue
-		teams_channels[ch["name"]] = url
-		if ch.get("is_default") and not default_teams_channel:
-			default_teams_channel = ch["name"]
-
 	# device_id -> customer, customer -> [device_ids], device_id -> registration_number
 	vehicle_rows = frappe.get_all(
 		"Vehicle",
@@ -508,11 +487,4 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			}
 		)
 
-	return _ok(
-		{
-			"customers": customers_out,
-			"registrations": registrations,
-			"teams_channels": teams_channels,
-			"default_teams_channel": default_teams_channel,
-		}
-	)
+	return _ok({"customers": customers_out, "registrations": registrations})

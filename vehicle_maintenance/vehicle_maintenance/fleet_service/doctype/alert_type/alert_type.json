@@ -152,13 +152,6 @@
       "fieldtype": "Column Break"
     },
     {
-      "fieldname": "channel",
-      "label": "Channel label",
-      "fieldtype": "Link",
-      "options": "Notification Channel",
-      "description": "Optional label for grouping (e.g. Safety, Battery Ops). All Teams alerts go to the single Naarni Teams channel; this does not change the destination."
-    },
-    {
       "fieldname": "section_notes",
       "label": "Notes",
       "fieldtype": "Section Break",

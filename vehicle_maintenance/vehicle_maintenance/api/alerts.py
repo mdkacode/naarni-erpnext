@@ -157,6 +157,7 @@ def _subscription_row(at: dict, sub) -> dict:
 			"sustained_min": sub.sustained_min or 5,
 			"suppression_min": sub.suppression_min or 15,
 			"channels": channels,
+			"teams_channel": sub.get("teams_channel"),
 			"vehicle_scope": "selected" if sub.vehicle_scope == "Selected" else "all",
 			"vehicles": [r.device_id for r in (sub.vehicles or []) if r.device_id],
 			"subscription_name": sub.name,
@@ -175,10 +176,26 @@ def _subscription_row(at: dict, sub) -> dict:
 		"sustained_min": 5,
 		"suppression_min": 15,
 		"channels": {"in_app": True, "email": False, "chat": False, "webhook": False},
+		"teams_channel": None,
 		"vehicle_scope": "all",
 		"vehicles": [],
 		"subscription_name": None,
 	}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_notification_channels() -> dict:
+	"""Enabled Teams channels, for the 'post to which channel' picker on a
+	subscription. Names only — webhook URLs are never exposed to the frontend."""
+	_require_access()
+	rows = frappe.get_all(
+		"Notification Channel",
+		filters={"enabled": 1, "channel_type": "Teams"},
+		fields=["name", "channel_name", "is_default"],
+		order_by="channel_name asc",
+		limit_page_length=0,
+	)
+	return _ok(rows)
 
 
 # ----------------------------------------------------------------- catalog/read
@@ -284,6 +301,11 @@ def upsert_subscription(payload: Any = None, customer: str | None = None, **kwar
 		doc.threshold = data["threshold"]
 	doc.sustained_min = data.get("sustained_min") or 5
 	doc.suppression_min = data.get("suppression_min") or 15
+
+	channel = data.get("teams_channel")
+	if channel and not frappe.db.exists("Notification Channel", channel):
+		frappe.throw(_("Unknown Teams channel {0}.").format(channel))
+	doc.teams_channel = channel or None
 
 	channels = _as_dict(data.get("channels"))
 	for field, token in CHANNEL_MAP:
@@ -395,11 +417,32 @@ def get_engine_config(service_key: str | None = None) -> dict:
 				"message_template",
 				"severity",
 				"title",
-				"channel",
 			],
 			limit_page_length=0,
 		)
 	}
+
+	# Teams channel registry: friendly name -> decrypted webhook URL, + the default.
+	# A subscription's `teams_channel` selects one of these; the engine resolves the
+	# webhook and posts there (falling back to the default, then the env webhook).
+	teams_channels: dict[str, str] = {}
+	default_teams_channel: str | None = None
+	for ch in frappe.get_all(
+		"Notification Channel",
+		filters={"enabled": 1, "channel_type": "Teams"},
+		fields=["name", "is_default"],
+		limit_page_length=0,
+	):
+		cdoc = frappe.get_doc("Notification Channel", ch["name"])
+		try:
+			url = cdoc.get_password("webhook_url", raise_exception=False)
+		except Exception:
+			url = cdoc.get("webhook_url")
+		if not url:
+			continue
+		teams_channels[ch["name"]] = url
+		if ch.get("is_default") and not default_teams_channel:
+			default_teams_channel = ch["name"]
 
 	# device_id -> customer, customer -> [device_ids], device_id -> registration_number
 	vehicle_rows = frappe.get_all(
@@ -468,7 +511,7 @@ def get_engine_config(service_key: str | None = None) -> dict:
 					"duration_min": sub.sustained_min or 5,
 					"suppression_min": sub.suppression_min or 15,
 					"channels": _channels_to_list(sub),
-					"channel": at.get("channel") or None,
+					"channel": sub.get("teams_channel") or None,
 					"vehicles": rule_vehicles,  # [] = applies to all of the customer's vehicles
 				}
 			)
@@ -487,4 +530,11 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			}
 		)
 
-	return _ok({"customers": customers_out, "registrations": registrations})
+	return _ok(
+		{
+			"customers": customers_out,
+			"registrations": registrations,
+			"teams_channels": teams_channels,
+			"default_teams_channel": default_teams_channel,
+		}
+	)

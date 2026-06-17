@@ -87,6 +87,13 @@
       "fieldtype": "Check"
     },
     {
+      "fieldname": "teams_channel",
+      "label": "Teams Channel",
+      "fieldtype": "Link",
+      "options": "Notification Channel",
+      "description": "Which Teams channel this subscription's alerts post to. Leave blank to use the default channel. Manage channels under Notification Channel."
+    },
+    {
       "fieldname": "section_scope",
       "label": "Vehicle Scope",
       "fieldtype": "Section Break"

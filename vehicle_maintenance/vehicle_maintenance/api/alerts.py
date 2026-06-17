@@ -538,3 +538,86 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			"default_teams_channel": default_teams_channel,
 		}
 	)
+
+
+def _to_naive_ist(value: Any) -> str | None:
+	"""Engine timestamps are IST ISO strings (e.g. '2026-06-17T16:04:28+05:30').
+	Frappe Datetime is naive local (the site runs in IST), so drop the offset."""
+	if not value:
+		return None
+	s = str(value).replace("T", " ")
+	return s[:19]
+
+
+def _to_float(value: Any):
+	try:
+		return float(value)
+	except (TypeError, ValueError):
+		return None
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def ingest_alert_event(service_key: str | None = None, payload: Any = None, **kwargs) -> dict:
+	"""Record one fired alert (the same incident posted to Teams) as an Alert Event,
+	so Frappe holds the full alert history for dashboards/reporting.
+
+	Service-authenticated (same key as get_engine_config). Idempotent on
+	(dedup_key, triggered_at): the engine may retry, but each incident-fire logs once.
+	"""
+	expected = frappe.conf.get("alert_engine_service_key")
+	if not expected or not service_key or not hmac.compare_digest(str(service_key), str(expected)):
+		frappe.throw(_("Invalid service key."), frappe.PermissionError)
+
+	data = _request_body(payload, kwargs)
+	data.pop("service_key", None)
+
+	dedup_key = data.get("dedup_key")
+	triggered_at = _to_naive_ist(data.get("triggered_at"))
+
+	# Idempotency: same incident-fire arriving twice (engine retry) updates, not dupes.
+	existing = None
+	if dedup_key and triggered_at:
+		existing = frappe.db.get_value(
+			"Alert Event", {"dedup_key": dedup_key, "triggered_at": triggered_at}, "name"
+		)
+
+	reg = data.get("registration_number")
+	vehicle = reg if reg and frappe.db.exists("Vehicle", reg) else None
+	customer = data.get("customer")
+	if not customer and vehicle:
+		customer = frappe.db.get_value("Vehicle", vehicle, "customer")
+
+	values = {
+		"title": data.get("title") or data.get("rule_id"),
+		"alert_type": data.get("rule_id") if frappe.db.exists("Alert Type", data.get("rule_id")) else None,
+		"severity": data.get("severity") or "warning",
+		"triggered_at": triggered_at,
+		"occurred_at": _to_naive_ist(data.get("occurred_at")),
+		"vehicle": vehicle,
+		"registration_number": reg,
+		"device_id": data.get("device_id"),
+		"customer": customer,
+		"channel": data.get("channel"),
+		"parameter": data.get("parameter"),
+		"op": data.get("op"),
+		"value": _to_float(data.get("value")),
+		"value_text": data.get("value_text"),
+		"unit": data.get("unit"),
+		"threshold": _to_float(data.get("threshold")),
+		"match_value": data.get("match_value"),
+		"message": data.get("message"),
+		"latitude": _to_float(data.get("latitude")),
+		"longitude": _to_float(data.get("longitude")),
+		"maps_link": data.get("maps_link"),
+		"dedup_key": dedup_key,
+	}
+
+	if existing:
+		doc = frappe.get_doc("Alert Event", existing)
+		doc.update(values)
+		doc.save(ignore_permissions=True)
+	else:
+		doc = frappe.get_doc({"doctype": "Alert Event", "status": "Open", **values})
+		doc.insert(ignore_permissions=True)
+	frappe.db.commit()
+	return _ok({"name": doc.name}, _("Alert event recorded."))

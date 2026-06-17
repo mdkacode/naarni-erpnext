@@ -21,6 +21,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v0_6.seed_telemetry_parameters.execute",
 	"vehicle_maintenance.patches.v0_5.seed_alert_types.execute",
 	"vehicle_maintenance.patches.v0_7.upgrade_alert_operators.execute",
+	"vehicle_maintenance.patches.v0_8.seed_default_teams_channel.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

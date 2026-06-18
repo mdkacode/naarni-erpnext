@@ -20,7 +20,6 @@
       "label": "Alert Type",
       "fieldtype": "Link",
       "options": "Alert Type",
-      "in_list_view": 1,
       "in_standard_filter": 1,
       "read_only": 1
     },
@@ -29,7 +28,6 @@
       "label": "Severity",
       "fieldtype": "Select",
       "options": "warning\ncritical",
-      "in_list_view": 1,
       "in_standard_filter": 1,
       "read_only": 1
     },
@@ -63,9 +61,10 @@
     },
     {
       "fieldname": "registration_number",
-      "label": "Registration No.",
+      "label": "Vehicle Number",
       "fieldtype": "Data",
       "in_list_view": 1,
+      "columns": 2,
       "read_only": 1
     },
     {

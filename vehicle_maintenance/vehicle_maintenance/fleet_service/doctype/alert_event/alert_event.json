@@ -143,6 +143,8 @@
       "fieldname": "message",
       "label": "Message",
       "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "columns": 4,
       "read_only": 1
     },
     {

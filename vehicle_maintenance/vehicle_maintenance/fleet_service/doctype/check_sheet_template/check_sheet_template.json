@@ -1,0 +1,33 @@
+{
+  "name": "Check Sheet Template",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "field:template_code",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "template_code", "label": "Template Code", "fieldtype": "Data", "unique": 1, "reqd": 1, "in_list_view": 1, "description": "Stable code, e.g. SHEET_A"},
+    {"fieldname": "title", "label": "Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "is_active", "label": "Active", "fieldtype": "Check", "default": "1", "in_list_view": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "applicable_km_min", "label": "Applicable KM (min)", "fieldtype": "Int", "default": "0"},
+    {"fieldname": "applicable_km_max", "label": "Applicable KM (max)", "fieldtype": "Int", "default": "0", "description": "0 means no upper bound"},
+    {"fieldname": "total_std_time_minutes", "label": "Total Std Time (min)", "fieldtype": "Float", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "section_sections", "fieldtype": "Section Break", "label": "Sections"},
+    {"fieldname": "sections", "label": "Sections", "fieldtype": "Table", "options": "Check Sheet Section", "reqd": 1},
+    {"fieldname": "section_items", "fieldtype": "Section Break", "label": "Items"},
+    {"fieldname": "items", "label": "Items", "fieldtype": "Table", "options": "Check Sheet Item", "reqd": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Central Ops", "read": 1, "report": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1}
+  ],
+  "sort_field": "template_code",
+  "sort_order": "ASC",
+  "title_field": "title"
+}

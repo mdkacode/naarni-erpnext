@@ -13,10 +13,10 @@ from frappe import _
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def get_users_by_role(doctype, txt, searchfield, start, page_len, filters):
-    """Return users filtered by a specific role. Used by set_query on Link fields."""
-    role = filters.get("role", "")
-    return frappe.db.sql(
-        """
+	"""Return users filtered by a specific role. Used by set_query on Link fields."""
+	role = filters.get("role", "")
+	return frappe.db.sql(
+		"""
         SELECT u.name, u.full_name
         FROM `tabUser` u
         INNER JOIN `tabHas Role` r ON r.parent = u.name
@@ -27,39 +27,44 @@ def get_users_by_role(doctype, txt, searchfield, start, page_len, filters):
         ORDER BY u.full_name
         LIMIT %(page_len)s OFFSET %(start)s
         """,
-        {"role": role, "txt": f"%{txt}%", "page_len": page_len, "start": start},
-    )
+		{"role": role, "txt": f"%{txt}%", "page_len": page_len, "start": start},
+	)
 
 
 @frappe.whitelist()
 def list_users_by_role(role: str, txt: str = "", limit: int = 50) -> dict:
-    """Return active users holding the given role — for Vue SPA assignment dropdowns.
+	"""Return active users holding the given role — for Vue SPA assignment dropdowns.
 
-    Designed for the JobCardDetail 'Assigned SE / Technician' pickers. Unlike
-    `get_users_by_role` (which matches Frappe's Link-query signature), this
-    endpoint returns a Vue-friendly `{success, data: [{user, full_name}]}`
-    envelope and filters by the logged-in user's read permission on User.
+	Designed for the JobCardDetail 'Assigned SE / Technician' pickers. Unlike
+	`get_users_by_role` (which matches Frappe's Link-query signature), this
+	endpoint returns a Vue-friendly `{success, data: [{user, full_name}]}`
+	envelope and filters by the logged-in user's read permission on User.
 
-    Args:
-        role:  Role name (e.g., "Service Engineer", "Technician").
-        txt:   Optional substring to match against user id or full name.
-        limit: Max rows, capped at 100.
+	Args:
+	    role:  Role name (e.g., "Service Engineer", "Technician").
+	    txt:   Optional substring to match against user id or full name.
+	    limit: Max rows, capped at 100.
 
-    Returns:
-        Envelope with list of `{user, full_name}` objects sorted by full_name.
-    """
-    frappe.only_for([
-        "Depot Manager", "Service Engineer", "Central Ops",
-        "N. Maintenance Head", "Aftersales Eng",
-    ])
-    if not role:
-        frappe.throw(_("Role is required."))
+	Returns:
+	    Envelope with list of `{user, full_name}` objects sorted by full_name.
+	"""
+	frappe.only_for(
+		[
+			"Depot Manager",
+			"Service Engineer",
+			"Central Ops",
+			"N. Maintenance Head",
+			"Aftersales Eng",
+		]
+	)
+	if not role:
+		frappe.throw(_("Role is required."))
 
-    limit = max(1, min(int(limit), 100))
-    txt = (txt or "").strip()
+	limit = max(1, min(int(limit), 100))
+	txt = (txt or "").strip()
 
-    rows = frappe.db.sql(
-        """
+	rows = frappe.db.sql(
+		"""
         SELECT u.name AS user, u.full_name
         FROM `tabUser` u
         INNER JOIN `tabHas Role` r ON r.parent = u.name
@@ -71,626 +76,685 @@ def list_users_by_role(role: str, txt: str = "", limit: int = 50) -> dict:
         ORDER BY u.full_name ASC
         LIMIT %(limit)s
         """,
-        {
-            "role": role,
-            "txt": txt,
-            "pattern": f"%{txt}%",
-            "limit": limit,
-        },
-        as_dict=True,
-    )
-    return {"success": True, "data": rows}
+		{
+			"role": role,
+			"txt": txt,
+			"pattern": f"%{txt}%",
+			"limit": limit,
+		},
+		as_dict=True,
+	)
+	return {"success": True, "data": rows}
 
 
 @frappe.whitelist()
 def search_vehicles(txt: str = "", limit: int = 10) -> dict:
-    """Search vehicles by registration number or model. For portal vehicle dropdown."""
-    txt = (txt or "").strip()
-    if len(txt) < 1:
-        return {"success": True, "data": []}
+	"""Search vehicles by registration number or model. For portal vehicle dropdown."""
+	txt = (txt or "").strip()
+	if len(txt) < 1:
+		return {"success": True, "data": []}
 
-    vehicles = frappe.db.sql("""
+	vehicles = frappe.db.sql(
+		"""
         SELECT name, registration_number, make_model, customer, fuel_type, color
         FROM tabVehicle
         WHERE registration_number LIKE %(txt)s
            OR make_model LIKE %(txt)s
         ORDER BY registration_number ASC
         LIMIT %(limit)s
-    """, {"txt": f"%{txt}%", "limit": int(limit)}, as_dict=True)
+    """,
+		{"txt": f"%{txt}%", "limit": int(limit)},
+		as_dict=True,
+	)
 
-    return {"success": True, "data": vehicles}
+	return {"success": True, "data": vehicles}
 
 
 @frappe.whitelist()
 def search_depots(txt: str = "", limit: int = 10) -> dict:
-    """Search depots by name or city. For portal depot dropdown."""
-    txt = (txt or "").strip()
-    if len(txt) < 1:
-        return {"success": True, "data": []}
+	"""Search depots by name or city. For portal depot dropdown."""
+	txt = (txt or "").strip()
+	if len(txt) < 1:
+		return {"success": True, "data": []}
 
-    depots = frappe.db.sql("""
+	depots = frappe.db.sql(
+		"""
         SELECT name, depot_name, city, state
         FROM tabDepot
         WHERE depot_name LIKE %(txt)s
            OR city LIKE %(txt)s
         ORDER BY depot_name ASC
         LIMIT %(limit)s
-    """, {"txt": f"%{txt}%", "limit": int(limit)}, as_dict=True)
+    """,
+		{"txt": f"%{txt}%", "limit": int(limit)},
+		as_dict=True,
+	)
 
-    return {"success": True, "data": depots}
+	return {"success": True, "data": depots}
 
 
 @frappe.whitelist()
 def get_customer_name(customer: str) -> dict:
-    """Get customer name for display."""
-    name = frappe.db.get_value("Customer", customer, "customer_name")
-    return {"success": True, "data": {"customer_name": name or customer}}
+	"""Get customer name for display."""
+	name = frappe.db.get_value("Customer", customer, "customer_name")
+	return {"success": True, "data": {"customer_name": name or customer}}
 
 
 @frappe.whitelist()
 def get_job_card_summary(job_card_name: str) -> dict:
-    """Return a role-appropriate summary of a single job card.
+	"""Return a role-appropriate summary of a single job card.
 
-    Args:
-        job_card_name: The name (ID) of the Job Card document.
+	Args:
+	    job_card_name: The name (ID) of the Job Card document.
 
-    Returns:
-        dict with success, data, and message keys.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	Returns:
+	    dict with success, data, and message keys.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    user_roles = set(frappe.get_roles(frappe.session.user))
+	doc = frappe.get_doc("Job Card", job_card_name)
+	user_roles = set(frappe.get_roles(frappe.session.user))
 
-    # Surface the current user's roles so the SPA can gate controls (e.g., only
-    # Depot Manager sees the Assigned SE / Technician dropdowns as editable).
-    viewer_roles = sorted(user_roles)
+	# Surface the current user's roles so the SPA can gate controls (e.g., only
+	# Depot Manager sees the Assigned SE / Technician dropdowns as editable).
+	viewer_roles = sorted(user_roles)
 
-    data = {
-        "name": doc.name,
-        "viewer_roles": viewer_roles,
-        "viewer_is_depot_manager": bool(
-            user_roles & {"Depot Manager", "N. Maintenance Head", "Administrator"}
-        ),
-        "job_card_type": doc.job_card_type,
-        "repair_subtype": doc.repair_subtype,
-        "vehicle": doc.vehicle,
-        "vehicle_number": doc.vehicle_number,
-        "vehicle_make_model": doc.vehicle_make_model,
-        "customer_name": doc.customer_name,
-        "service_type": doc.service_type,
-        "priority": doc.priority,
-        "workflow_state": doc.workflow_state,
-        "complaint_description": doc.complaint_description,
-        "se_observations": doc.se_observations,
-        "estimated_cost": float(doc.estimated_cost or 0),
-        "actual_cost": float(doc.actual_cost or 0),
-        "opened_at": str(doc.opened_at) if doc.opened_at else None,
-        "closed_at": str(doc.closed_at) if doc.closed_at else None,
-        "depot": doc.depot,
-        "pre_pms_score": float(doc.pre_pms_score or 0),
-        "post_pms_score": float(doc.post_pms_score or 0),
-        "score_improvement": float(doc.score_improvement or 0),
-        "health_card": doc.health_card,
-        "force_closed": int(doc.force_closed or 0),
-        "force_close_severity": doc.force_close_severity,
-        "force_close_reason": doc.force_close_reason,
-        "sla_breached": int(doc.sla_breached or 0),
-        "requires_customer_approval": int(doc.requires_customer_approval or 0),
-        "subsystems": [row.subsystem for row in doc.get("subsystems", [])],
-        "followup_job_card": doc.followup_job_card,
-        "source_force_close_job_card": doc.source_force_close_job_card,
-        "send_report_to_customer": int(doc.send_report_to_customer or 0),
-    }
+	data = {
+		"name": doc.name,
+		"viewer_roles": viewer_roles,
+		"viewer_is_depot_manager": bool(
+			user_roles & {"Depot Manager", "N. Maintenance Head", "Administrator"}
+		),
+		"job_card_type": doc.job_card_type,
+		"repair_subtype": doc.repair_subtype,
+		"vehicle": doc.vehicle,
+		"vehicle_number": doc.vehicle_number,
+		"vehicle_make_model": doc.vehicle_make_model,
+		"customer_name": doc.customer_name,
+		"service_type": doc.service_type,
+		"priority": doc.priority,
+		"workflow_state": doc.workflow_state,
+		"complaint_description": doc.complaint_description,
+		"se_observations": doc.se_observations,
+		"estimated_cost": float(doc.estimated_cost or 0),
+		"actual_cost": float(doc.actual_cost or 0),
+		"opened_at": str(doc.opened_at) if doc.opened_at else None,
+		"closed_at": str(doc.closed_at) if doc.closed_at else None,
+		"depot": doc.depot,
+		"pre_pms_score": float(doc.pre_pms_score or 0),
+		"post_pms_score": float(doc.post_pms_score or 0),
+		"score_improvement": float(doc.score_improvement or 0),
+		"health_card": doc.health_card,
+		"force_closed": int(doc.force_closed or 0),
+		"force_close_severity": doc.force_close_severity,
+		"force_close_reason": doc.force_close_reason,
+		"sla_breached": int(doc.sla_breached or 0),
+		"requires_customer_approval": int(doc.requires_customer_approval or 0),
+		"subsystems": [row.subsystem for row in doc.get("subsystems", [])],
+		"followup_job_card": doc.followup_job_card,
+		"source_force_close_job_card": doc.source_force_close_job_card,
+		"send_report_to_customer": int(doc.send_report_to_customer or 0),
+	}
 
-    # Type-specific blocks — included only when relevant.
-    if doc.job_card_type == "Breakdown":
-        data["breakdown"] = {
-            "incident_place": doc.incident_place,
-            "fault_code_1": doc.fault_code_1,
-            "fault_code_2": doc.fault_code_2,
-            "fault_code_3": doc.fault_code_3,
-            "remote_resolution_status": doc.remote_resolution_status,
-            "remote_resolution_started_at": str(doc.remote_resolution_started_at)
-                if doc.remote_resolution_started_at else None,
-            "remote_resolution_failed_at": str(doc.remote_resolution_failed_at)
-                if doc.remote_resolution_failed_at else None,
-            "travel_started_at": str(doc.travel_started_at) if doc.travel_started_at else None,
-            "arrived_at_location": str(doc.arrived_at_location) if doc.arrived_at_location else None,
-            "travel_duration_minutes": float(doc.travel_duration_minutes or 0),
-            "fix_type": doc.fix_type,
-            "next_level_engineer": doc.next_level_engineer,
-            "recurrence_risk": doc.recurrence_risk,
-            "occurrence_risk": doc.occurrence_risk,
-            "trial_trip_started_at": str(doc.trial_trip_started_at) if doc.trial_trip_started_at else None,
-            "trial_trip_start_km": doc.trial_trip_start_km,
-            "trial_trip_ended_at": str(doc.trial_trip_ended_at) if doc.trial_trip_ended_at else None,
-            "trial_trip_end_km": doc.trial_trip_end_km,
-            "trial_trip_distance_km": doc.trial_trip_distance_km,
-            "trial_trip_duration_minutes": float(doc.trial_trip_duration_minutes or 0),
-            "vehicle_handover_at": str(doc.vehicle_handover_at) if doc.vehicle_handover_at else None,
-            "total_downtime_minutes": float(doc.total_downtime_minutes or 0),
-            "last_pms_date": str(doc.last_pms_date) if doc.last_pms_date else None,
-            "last_pms_odometer": doc.last_pms_odometer,
-            "last_service_tolerance_level": doc.last_service_tolerance_level,
-            "last_serviced_by": doc.last_serviced_by,
-            "rca_notes": doc.rca_notes if "N. Maintenance Head" in user_roles
-                or "Aftersales Eng" in user_roles
-                or "Depot Manager" in user_roles
-                or "Central Ops" in user_roles else None,
-            "rca_received_at": str(doc.rca_received_at) if doc.rca_received_at else None,
-            "force_override": int(doc.force_override or 0),
-            "force_override_reason": doc.force_override_reason,
-            "process_override": int(doc.process_override or 0),
-            "process_override_steps": doc.process_override_steps,
-            "groups_impacted": [
-                row.part_group for row in doc.get("groups_impacted", [])
-            ],
-        }
+	# Type-specific blocks — included only when relevant.
+	if doc.job_card_type == "Breakdown":
+		data["breakdown"] = {
+			"incident_place": doc.incident_place,
+			"fault_code_1": doc.fault_code_1,
+			"fault_code_2": doc.fault_code_2,
+			"fault_code_3": doc.fault_code_3,
+			"remote_resolution_status": doc.remote_resolution_status,
+			"remote_resolution_started_at": str(doc.remote_resolution_started_at)
+			if doc.remote_resolution_started_at
+			else None,
+			"remote_resolution_failed_at": str(doc.remote_resolution_failed_at)
+			if doc.remote_resolution_failed_at
+			else None,
+			"travel_started_at": str(doc.travel_started_at) if doc.travel_started_at else None,
+			"arrived_at_location": str(doc.arrived_at_location) if doc.arrived_at_location else None,
+			"travel_duration_minutes": float(doc.travel_duration_minutes or 0),
+			"fix_type": doc.fix_type,
+			"next_level_engineer": doc.next_level_engineer,
+			"recurrence_risk": doc.recurrence_risk,
+			"occurrence_risk": doc.occurrence_risk,
+			"trial_trip_started_at": str(doc.trial_trip_started_at) if doc.trial_trip_started_at else None,
+			"trial_trip_start_km": doc.trial_trip_start_km,
+			"trial_trip_ended_at": str(doc.trial_trip_ended_at) if doc.trial_trip_ended_at else None,
+			"trial_trip_end_km": doc.trial_trip_end_km,
+			"trial_trip_distance_km": doc.trial_trip_distance_km,
+			"trial_trip_duration_minutes": float(doc.trial_trip_duration_minutes or 0),
+			"vehicle_handover_at": str(doc.vehicle_handover_at) if doc.vehicle_handover_at else None,
+			"total_downtime_minutes": float(doc.total_downtime_minutes or 0),
+			"last_pms_date": str(doc.last_pms_date) if doc.last_pms_date else None,
+			"last_pms_odometer": doc.last_pms_odometer,
+			"last_service_tolerance_level": doc.last_service_tolerance_level,
+			"last_serviced_by": doc.last_serviced_by,
+			"rca_notes": doc.rca_notes
+			if "N. Maintenance Head" in user_roles
+			or "Aftersales Eng" in user_roles
+			or "Depot Manager" in user_roles
+			or "Central Ops" in user_roles
+			else None,
+			"rca_received_at": str(doc.rca_received_at) if doc.rca_received_at else None,
+			"force_override": int(doc.force_override or 0),
+			"force_override_reason": doc.force_override_reason,
+			"process_override": int(doc.process_override or 0),
+			"process_override_steps": doc.process_override_steps,
+			"groups_impacted": [row.part_group for row in doc.get("groups_impacted", [])],
+		}
 
-    # Internal roles see assignment + item details
-    if user_roles & {"Depot Manager", "Service Engineer", "Technician", "Central Ops"}:
-        data["assigned_service_engineer"] = doc.assigned_service_engineer
-        data["assigned_technician"] = doc.assigned_technician
-        data["repair_items"] = [
-            {
-                "part_group": item.part_group,
-                "bus_system": item.bus_system,
-                "description": item.description,
-                "activity_type": item.activity_type,
-                "component_status": item.component_status,
-                "qty": float(item.qty or 0),
-                "estimated_amount": float(item.estimated_amount or 0),
-                "actual_amount": float(item.actual_amount or 0),
-                "item_status": item.item_status,
-            }
-            for item in doc.get("repair_items", [])
-        ]
-        data["maintenance_items"] = [
-            {
-                "maintenance_type": item.maintenance_type,
-                "description": item.description,
-                "action": item.action,
-                "qty": float(item.qty or 0),
-                "unit": item.unit,
-                "estimated_amount": float(item.estimated_amount or 0),
-                "actual_amount": float(item.actual_amount or 0),
-                "item_status": item.item_status,
-            }
-            for item in doc.get("maintenance_items", [])
-        ]
-        data["category_scores"] = [
-            {
-                "category": row.category,
-                "component_count": row.component_count,
-                "pre_pms_score": float(row.pre_pms_score or 0),
-                "post_pms_score": float(row.post_pms_score or 0),
-                "improvement": float(row.improvement or 0),
-            }
-            for row in doc.get("category_scores", [])
-        ]
-        data["software_components"] = [
-            {
-                "component": row.component,
-                "reason": row.reason,
-                "status": row.status,
-                "retry_count": row.retry_count,
-                "pre_version": row.pre_version,
-                "post_version": row.post_version,
-                "pre_version_photo": row.pre_version_photo,
-                "post_version_photo": row.post_version_photo,
-                "calibration_values": row.calibration_values,
-                "failure_notes": row.failure_notes,
-            }
-            for row in doc.get("software_components", [])
-        ]
+	# Internal roles see assignment + item details
+	if user_roles & {"Depot Manager", "Service Engineer", "Technician", "Central Ops"}:
+		data["assigned_service_engineer"] = doc.assigned_service_engineer
+		data["assigned_technician"] = doc.assigned_technician
+		data["repair_items"] = [
+			{
+				"part_group": item.part_group,
+				"bus_system": item.bus_system,
+				"description": item.description,
+				"activity_type": item.activity_type,
+				"component_status": item.component_status,
+				"qty": float(item.qty or 0),
+				"estimated_amount": float(item.estimated_amount or 0),
+				"actual_amount": float(item.actual_amount or 0),
+				"item_status": item.item_status,
+			}
+			for item in doc.get("repair_items", [])
+		]
+		data["maintenance_items"] = [
+			{
+				"maintenance_type": item.maintenance_type,
+				"description": item.description,
+				"action": item.action,
+				"qty": float(item.qty or 0),
+				"unit": item.unit,
+				"estimated_amount": float(item.estimated_amount or 0),
+				"actual_amount": float(item.actual_amount or 0),
+				"item_status": item.item_status,
+			}
+			for item in doc.get("maintenance_items", [])
+		]
+		data["category_scores"] = [
+			{
+				"category": row.category,
+				"component_count": row.component_count,
+				"pre_pms_score": float(row.pre_pms_score or 0),
+				"post_pms_score": float(row.post_pms_score or 0),
+				"improvement": float(row.improvement or 0),
+			}
+			for row in doc.get("category_scores", [])
+		]
+		data["software_components"] = [
+			{
+				"component": row.component,
+				"reason": row.reason,
+				"status": row.status,
+				"retry_count": row.retry_count,
+				"pre_version": row.pre_version,
+				"post_version": row.post_version,
+				"pre_version_photo": row.pre_version_photo,
+				"post_version_photo": row.post_version_photo,
+				"calibration_values": row.calibration_values,
+				"failure_notes": row.failure_notes,
+			}
+			for row in doc.get("software_components", [])
+		]
 
-    return {"success": True, "data": data, "message": ""}
+	return {"success": True, "data": data, "message": ""}
 
 
 @frappe.whitelist()
 def get_my_job_cards(
-    status: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
+	status: str | None = None,
+	limit: int = 20,
+	offset: int = 0,
 ) -> dict:
-    """Return job cards relevant to the current user and their role.
+	"""Return job cards relevant to the current user and their role.
 
-    Args:
-        status: Optional workflow_state filter.
-        limit: Page size (max 100).
-        offset: Pagination offset.
+	Args:
+	    status: Optional workflow_state filter.
+	    limit: Page size (max 100).
+	    offset: Pagination offset.
 
-    Returns:
-        dict with success and data (list of job card summaries).
-    """
-    limit = min(int(limit), 100)
-    offset = max(int(offset), 0)
-    user = frappe.session.user
-    user_roles = set(frappe.get_roles(user))
+	Returns:
+	    dict with success and data (list of job card summaries).
+	"""
+	limit = min(int(limit), 100)
+	offset = max(int(offset), 0)
+	user = frappe.session.user
+	user_roles = set(frappe.get_roles(user))
 
-    filters: dict = {}
+	# Oversight roles see every Job Card in their scope — no per-user filter applied.
+	OVERSIGHT_ROLES = {
+		"Depot Manager",
+		"Central Ops",
+		"N. Maintenance Head",
+		"Aftersales Eng",
+		"Administrator",
+	}
+	is_oversight = bool(user_roles & OVERSIGHT_ROLES)
 
-    # Role-based scoping
-    if "Customer" in user_roles and not user_roles & {"Depot Manager", "Central Ops"}:
-        # Customers see only their own job cards
-        customer_name = frappe.db.get_value("Customer", {"user": user}, "name")
-        if not customer_name:
-            return {"success": True, "data": [], "message": _("No linked customer account.")}
-        filters["customer"] = customer_name
-    elif "Technician" in user_roles and not user_roles & {"Depot Manager", "Central Ops"}:
-        filters["assigned_technician"] = user
-    elif "Service Engineer" in user_roles and not user_roles & {"Depot Manager", "Central Ops"}:
-        filters["assigned_service_engineer"] = user
+	filters: dict = {}
+	or_filters: list = []
 
-    if status:
-        filters["workflow_state"] = status
+	# Customer is mutually exclusive — they only see their own JCs and never combine
+	# with SE/Tech filters even if their account also has those roles attached.
+	if "Customer" in user_roles and not user_roles & {"Depot Manager", "Central Ops"}:
+		customer_name = frappe.db.get_value("Customer", {"user": user}, "name")
+		if not customer_name:
+			return {"success": True, "data": [], "message": _("No linked customer account.")}
+		filters["customer"] = customer_name
+	elif not is_oversight:
+		# Field roles: OR-combine the assignment filters so a user with BOTH
+		# Service Engineer and Technician roles sees JCs they created/own as SE
+		# AND JCs they were tagged into as Technician. Earlier the cascade
+		# preferred Technician over SE, which hid an SE's own job cards from
+		# them whenever their account also had the Technician role.
+		if "Service Engineer" in user_roles:
+			or_filters.append(["assigned_service_engineer", "=", user])
+		if "Technician" in user_roles:
+			or_filters.append(["assigned_technician", "=", user])
+		# If somehow neither field role applies and they're not oversight, fall
+		# through with empty filters — `frappe.has_permission` on Job Card already
+		# gates what they can read at the doctype level.
 
-    job_cards = frappe.get_list(
-        "Job Card",
-        filters=filters,
-        fields=[
-            "name", "vehicle_number", "customer_name", "service_type",
-            "priority", "workflow_state", "modified",
-        ],
-        order_by="modified desc",
-        limit_page_length=limit,
-        limit_start=offset,
-    )
+	if status:
+		filters["workflow_state"] = status
 
-    return {"success": True, "data": job_cards, "message": ""}
+	job_cards = frappe.get_list(
+		"Job Card",
+		filters=filters,
+		or_filters=or_filters or None,
+		fields=[
+			"name",
+			"vehicle_number",
+			"customer_name",
+			"service_type",
+			"priority",
+			"workflow_state",
+			"modified",
+		],
+		order_by="modified desc",
+		limit_page_length=limit,
+		limit_start=offset,
+	)
+
+	return {"success": True, "data": job_cards, "message": ""}
 
 
 @frappe.whitelist()
 def transition_job_card(job_card_name: str, action: str) -> dict:
-    """Apply a workflow action to a job card.
+	"""Apply a workflow action to a job card.
 
-    Args:
-        job_card_name: The Job Card document name.
-        action: The workflow action string (e.g., "Start Work", "Close Job Card").
+	Args:
+	    job_card_name: The Job Card document name.
+	    action: The workflow action string (e.g., "Start Work", "Close Job Card").
 
-    Returns:
-        dict with the new workflow_state after transition.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	Returns:
+	    dict with the new workflow_state after transition.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    from frappe.model.workflow import apply_workflow
+	from frappe.model.workflow import apply_workflow
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    apply_workflow(doc, action)
-    doc.save()
+	doc = frappe.get_doc("Job Card", job_card_name)
+	apply_workflow(doc, action)
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "workflow_state": doc.workflow_state},
-        "message": _("Job Card moved to {0}.").format(doc.workflow_state),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "workflow_state": doc.workflow_state},
+		"message": _("Job Card moved to {0}.").format(doc.workflow_state),
+	}
 
 
 @frappe.whitelist()
 def update_job_card(job_card_name: str, updates: str | dict) -> dict:
-    """Update editable fields on a Job Card.
+	"""Update editable fields on a Job Card.
 
-    Args:
-        job_card_name: The Job Card document name.
-        updates: JSON string or dict of field:value pairs to update.
-            Allowed fields: priority, complaint_description, assigned_technician,
-            assigned_service_engineer, depot, service_type.
+	Args:
+	    job_card_name: The Job Card document name.
+	    updates: JSON string or dict of field:value pairs to update.
+	        Allowed fields: priority, complaint_description, assigned_technician,
+	        assigned_service_engineer, depot, service_type.
 
-    Per PRD p.3, only the Depot Manager (or N. Maintenance Head for governance)
-    can change assignment fields. These fields are `permlevel: 1` in the DocType
-    — Frappe's permlevel validator silently reverts them when a lower-privilege
-    user saves, which manifested as "assignment doesn't persist". We gate the
-    role check here and then save with `ignore_permissions=True` so the
-    validator doesn't undo the DM's own write. All non-assignment edits keep
-    the normal permission path.
+	Per PRD p.3, only the Depot Manager (or N. Maintenance Head for governance)
+	can change assignment fields. These fields are `permlevel: 1` in the DocType
+	— Frappe's permlevel validator silently reverts them when a lower-privilege
+	user saves, which manifested as "assignment doesn't persist". We gate the
+	role check here and then save with `ignore_permissions=True` so the
+	validator doesn't undo the DM's own write. All non-assignment edits keep
+	the normal permission path.
 
-    Returns:
-        dict with updated job card data and which fields were actually written.
-    """
-    frappe.only_for(["Service Engineer", "Depot Manager",
-                     "N. Maintenance Head", "Administrator"])
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	Returns:
+	    dict with updated job card data and which fields were actually written.
+	"""
+	frappe.only_for(["Service Engineer", "Depot Manager", "N. Maintenance Head", "Administrator"])
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    if isinstance(updates, str):
-        updates = _json.loads(updates)
+	if isinstance(updates, str):
+		updates = _json.loads(updates)
 
-    ALLOWED_FIELDS = {
-        "priority", "complaint_description", "assigned_technician",
-        "assigned_service_engineer", "depot", "service_type",
-    }
-    # permlevel:1 fields — PRD restricts assignment to Depot Manager.
-    DM_ONLY_FIELDS = {"assigned_service_engineer", "assigned_technician"}
+	ALLOWED_FIELDS = {
+		"priority",
+		"complaint_description",
+		"assigned_technician",
+		"assigned_service_engineer",
+		"depot",
+		"service_type",
+	}
+	# permlevel:1 fields — PRD restricts assignment to Depot Manager.
+	DM_ONLY_FIELDS = {"assigned_service_engineer", "assigned_technician"}
 
-    user_roles = set(frappe.get_roles(frappe.session.user))
-    is_dm = bool(user_roles & {"Depot Manager", "N. Maintenance Head", "Administrator"})
+	user_roles = set(frappe.get_roles(frappe.session.user))
+	is_dm = bool(user_roles & {"Depot Manager", "N. Maintenance Head", "Administrator"})
 
-    restricted_attempts: list[str] = []
-    for field in list(updates.keys()):
-        if field in DM_ONLY_FIELDS and not is_dm:
-            restricted_attempts.append(field)
+	restricted_attempts: list[str] = []
+	for field in list(updates.keys()):
+		if field in DM_ONLY_FIELDS and not is_dm:
+			restricted_attempts.append(field)
 
-    if restricted_attempts:
-        frappe.throw(
-            _("Only the Depot Manager can change: {0}.").format(
-                ", ".join(restricted_attempts)
-            ),
-            frappe.PermissionError,
-        )
+	if restricted_attempts:
+		frappe.throw(
+			_("Only the Depot Manager can change: {0}.").format(", ".join(restricted_attempts)),
+			frappe.PermissionError,
+		)
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    changed: list[str] = []
-    touched_assignment = False
-    for field, value in updates.items():
-        if field not in ALLOWED_FIELDS:
-            continue
-        # Normalize empty string → None for Link fields so the DB stores NULL,
-        # not an empty string that violates the User Link's FK lookup.
-        if field in DM_ONLY_FIELDS and value == "":
-            value = None
-        doc.set(field, value)
-        changed.append(field)
-        if field in DM_ONLY_FIELDS:
-            touched_assignment = True
+	doc = frappe.get_doc("Job Card", job_card_name)
+	changed: list[str] = []
+	touched_assignment = False
+	for field, value in updates.items():
+		if field not in ALLOWED_FIELDS:
+			continue
+		# Normalize empty string → None for Link fields so the DB stores NULL,
+		# not an empty string that violates the User Link's FK lookup.
+		if field in DM_ONLY_FIELDS and value == "":
+			value = None
+		doc.set(field, value)
+		changed.append(field)
+		if field in DM_ONLY_FIELDS:
+			touched_assignment = True
 
-    if not changed:
-        frappe.throw(_("No valid fields to update."))
+	if not changed:
+		frappe.throw(_("No valid fields to update."))
 
-    # When the DM changes permlevel-1 fields, save with ignore_permissions so
-    # Frappe's permlevel validator doesn't silently revert them. The role check
-    # above is the authorization.
-    doc.save(ignore_permissions=touched_assignment)
+	# When the DM changes permlevel-1 fields, save with ignore_permissions so
+	# Frappe's permlevel validator doesn't silently revert them. The role check
+	# above is the authorization.
+	doc.save(ignore_permissions=touched_assignment)
 
-    return {
-        "success": True,
-        "data": {
-            "name": doc.name,
-            "updated_fields": changed,
-            "assigned_service_engineer": doc.assigned_service_engineer,
-            "assigned_technician": doc.assigned_technician,
-        },
-        "message": _("Job Card updated."),
-    }
+	return {
+		"success": True,
+		"data": {
+			"name": doc.name,
+			"updated_fields": changed,
+			"assigned_service_engineer": doc.assigned_service_engineer,
+			"assigned_technician": doc.assigned_technician,
+		},
+		"message": _("Job Card updated."),
+	}
 
 
 @frappe.whitelist()
 def force_close_job_card(
-    job_card_name: str,
-    severity: str,
-    reason: str,
+	job_card_name: str,
+	severity: str,
+	reason: str,
 ) -> dict:
-    """Force-close a Job Card per PRD p.6 severity matrix.
+	"""Force-close a Job Card per PRD p.6 severity matrix.
 
-    Args:
-        job_card_name: The Job Card document name.
-        severity: One of 'Minor', 'Major', 'Critical'.
-        reason: Human-readable reason (mandatory).
+	Args:
+	    job_card_name: The Job Card document name.
+	    severity: One of 'Minor', 'Major', 'Critical'.
+	    reason: Human-readable reason (mandatory).
 
-    The Job Card controller re-validates that the logged-in user's roles
-    satisfy the severity's authority, throwing if not.
+	The Job Card controller re-validates that the logged-in user's roles
+	satisfy the severity's authority, throwing if not.
 
-    Returns:
-        Envelope with new workflow_state and severity.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
-    if severity not in {"Minor", "Major", "Critical"}:
-        frappe.throw(_("Invalid severity: {0}").format(severity))
-    if not (reason or "").strip():
-        frappe.throw(_("A reason is mandatory for force close."))
+	Returns:
+	    Envelope with new workflow_state and severity.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	if severity not in {"Minor", "Major", "Critical"}:
+		frappe.throw(_("Invalid severity: {0}").format(severity))
+	if not (reason or "").strip():
+		frappe.throw(_("A reason is mandatory for force close."))
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    doc.force_closed = 1
-    doc.force_close_severity = severity
-    doc.force_close_reason = reason.strip()
-    doc.workflow_state = "Closed"
-    doc.save()
+	doc = frappe.get_doc("Job Card", job_card_name)
+	doc.force_closed = 1
+	doc.force_close_severity = severity
+	doc.force_close_reason = reason.strip()
+	doc.workflow_state = "Closed"
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {
-            "name": doc.name,
-            "workflow_state": doc.workflow_state,
-            "force_close_severity": doc.force_close_severity,
-        },
-        "message": _("Job Card force-closed ({0}).").format(severity),
-    }
+	return {
+		"success": True,
+		"data": {
+			"name": doc.name,
+			"workflow_state": doc.workflow_state,
+			"force_close_severity": doc.force_close_severity,
+		},
+		"message": _("Job Card force-closed ({0}).").format(severity),
+	}
 
 
 @frappe.whitelist()
 def save_repair_items(job_card_name: str, rows: str | list) -> dict:
-    """Replace the Job Card's `repair_items` child table with the supplied rows.
+	"""Replace the Job Card's `repair_items` child table with the supplied rows.
 
-    Whitelisted fields on each row:
-        part_group, description, activity_type, qty, rate, component_status,
-        pre_repair_photo (File URL), post_repair_photo (File URL).
+	Whitelisted fields on each row:
+	    part_group, description, activity_type, qty, rate, component_status,
+	    pre_repair_photo (File URL), post_repair_photo (File URL).
 
-    Photos are expected as already-uploaded File URLs. The caller (Vue UI) is
-    responsible for uploading the file first via `/api/method/upload_file`.
-    """
-    frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	Photos are expected as already-uploaded File URLs. The caller (Vue UI) is
+	responsible for uploading the file first via `/api/method/upload_file`.
+	"""
+	frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    if isinstance(rows, str):
-        rows = _json.loads(rows)
+	if isinstance(rows, str):
+		rows = _json.loads(rows)
 
-    ALLOWED = {
-        "part_group", "description", "activity_type", "qty", "rate",
-        "component_status", "pre_repair_photo", "post_repair_photo",
-        "item_status", "estimated_amount",
-    }
+	ALLOWED = {
+		"part_group",
+		"description",
+		"activity_type",
+		"qty",
+		"rate",
+		"component_status",
+		"pre_repair_photo",
+		"post_repair_photo",
+		"item_status",
+		"estimated_amount",
+	}
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    doc.set("repair_items", [])
-    for row in rows or []:
-        clean = {k: v for k, v in row.items() if k in ALLOWED}
-        # Fall back: compute estimated_amount if caller didn't.
-        if "estimated_amount" not in clean:
-            clean["estimated_amount"] = float(clean.get("qty", 0) or 0) * float(clean.get("rate", 0) or 0)
-        doc.append("repair_items", clean)
-    doc.save()
+	doc = frappe.get_doc("Job Card", job_card_name)
+	doc.set("repair_items", [])
+	for row in rows or []:
+		clean = {k: v for k, v in row.items() if k in ALLOWED}
+		# Fall back: compute estimated_amount if caller didn't.
+		if "estimated_amount" not in clean:
+			clean["estimated_amount"] = float(clean.get("qty", 0) or 0) * float(clean.get("rate", 0) or 0)
+		doc.append("repair_items", clean)
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "count": len(doc.get("repair_items", []))},
-        "message": _("Repair jobs saved."),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "count": len(doc.get("repair_items", []))},
+		"message": _("Repair jobs saved."),
+	}
 
 
 @frappe.whitelist()
 def save_maintenance_items(job_card_name: str, rows: str | list) -> dict:
-    """Replace the Job Card's `maintenance_items` child table with the supplied rows."""
-    frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	"""Replace the Job Card's `maintenance_items` child table with the supplied rows."""
+	frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    if isinstance(rows, str):
-        rows = _json.loads(rows)
+	if isinstance(rows, str):
+		rows = _json.loads(rows)
 
-    ALLOWED = {
-        "maintenance_type", "description", "action", "qty", "unit",
-        "rate", "estimated_amount", "pre_photo", "post_photo", "item_status",
-    }
+	ALLOWED = {
+		"maintenance_type",
+		"description",
+		"action",
+		"qty",
+		"unit",
+		"rate",
+		"estimated_amount",
+		"pre_photo",
+		"post_photo",
+		"item_status",
+	}
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    doc.set("maintenance_items", [])
-    for row in rows or []:
-        clean = {k: v for k, v in row.items() if k in ALLOWED}
-        if "estimated_amount" not in clean:
-            clean["estimated_amount"] = float(clean.get("qty", 0) or 0) * float(clean.get("rate", 0) or 0)
-        doc.append("maintenance_items", clean)
-    doc.save()
+	doc = frappe.get_doc("Job Card", job_card_name)
+	doc.set("maintenance_items", [])
+	for row in rows or []:
+		clean = {k: v for k, v in row.items() if k in ALLOWED}
+		if "estimated_amount" not in clean:
+			clean["estimated_amount"] = float(clean.get("qty", 0) or 0) * float(clean.get("rate", 0) or 0)
+		doc.append("maintenance_items", clean)
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "count": len(doc.get("maintenance_items", []))},
-        "message": _("Maintenance jobs saved."),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "count": len(doc.get("maintenance_items", []))},
+		"message": _("Maintenance jobs saved."),
+	}
 
 
 @frappe.whitelist()
 def tat_adherence_report(
-    from_date: str | None = None,
-    to_date: str | None = None,
-    depot: str | None = None,
+	from_date: str | None = None,
+	to_date: str | None = None,
+	depot: str | None = None,
 ) -> dict:
-    """Phase-2 PRD item: TAT Adherence reporting (PRD p.8 item 8).
+	"""Phase-2 PRD item: TAT Adherence reporting (PRD p.8 item 8).
 
-    Aggregates closed Job Cards in the date window and returns per-type TAT
-    compliance stats. Useful for the Central Ops analytics dashboard.
+	Aggregates closed Job Cards in the date window and returns per-type TAT
+	compliance stats. Useful for the Central Ops analytics dashboard.
 
-    Args:
-        from_date: ISO date string (inclusive). Defaults to 30 days ago.
-        to_date:   ISO date string (inclusive). Defaults to today.
-        depot:     Optional Depot filter.
+	Args:
+	    from_date: ISO date string (inclusive). Defaults to 30 days ago.
+	    to_date:   ISO date string (inclusive). Defaults to today.
+	    depot:     Optional Depot filter.
 
-    Returns:
-        { by_type: [ { job_card_type, total, on_time, breached, avg_hours,
-                       compliance_pct } ], overall: { ... } }
-    """
-    frappe.only_for([
-        "Depot Manager", "Central Ops", "N. Maintenance Head",
-        "Service Engineer", "Aftersales Eng",
-    ])
+	Returns:
+	    { by_type: [ { job_card_type, total, on_time, breached, avg_hours,
+	                   compliance_pct } ], overall: { ... } }
+	"""
+	frappe.only_for(
+		[
+			"Depot Manager",
+			"Central Ops",
+			"N. Maintenance Head",
+			"Service Engineer",
+			"Aftersales Eng",
+		]
+	)
 
-    from frappe.utils import add_days, today, getdate
+	from frappe.utils import add_days, getdate, today
 
-    from_date = getdate(from_date) if from_date else getdate(add_days(today(), -30))
-    to_date = getdate(to_date) if to_date else getdate(today())
+	from_date = getdate(from_date) if from_date else getdate(add_days(today(), -30))
+	to_date = getdate(to_date) if to_date else getdate(today())
 
-    filters = {
-        "workflow_state": "Closed",
-        "closed_at": ["between", [str(from_date), str(to_date)]],
-    }
-    if depot:
-        filters["depot"] = depot
+	filters = {
+		"workflow_state": "Closed",
+		"closed_at": ["between", [str(from_date), str(to_date)]],
+	}
+	if depot:
+		filters["depot"] = depot
 
-    rows = frappe.get_all(
-        "Job Card",
-        filters=filters,
-        fields=[
-            "name", "job_card_type", "repair_subtype",
-            "opened_at", "closed_at", "sla_deadline",
-            "sla_target_hours", "sla_breached",
-        ],
-        limit_page_length=0,
-    )
+	rows = frappe.get_all(
+		"Job Card",
+		filters=filters,
+		fields=[
+			"name",
+			"job_card_type",
+			"repair_subtype",
+			"opened_at",
+			"closed_at",
+			"sla_deadline",
+			"sla_target_hours",
+			"sla_breached",
+		],
+		limit_page_length=0,
+	)
 
-    from collections import defaultdict
-    buckets: dict[str, dict] = defaultdict(
-        lambda: {"total": 0, "on_time": 0, "breached": 0, "total_hours": 0.0}
-    )
-    for r in rows:
-        key = r["job_card_type"] or "Unknown"
-        if r["job_card_type"] == "Only Repair" and r["repair_subtype"] == "Accidental Major":
-            key = "Only Repair (Accidental Major)"
-        bucket = buckets[key]
-        bucket["total"] += 1
-        if r["sla_breached"]:
-            bucket["breached"] += 1
-        else:
-            bucket["on_time"] += 1
-        if r["opened_at"] and r["closed_at"]:
-            delta = frappe.utils.time_diff_in_hours(r["closed_at"], r["opened_at"])
-            bucket["total_hours"] += float(delta or 0)
+	from collections import defaultdict
 
-    def summarise(b):
-        total = b["total"] or 1
-        return {
-            "total": b["total"],
-            "on_time": b["on_time"],
-            "breached": b["breached"],
-            "avg_hours": round(b["total_hours"] / total, 2) if b["total"] else 0,
-            "compliance_pct": round((b["on_time"] / total) * 100, 1) if b["total"] else 0,
-        }
+	buckets: dict[str, dict] = defaultdict(
+		lambda: {"total": 0, "on_time": 0, "breached": 0, "total_hours": 0.0}
+	)
+	for r in rows:
+		key = r["job_card_type"] or "Unknown"
+		if r["job_card_type"] == "Only Repair" and r["repair_subtype"] == "Accidental Major":
+			key = "Only Repair (Accidental Major)"
+		bucket = buckets[key]
+		bucket["total"] += 1
+		if r["sla_breached"]:
+			bucket["breached"] += 1
+		else:
+			bucket["on_time"] += 1
+		if r["opened_at"] and r["closed_at"]:
+			delta = frappe.utils.time_diff_in_hours(r["closed_at"], r["opened_at"])
+			bucket["total_hours"] += float(delta or 0)
 
-    by_type = [
-        {"job_card_type": k, **summarise(v)}
-        for k, v in sorted(buckets.items())
-    ]
-    overall_total = sum(b["total"] for b in buckets.values())
-    overall_on_time = sum(b["on_time"] for b in buckets.values())
-    overall_breached = sum(b["breached"] for b in buckets.values())
-    overall_hours = sum(b["total_hours"] for b in buckets.values())
+	def summarise(b):
+		total = b["total"] or 1
+		return {
+			"total": b["total"],
+			"on_time": b["on_time"],
+			"breached": b["breached"],
+			"avg_hours": round(b["total_hours"] / total, 2) if b["total"] else 0,
+			"compliance_pct": round((b["on_time"] / total) * 100, 1) if b["total"] else 0,
+		}
 
-    return {
-        "success": True,
-        "data": {
-            "from_date": str(from_date),
-            "to_date": str(to_date),
-            "depot": depot,
-            "by_type": by_type,
-            "overall": {
-                "total": overall_total,
-                "on_time": overall_on_time,
-                "breached": overall_breached,
-                "avg_hours": round(overall_hours / overall_total, 2) if overall_total else 0,
-                "compliance_pct": round(
-                    (overall_on_time / overall_total) * 100, 1
-                ) if overall_total else 0,
-            },
-        },
-    }
+	by_type = [{"job_card_type": k, **summarise(v)} for k, v in sorted(buckets.items())]
+	overall_total = sum(b["total"] for b in buckets.values())
+	overall_on_time = sum(b["on_time"] for b in buckets.values())
+	overall_breached = sum(b["breached"] for b in buckets.values())
+	overall_hours = sum(b["total_hours"] for b in buckets.values())
+
+	return {
+		"success": True,
+		"data": {
+			"from_date": str(from_date),
+			"to_date": str(to_date),
+			"depot": depot,
+			"by_type": by_type,
+			"overall": {
+				"total": overall_total,
+				"on_time": overall_on_time,
+				"breached": overall_breached,
+				"avg_hours": round(overall_hours / overall_total, 2) if overall_total else 0,
+				"compliance_pct": round((overall_on_time / overall_total) * 100, 1) if overall_total else 0,
+			},
+		},
+	}
 
 
 @frappe.whitelist()
 def repeated_issues_for_vehicle(
-    vehicle: str,
-    window_days: int = 180,
+	vehicle: str,
+	window_days: int = 180,
 ) -> dict:
-    """Phase-2 PRD item: "Any issues that were repeated in previous activities
-    as well for the same bus" (PRD p.9 item 9 — Better Solutioning).
+	"""Phase-2 PRD item: "Any issues that were repeated in previous activities
+	as well for the same bus" (PRD p.9 item 9 — Better Solutioning).
 
-    Groups closed Job Cards for the vehicle within `window_days` by bus_system
-    (repair items) and returns any group with >= 2 occurrences, newest first.
-    """
-    frappe.has_permission("Vehicle", doc=vehicle, throw=True)
+	Groups closed Job Cards for the vehicle within `window_days` by bus_system
+	(repair items) and returns any group with >= 2 occurrences, newest first.
+	"""
+	frappe.has_permission("Vehicle", doc=vehicle, throw=True)
 
-    from frappe.utils import add_days, today
-    from collections import defaultdict
+	from collections import defaultdict
 
-    since = add_days(today(), -abs(int(window_days)))
+	from frappe.utils import add_days, today
 
-    repair_rows = frappe.db.sql(
-        """
+	since = add_days(today(), -abs(int(window_days)))
+
+	repair_rows = frappe.db.sql(
+		"""
         SELECT
             jc.name as job_card,
             jc.job_card_date,
@@ -707,723 +771,862 @@ def repeated_issues_for_vehicle(
           AND ri.bus_system != ''
         ORDER BY jc.closed_at DESC
         """,
-        {"vehicle": vehicle, "since": since},
-        as_dict=True,
-    )
+		{"vehicle": vehicle, "since": since},
+		as_dict=True,
+	)
 
-    grouped: dict[str, list[dict]] = defaultdict(list)
-    for r in repair_rows:
-        grouped[r["bus_system"]].append({
-            "job_card": r["job_card"],
-            "closed_at": str(r["closed_at"]) if r["closed_at"] else None,
-            "job_card_type": r["job_card_type"],
-            "description": r["description"],
-        })
+	grouped: dict[str, list[dict]] = defaultdict(list)
+	for r in repair_rows:
+		grouped[r["bus_system"]].append(
+			{
+				"job_card": r["job_card"],
+				"closed_at": str(r["closed_at"]) if r["closed_at"] else None,
+				"job_card_type": r["job_card_type"],
+				"description": r["description"],
+			}
+		)
 
-    repeats = [
-        {"bus_system": system, "occurrences": len(items), "incidents": items[:10]}
-        for system, items in grouped.items()
-        if len(items) >= 2
-    ]
-    repeats.sort(key=lambda x: x["occurrences"], reverse=True)
+	repeats = [
+		{"bus_system": system, "occurrences": len(items), "incidents": items[:10]}
+		for system, items in grouped.items()
+		if len(items) >= 2
+	]
+	repeats.sort(key=lambda x: x["occurrences"], reverse=True)
 
-    return {
-        "success": True,
-        "data": {
-            "vehicle": vehicle,
-            "window_days": abs(int(window_days)),
-            "repeated_issues": repeats,
-        },
-    }
+	return {
+		"success": True,
+		"data": {
+			"vehicle": vehicle,
+			"window_days": abs(int(window_days)),
+			"repeated_issues": repeats,
+		},
+	}
 
 
 @frappe.whitelist()
 def list_part_groups() -> dict:
-    """Return the Part Group master for use in the Repair Jobs dropdown."""
-    rows = frappe.get_all(
-        "Part Group",
-        fields=["name", "part_group_name", "bus_system"],
-        order_by="part_group_name asc",
-        limit_page_length=0,
-    )
-    return {"success": True, "data": rows}
+	"""Return the Part Group master for use in the Repair Jobs dropdown."""
+	rows = frappe.get_all(
+		"Part Group",
+		fields=["name", "part_group_name", "bus_system"],
+		order_by="part_group_name asc",
+		limit_page_length=0,
+	)
+	return {"success": True, "data": rows}
 
 
 @frappe.whitelist()
 def list_subsystems() -> dict:
-    """Return the Subsystem master for the multi-select used by Only Repair /
-    Software Update / Breakdown job cards.
-    """
-    rows = frappe.get_all(
-        "Subsystem",
-        fields=["name", "subsystem_name", "category"],
-        order_by="subsystem_name asc",
-        limit_page_length=0,
-    )
-    return {"success": True, "data": rows}
+	"""Return the Subsystem master for the multi-select used by Only Repair /
+	Software Update / Breakdown job cards.
+	"""
+	rows = frappe.get_all(
+		"Subsystem",
+		fields=["name", "subsystem_name", "category"],
+		order_by="subsystem_name asc",
+		limit_page_length=0,
+	)
+	return {"success": True, "data": rows}
 
 
 @frappe.whitelist()
 def get_last_pms_info(vehicle: str) -> dict:
-    """Return Last PMS metadata for Breakdown-card autofill (PRD p.15).
+	"""Return Last PMS metadata for Breakdown-card autofill (PRD p.15).
 
-    The same fields the `before_insert` hook fills — exposed as an API so the
-    Vue UI can show 'Last PMS: 12 May, 43,210 km' hints before the JC is
-    actually created.
-    """
-    if not vehicle:
-        frappe.throw(_("Vehicle is required."))
-    frappe.has_permission("Vehicle", doc=vehicle, throw=True)
+	The same fields the `before_insert` hook fills — exposed as an API so the
+	Vue UI can show 'Last PMS: 12 May, 43,210 km' hints before the JC is
+	actually created.
+	"""
+	if not vehicle:
+		frappe.throw(_("Vehicle is required."))
+	frappe.has_permission("Vehicle", doc=vehicle, throw=True)
 
-    rows = frappe.get_all(
-        "Job Card",
-        filters={
-            "vehicle": vehicle,
-            "job_card_type": "PMS + Repair",
-            "workflow_state": "Closed",
-            "force_closed": 0,
-        },
-        fields=[
-            "name", "closed_at", "job_card_date", "odometer_reading",
-            "pms_tolerance_level", "assigned_service_engineer", "assigned_technician",
-        ],
-        order_by="closed_at desc",
-        limit_page_length=1,
-    )
-    if not rows:
-        return {"success": True, "data": None, "message": _("No prior PMS on record.")}
+	rows = frappe.get_all(
+		"Job Card",
+		filters={
+			"vehicle": vehicle,
+			"job_card_type": "PMS + Repair",
+			"workflow_state": "Closed",
+			"force_closed": 0,
+		},
+		fields=[
+			"name",
+			"closed_at",
+			"job_card_date",
+			"odometer_reading",
+			"pms_tolerance_level",
+			"assigned_service_engineer",
+			"assigned_technician",
+		],
+		order_by="closed_at desc",
+		limit_page_length=1,
+	)
+	if not rows:
+		return {"success": True, "data": None, "message": _("No prior PMS on record.")}
 
-    r = rows[0]
-    serviced_by = " / ".join(
-        n for n in [r.get("assigned_service_engineer"), r.get("assigned_technician")] if n
-    )
-    return {
-        "success": True,
-        "data": {
-            "last_pms_job_card": r["name"],
-            "last_pms_date": str(r.get("closed_at") or r.get("job_card_date")),
-            "last_pms_odometer": r.get("odometer_reading"),
-            "last_service_tolerance_level": r.get("pms_tolerance_level"),
-            "last_serviced_by": serviced_by,
-        },
-    }
+	r = rows[0]
+	serviced_by = " / ".join(
+		n for n in [r.get("assigned_service_engineer"), r.get("assigned_technician")] if n
+	)
+	return {
+		"success": True,
+		"data": {
+			"last_pms_job_card": r["name"],
+			"last_pms_date": str(r.get("closed_at") or r.get("job_card_date")),
+			"last_pms_odometer": r.get("odometer_reading"),
+			"last_service_tolerance_level": r.get("pms_tolerance_level"),
+			"last_serviced_by": serviced_by,
+		},
+	}
 
 
 @frappe.whitelist()
 def update_breakdown_diagnosis(
-    job_card_name: str,
-    updates: str | dict,
+	job_card_name: str,
+	updates: str | dict,
 ) -> dict:
-    """Save breakdown-specific diagnosis fields (PRD p.15-16).
+	"""Save breakdown-specific diagnosis fields (PRD p.15-16).
 
-    Allowed fields: incident_place, fault_code_1/2/3, remote_resolution_status,
-    remote_resolution_started_at, travel_started_at, arrived_at_location,
-    fix_type, next_level_engineer, recurrence_risk, occurrence_risk,
-    trial_trip_*, vehicle_handover_at, rca_notes.
+	Allowed fields: incident_place, fault_code_1/2/3, remote_resolution_status,
+	remote_resolution_started_at, travel_started_at, arrived_at_location,
+	fix_type, next_level_engineer, recurrence_risk, occurrence_risk,
+	trial_trip_*, vehicle_handover_at, rca_notes.
 
-    The controller's `before_save` auto-computes travel_duration, trial_trip
-    distance/duration, and total_downtime from these inputs.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	The controller's `before_save` auto-computes travel_duration, trial_trip
+	distance/duration, and total_downtime from these inputs.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    if isinstance(updates, str):
-        updates = _json.loads(updates)
+	if isinstance(updates, str):
+		updates = _json.loads(updates)
 
-    ALLOWED = {
-        "incident_place",
-        "fault_code_1", "fault_code_2", "fault_code_3",
-        "remote_resolution_status", "remote_resolution_started_at",
-        "travel_started_at", "arrived_at_location",
-        "fix_type", "next_level_engineer",
-        "recurrence_risk", "occurrence_risk",
-        "trial_trip_started_at", "trial_trip_start_km",
-        "trial_trip_ended_at", "trial_trip_end_km",
-        "vehicle_handover_at",
-        "rca_notes",
-        # Phase B additions
-        "force_override", "force_override_reason",
-        "process_override", "process_override_steps",
-    }
+	ALLOWED = {
+		"incident_place",
+		"fault_code_1",
+		"fault_code_2",
+		"fault_code_3",
+		"remote_resolution_status",
+		"remote_resolution_started_at",
+		"travel_started_at",
+		"arrived_at_location",
+		"fix_type",
+		"next_level_engineer",
+		"recurrence_risk",
+		"occurrence_risk",
+		"trial_trip_started_at",
+		"trial_trip_start_km",
+		"trial_trip_ended_at",
+		"trial_trip_end_km",
+		"vehicle_handover_at",
+		"rca_notes",
+		# Phase B additions
+		"force_override",
+		"force_override_reason",
+		"process_override",
+		"process_override_steps",
+	}
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    if doc.job_card_type != "Breakdown":
-        frappe.throw(_("This endpoint only applies to Breakdown job cards."))
+	doc = frappe.get_doc("Job Card", job_card_name)
+	if doc.job_card_type != "Breakdown":
+		frappe.throw(_("This endpoint only applies to Breakdown job cards."))
 
-    changed = []
-    for field, value in updates.items():
-        if field in ALLOWED:
-            doc.set(field, value)
-            changed.append(field)
+	changed = []
+	for field, value in updates.items():
+		if field in ALLOWED:
+			doc.set(field, value)
+			changed.append(field)
 
-    if not changed:
-        frappe.throw(_("No valid fields to update."))
+	if not changed:
+		frappe.throw(_("No valid fields to update."))
 
-    doc.save()
-    return {
-        "success": True,
-        "data": {"name": doc.name, "updated_fields": changed},
-        "message": _("Breakdown diagnosis saved."),
-    }
+	doc.save()
+	return {
+		"success": True,
+		"data": {"name": doc.name, "updated_fields": changed},
+		"message": _("Breakdown diagnosis saved."),
+	}
 
 
 @frappe.whitelist()
 def save_software_components(job_card_name: str, rows: str | list) -> dict:
-    """Replace the Job Card's `software_components` child table (PRD p.14).
+	"""Replace the Job Card's `software_components` child table (PRD p.14).
 
-    Whitelisted fields per row: component, reason, status, retry_count,
-    pre_version, pre_version_photo, post_version, post_version_photo,
-    calibration_values, calibration_photo, failure_notes.
-    """
-    frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	Whitelisted fields per row: component, reason, status, retry_count,
+	pre_version, pre_version_photo, post_version, post_version_photo,
+	calibration_values, calibration_photo, failure_notes.
+	"""
+	frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    if isinstance(rows, str):
-        rows = _json.loads(rows)
+	if isinstance(rows, str):
+		rows = _json.loads(rows)
 
-    ALLOWED = {
-        "component", "reason", "status", "retry_count",
-        "pre_version", "pre_version_photo",
-        "post_version", "post_version_photo",
-        "calibration_values", "calibration_photo",
-        "failure_notes",
-    }
+	ALLOWED = {
+		"component",
+		"reason",
+		"status",
+		"retry_count",
+		"pre_version",
+		"pre_version_photo",
+		"post_version",
+		"post_version_photo",
+		"calibration_values",
+		"calibration_photo",
+		"failure_notes",
+	}
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    if doc.job_card_type != "Software Update":
-        frappe.throw(_("This endpoint only applies to Software Update job cards."))
+	doc = frappe.get_doc("Job Card", job_card_name)
+	if doc.job_card_type != "Software Update":
+		frappe.throw(_("This endpoint only applies to Software Update job cards."))
 
-    doc.set("software_components", [])
-    for row in rows or []:
-        clean = {k: v for k, v in row.items() if k in ALLOWED}
-        doc.append("software_components", clean)
-    doc.save()
+	doc.set("software_components", [])
+	for row in rows or []:
+		clean = {k: v for k, v in row.items() if k in ALLOWED}
+		doc.append("software_components", clean)
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {
-            "name": doc.name,
-            "count": len(doc.get("software_components", [])),
-        },
-        "message": _("Software components saved."),
-    }
+	return {
+		"success": True,
+		"data": {
+			"name": doc.name,
+			"count": len(doc.get("software_components", [])),
+		},
+		"message": _("Software components saved."),
+	}
 
 
 @frappe.whitelist()
 def create_inventory_request(
-    job_card_name: str,
-    part: str,
-    quantity: float,
-    urgency_level: str = "Medium",
-    notes: str | None = None,
+	job_card_name: str,
+	part: str,
+	quantity: float,
+	urgency_level: str = "Medium",
+	notes: str | None = None,
 ) -> dict:
-    """Raise an Inventory Request against a Job Card (PRD p.3).
+	"""Raise an Inventory Request against a Job Card (PRD p.3).
 
-    Whitelisted convenience wrapper so the Vue UI doesn't need to hit
-    `frappe.client.insert` directly. The logged-in user becomes the requester.
-    """
-    frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
-    frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	Whitelisted convenience wrapper so the Vue UI doesn't need to hit
+	`frappe.client.insert` directly. The logged-in user becomes the requester.
+	"""
+	frappe.only_for(["Service Engineer", "Technician", "Depot Manager"])
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
 
-    if not part:
-        frappe.throw(_("Part is required."))
-    qty = float(quantity or 0)
-    if qty <= 0:
-        frappe.throw(_("Quantity must be positive."))
+	if not part:
+		frappe.throw(_("Part is required."))
+	qty = float(quantity or 0)
+	if qty <= 0:
+		frappe.throw(_("Quantity must be positive."))
 
-    inv = frappe.get_doc({
-        "doctype": "Inventory Request",
-        "job_card_ref": job_card_name,
-        "part": part,
-        "quantity": qty,
-        "urgency_level": urgency_level or "Medium",
-        "notes": notes or "",
-    })
-    inv.insert(ignore_permissions=True)
+	inv = frappe.get_doc(
+		{
+			"doctype": "Inventory Request",
+			"job_card_ref": job_card_name,
+			"part": part,
+			"quantity": qty,
+			"urgency_level": urgency_level or "Medium",
+			"notes": notes or "",
+		}
+	)
+	inv.insert(ignore_permissions=True)
 
-    return {
-        "success": True,
-        "data": {"name": inv.name, "status": inv.status},
-        "message": _("Inventory request raised."),
-    }
+	return {
+		"success": True,
+		"data": {"name": inv.name, "status": inv.status},
+		"message": _("Inventory request raised."),
+	}
 
 
 @frappe.whitelist()
 def advance_inventory_status(
-    inventory_request_name: str,
-    next_status: str,
+	inventory_request_name: str,
+	next_status: str,
 ) -> dict:
-    """Move an Inventory Request to the next status (PRD Inventory Flow).
+	"""Move an Inventory Request to the next status (PRD Inventory Flow).
 
-    Transitions (role-gated by the Inventory Request controller):
-        Requested       → Parts Allocated    (Depot Manager / Central Ops)
-        Parts Allocated → Parts Issued       (Depot Manager / Central Ops)
-        Parts Issued    → Received           (Technician / Service Engineer)
-    """
-    doc = frappe.get_doc("Inventory Request", inventory_request_name)
-    jc_ref = doc.job_card_ref
-    frappe.has_permission("Job Card", doc=jc_ref, ptype="write", throw=True)
+	Transitions (role-gated by the Inventory Request controller):
+	    Requested       → Parts Allocated    (Depot Manager / Central Ops)
+	    Parts Allocated → Parts Issued       (Depot Manager / Central Ops)
+	    Parts Issued    → Received           (Technician / Service Engineer)
+	"""
+	doc = frappe.get_doc("Inventory Request", inventory_request_name)
+	jc_ref = doc.job_card_ref
+	frappe.has_permission("Job Card", doc=jc_ref, ptype="write", throw=True)
 
-    if next_status not in {"Parts Allocated", "Parts Issued", "Received"}:
-        frappe.throw(_("Invalid target status: {0}").format(next_status))
+	if next_status not in {"Parts Allocated", "Parts Issued", "Received"}:
+		frappe.throw(_("Invalid target status: {0}").format(next_status))
 
-    doc.status = next_status
-    doc.save()
+	doc.status = next_status
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "status": doc.status},
-        "message": _("Inventory request moved to {0}.").format(next_status),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "status": doc.status},
+		"message": _("Inventory request moved to {0}.").format(next_status),
+	}
 
 
 @frappe.whitelist()
 def reopen_job_card(
-    job_card_name: str,
-    reason: str,
+	job_card_name: str,
+	reason: str,
 ) -> dict:
-    """Reopen a Closed Job Card (PRD p.3 — Customer & Central Ops only).
+	"""Reopen a Closed Job Card (PRD p.3 — Customer & Central Ops only).
 
-    Per the Job Card VALID_TRANSITIONS table, Closed → Reopened is permitted
-    for these roles. The controller validates the actor's role, so this API
-    just routes the transition and stamps the reason into the audit log.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
-    if not (reason or "").strip():
-        frappe.throw(_("A reason is required to reopen a Job Card."))
+	Per the Job Card VALID_TRANSITIONS table, Closed → Reopened is permitted
+	for these roles. The controller validates the actor's role, so this API
+	just routes the transition and stamps the reason into the audit log.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	if not (reason or "").strip():
+		frappe.throw(_("A reason is required to reopen a Job Card."))
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    if doc.workflow_state != "Closed":
-        frappe.throw(_("Only Closed Job Cards can be reopened (current: {0}).").format(doc.workflow_state))
+	doc = frappe.get_doc("Job Card", job_card_name)
+	if doc.workflow_state != "Closed":
+		frappe.throw(_("Only Closed Job Cards can be reopened (current: {0}).").format(doc.workflow_state))
 
-    doc.workflow_state = "Reopened"
-    # Store the reason in the closed-edit-reason field so it shows in the audit log.
-    doc.closed_edit_reason = f"Reopen: {reason.strip()}"
-    doc.save()
+	doc.workflow_state = "Reopened"
+	# Store the reason in the closed-edit-reason field so it shows in the audit log.
+	doc.closed_edit_reason = f"Reopen: {reason.strip()}"
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "workflow_state": doc.workflow_state},
-        "message": _("Job Card reopened."),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "workflow_state": doc.workflow_state},
+		"message": _("Job Card reopened."),
+	}
 
 
 @frappe.whitelist()
 def submit_customer_feedback(
-    job_card_name: str,
-    rating: int,
-    nps_score: int | None = None,
-    comments: str | None = None,
-    would_recommend: str | None = None,
+	job_card_name: str,
+	rating: int,
+	nps_score: int | None = None,
+	comments: str | None = None,
+	would_recommend: str | None = None,
 ) -> dict:
-    """Record post-closure feedback (PRD p.2 "Feedback request post-closure").
+	"""Record post-closure feedback (PRD p.2 "Feedback request post-closure").
 
-    Idempotent per job card: creates on first call, updates existing on later
-    calls. Only allowed when the Job Card is Closed (the DocType validator
-    enforces this).
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	Idempotent per job card: creates on first call, updates existing on later
+	calls. Only allowed when the Job Card is Closed (the DocType validator
+	enforces this).
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
 
-    existing = frappe.db.exists("Customer Feedback", {"job_card": job_card_name})
-    if existing:
-        doc = frappe.get_doc("Customer Feedback", existing)
-    else:
-        doc = frappe.new_doc("Customer Feedback")
-        doc.job_card = job_card_name
+	existing = frappe.db.exists("Customer Feedback", {"job_card": job_card_name})
+	if existing:
+		doc = frappe.get_doc("Customer Feedback", existing)
+	else:
+		doc = frappe.new_doc("Customer Feedback")
+		doc.job_card = job_card_name
 
-    doc.rating = int(rating)
-    if nps_score is not None and nps_score != "":
-        doc.nps_score = int(nps_score)
-    if comments is not None:
-        doc.comments = comments
-    if would_recommend is not None:
-        doc.would_recommend = would_recommend
+	doc.rating = int(rating)
+	if nps_score is not None and nps_score != "":
+		doc.nps_score = int(nps_score)
+	if comments is not None:
+		doc.comments = comments
+	if would_recommend is not None:
+		doc.would_recommend = would_recommend
 
-    doc.save(ignore_permissions=True)
+	doc.save(ignore_permissions=True)
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "rating": doc.rating, "nps_score": doc.nps_score},
-        "message": _("Thanks for your feedback!"),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "rating": doc.rating, "nps_score": doc.nps_score},
+		"message": _("Thanks for your feedback!"),
+	}
 
 
 @frappe.whitelist()
 def get_customer_feedback(job_card_name: str) -> dict:
-    """Return any feedback stored for a given Job Card, or `data: None`."""
-    frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	"""Return any feedback stored for a given Job Card, or `data: None`."""
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
 
-    name = frappe.db.get_value("Customer Feedback", {"job_card": job_card_name})
-    if not name:
-        return {"success": True, "data": None}
+	name = frappe.db.get_value("Customer Feedback", {"job_card": job_card_name})
+	if not name:
+		return {"success": True, "data": None}
 
-    doc = frappe.get_doc("Customer Feedback", name)
-    return {
-        "success": True,
-        "data": {
-            "name": doc.name,
-            "rating": doc.rating,
-            "nps_score": doc.nps_score,
-            "comments": doc.comments,
-            "would_recommend": doc.would_recommend,
-            "submitted_at": str(doc.submitted_at) if doc.submitted_at else None,
-            "submitted_by": doc.submitted_by,
-        },
-    }
+	doc = frappe.get_doc("Customer Feedback", name)
+	return {
+		"success": True,
+		"data": {
+			"name": doc.name,
+			"rating": doc.rating,
+			"nps_score": doc.nps_score,
+			"comments": doc.comments,
+			"would_recommend": doc.would_recommend,
+			"submitted_at": str(doc.submitted_at) if doc.submitted_at else None,
+			"submitted_by": doc.submitted_by,
+		},
+	}
 
 
 @frappe.whitelist(allow_guest=True)
 def get_approval_link_payload(job_card_name: str, token: str) -> dict:
-    """Token-authenticated read of a JC for the customer approval link.
+	"""Token-authenticated read of a JC for the customer approval link.
 
-    Exposed to guests so a customer can review the estimate via the external
-    link sent by notification. No-op (404-style) if the token doesn't match
-    the JC's current approval token. Only a curated subset of fields is
-    returned — cost, parts list, and vehicle identity.
-    """
-    if not (job_card_name and token):
-        frappe.throw(_("Job card and token are required."), frappe.PermissionError)
+	Exposed to guests so a customer can review the estimate via the external
+	link sent by notification. No-op (404-style) if the token doesn't match
+	the JC's current approval token. Only a curated subset of fields is
+	returned — cost, parts list, and vehicle identity.
+	"""
+	if not (job_card_name and token):
+		frappe.throw(_("Job card and token are required."), frappe.PermissionError)
 
-    stored_token, state = frappe.db.get_value(
-        "Job Card", job_card_name,
-        ["customer_approval_token", "workflow_state"],
-    ) or (None, None)
+	stored_token, state = frappe.db.get_value(
+		"Job Card",
+		job_card_name,
+		["customer_approval_token", "workflow_state"],
+	) or (None, None)
 
-    if not stored_token or stored_token != token:
-        frappe.throw(_("Invalid or expired approval link."), frappe.PermissionError)
-    if state != "Awaiting Customer Approval":
-        frappe.throw(_("This Job Card is no longer awaiting approval."))
+	if not stored_token or stored_token != token:
+		frappe.throw(_("Invalid or expired approval link."), frappe.PermissionError)
+	if state != "Awaiting Customer Approval":
+		frappe.throw(_("This Job Card is no longer awaiting approval."))
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    return {
-        "success": True,
-        "data": {
-            "name": doc.name,
-            "vehicle_number": doc.vehicle_number,
-            "vehicle_make_model": doc.vehicle_make_model,
-            "customer_name": doc.customer_name,
-            "depot": doc.depot,
-            "complaint_description": doc.complaint_description,
-            "estimated_cost": float(doc.estimated_cost or 0),
-            "requires_customer_approval": int(doc.requires_customer_approval or 0),
-            "repair_items": [
-                {
-                    "part_group": item.part_group,
-                    "description": item.description,
-                    "activity_type": item.activity_type,
-                    "qty": float(item.qty or 0),
-                    "estimated_amount": float(item.estimated_amount or 0),
-                    "pre_repair_photo": item.pre_repair_photo,
-                }
-                for item in doc.get("repair_items", [])
-                if item.activity_type in ("Spare Replacement", "Both")
-            ],
-        },
-    }
+	doc = frappe.get_doc("Job Card", job_card_name)
+	return {
+		"success": True,
+		"data": {
+			"name": doc.name,
+			"vehicle_number": doc.vehicle_number,
+			"vehicle_make_model": doc.vehicle_make_model,
+			"customer_name": doc.customer_name,
+			"depot": doc.depot,
+			"complaint_description": doc.complaint_description,
+			"estimated_cost": float(doc.estimated_cost or 0),
+			"requires_customer_approval": int(doc.requires_customer_approval or 0),
+			"repair_items": [
+				{
+					"part_group": item.part_group,
+					"description": item.description,
+					"activity_type": item.activity_type,
+					"qty": float(item.qty or 0),
+					"estimated_amount": float(item.estimated_amount or 0),
+					"pre_repair_photo": item.pre_repair_photo,
+				}
+				for item in doc.get("repair_items", [])
+				if item.activity_type in ("Spare Replacement", "Both")
+			],
+		},
+	}
 
 
 @frappe.whitelist(allow_guest=True)
 def submit_approval_via_link(
-    job_card_name: str,
-    token: str,
-    approved: bool | int,
-    rejection_feedback: str | None = None,
-    per_part_feedback: str | list | None = None,
+	job_card_name: str,
+	token: str,
+	approved: bool | int,
+	rejection_feedback: str | None = None,
+	per_part_feedback: str | list | None = None,
 ) -> dict:
-    """Token-authenticated accept/reject for the external customer link.
+	"""Token-authenticated accept/reject for the external customer link.
 
-    Validates the token, then delegates to the role-gated
-    `record_customer_approval_decision` using system permissions. The token is
-    invalidated after use so links can't be replayed.
-    """
-    stored_token = frappe.db.get_value("Job Card", job_card_name, "customer_approval_token")
-    if not stored_token or stored_token != token:
-        frappe.throw(_("Invalid or expired approval link."), frappe.PermissionError)
+	Validates the token, then delegates to the role-gated
+	`record_customer_approval_decision` using system permissions. The token is
+	invalidated after use so links can't be replayed.
+	"""
+	stored_token = frappe.db.get_value("Job Card", job_card_name, "customer_approval_token")
+	if not stored_token or stored_token != token:
+		frappe.throw(_("Invalid or expired approval link."), frappe.PermissionError)
 
-    # Short-circuit: invalidate the token first so it can't be replayed in
-    # parallel requests even if the subsequent save fails partway.
-    frappe.db.set_value(
-        "Job Card", job_card_name, "customer_approval_token", None,
-        update_modified=False,
-    )
+	# Short-circuit: invalidate the token first so it can't be replayed in
+	# parallel requests even if the subsequent save fails partway.
+	frappe.db.set_value(
+		"Job Card",
+		job_card_name,
+		"customer_approval_token",
+		None,
+		update_modified=False,
+	)
 
-    # Run the approval logic with elevated permissions; the token itself is
-    # the authorization. Temporarily swap to Administrator so has_permission
-    # passes even for a Guest session.
-    original_user = frappe.session.user
-    try:
-        frappe.set_user("Administrator")
-        return record_customer_approval_decision(
-            job_card_name=job_card_name,
-            approved=approved,
-            rejection_feedback=rejection_feedback,
-            per_part_feedback=per_part_feedback,
-        )
-    finally:
-        frappe.set_user(original_user)
+	# Run the approval logic with elevated permissions; the token itself is
+	# the authorization. Temporarily swap to Administrator so has_permission
+	# passes even for a Guest session.
+	original_user = frappe.session.user
+	try:
+		frappe.set_user("Administrator")
+		return record_customer_approval_decision(
+			job_card_name=job_card_name,
+			approved=approved,
+			rejection_feedback=rejection_feedback,
+			per_part_feedback=per_part_feedback,
+		)
+	finally:
+		frappe.set_user(original_user)
 
 
 @frappe.whitelist()
 def record_customer_approval_decision(
-    job_card_name: str,
-    approved: bool | int,
-    rejection_feedback: str | None = None,
-    per_part_feedback: str | list | None = None,
+	job_card_name: str,
+	approved: bool | int,
+	rejection_feedback: str | None = None,
+	per_part_feedback: str | list | None = None,
 ) -> dict:
-    """Record the customer's accept/reject decision on a pending approval.
+	"""Record the customer's accept/reject decision on a pending approval.
 
-    Per PRD p.11 Only Repair step 10:
-      • Customer ticks approve → all repair items marked customer_approved=1
-      • Customer rejects → per-part feedback on the rejected items, plus
-        optional JC-level `customer_rejection_feedback`.
+	Per PRD p.11 Only Repair step 10:
+	  • Customer ticks approve → all repair items marked customer_approved=1
+	  • Customer rejects → per-part feedback on the rejected items, plus
+	    optional JC-level `customer_rejection_feedback`.
 
-    `per_part_feedback` shape:
-      [{"part_group": "Brakes", "description": "rotor", "feedback": "too expensive"}, …]
-    Matching is by (part_group, description) tuple — if duplicates exist the
-    first match wins.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	`per_part_feedback` shape:
+	  [{"part_group": "Brakes", "description": "rotor", "feedback": "too expensive"}, …]
+	Matching is by (part_group, description) tuple — if duplicates exist the
+	first match wins.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
 
-    approved_bool = bool(int(approved)) if str(approved).isdigit() else bool(approved)
+	approved_bool = bool(int(approved)) if str(approved).isdigit() else bool(approved)
 
-    if isinstance(per_part_feedback, str):
-        per_part_feedback = _json.loads(per_part_feedback) if per_part_feedback else []
-    per_part_feedback = per_part_feedback or []
+	if isinstance(per_part_feedback, str):
+		per_part_feedback = _json.loads(per_part_feedback) if per_part_feedback else []
+	per_part_feedback = per_part_feedback or []
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    now = frappe.utils.now_datetime()
+	doc = frappe.get_doc("Job Card", job_card_name)
+	now = frappe.utils.now_datetime()
 
-    if approved_bool:
-        # Accept everything on the card
-        for item in doc.repair_items:
-            item.customer_approved = 1
-            item.customer_decision_at = now
-        doc.customer_approval_received_at = now
-        doc.customer_rejection_feedback = None
-    else:
-        # Reject: require at least a JC-level reason OR some per-part feedback
-        jc_reason = (rejection_feedback or "").strip()
-        if not jc_reason and not per_part_feedback:
-            frappe.throw(_("Please provide a rejection reason (either JC-level or per-part)."))
+	if approved_bool:
+		# Accept everything on the card
+		for item in doc.repair_items:
+			item.customer_approved = 1
+			item.customer_decision_at = now
+		doc.customer_approval_received_at = now
+		doc.customer_rejection_feedback = None
+	else:
+		# Reject: require at least a JC-level reason OR some per-part feedback
+		jc_reason = (rejection_feedback or "").strip()
+		if not jc_reason and not per_part_feedback:
+			frappe.throw(_("Please provide a rejection reason (either JC-level or per-part)."))
 
-        doc.customer_rejection_feedback = jc_reason or None
-        doc.customer_approval_received_at = now
+		doc.customer_rejection_feedback = jc_reason or None
+		doc.customer_approval_received_at = now
 
-        # Index per-part feedback for quick lookup
-        fb_by_key: dict[tuple[str, str], str] = {}
-        for fb in per_part_feedback:
-            key = (fb.get("part_group") or "", fb.get("description") or "")
-            fb_by_key[key] = fb.get("feedback") or ""
+		# Index per-part feedback for quick lookup
+		fb_by_key: dict[tuple[str, str], str] = {}
+		for fb in per_part_feedback:
+			key = (fb.get("part_group") or "", fb.get("description") or "")
+			fb_by_key[key] = fb.get("feedback") or ""
 
-        for item in doc.repair_items:
-            key = (item.part_group or "", item.description or "")
-            feedback = fb_by_key.get(key)
-            if feedback:
-                item.customer_approved = 0
-                item.customer_rejection_feedback = feedback
-                item.customer_decision_at = now
-                item.item_status = "Customer Rejected"
+		for item in doc.repair_items:
+			key = (item.part_group or "", item.description or "")
+			feedback = fb_by_key.get(key)
+			if feedback:
+				item.customer_approved = 0
+				item.customer_rejection_feedback = feedback
+				item.customer_decision_at = now
+				item.item_status = "Customer Rejected"
 
-    doc.save(ignore_permissions=True)
+	doc.save(ignore_permissions=True)
 
-    return {
-        "success": True,
-        "data": {
-            "name": doc.name,
-            "approved": approved_bool,
-            "workflow_state": doc.workflow_state,
-        },
-        "message": _("Approval recorded.") if approved_bool else _("Rejection recorded."),
-    }
+	return {
+		"success": True,
+		"data": {
+			"name": doc.name,
+			"approved": approved_bool,
+			"workflow_state": doc.workflow_state,
+		},
+		"message": _("Approval recorded.") if approved_bool else _("Rejection recorded."),
+	}
 
 
 @frappe.whitelist()
 def save_groups_impacted(job_card_name: str, part_groups: str | list) -> dict:
-    """Replace the Breakdown Job Card's `groups_impacted` table (PRD p.15 step 4)."""
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	"""Replace the Breakdown Job Card's `groups_impacted` table (PRD p.15 step 4)."""
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    if isinstance(part_groups, str):
-        part_groups = _json.loads(part_groups)
+	if isinstance(part_groups, str):
+		part_groups = _json.loads(part_groups)
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    if doc.job_card_type != "Breakdown":
-        frappe.throw(_("groups_impacted applies only to Breakdown job cards."))
+	doc = frappe.get_doc("Job Card", job_card_name)
+	if doc.job_card_type != "Breakdown":
+		frappe.throw(_("groups_impacted applies only to Breakdown job cards."))
 
-    doc.set("groups_impacted", [])
-    for pg in part_groups or []:
-        val = pg.get("part_group") if isinstance(pg, dict) else pg
-        if val:
-            doc.append("groups_impacted", {"part_group": val})
-    doc.save()
+	doc.set("groups_impacted", [])
+	for pg in part_groups or []:
+		val = pg.get("part_group") if isinstance(pg, dict) else pg
+		if val:
+			doc.append("groups_impacted", {"part_group": val})
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "count": len(doc.get("groups_impacted", []))},
-        "message": _("Groups Impacted saved."),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "count": len(doc.get("groups_impacted", []))},
+		"message": _("Groups Impacted saved."),
+	}
 
 
 @frappe.whitelist()
 def save_subsystems(job_card_name: str, subsystems: str | list) -> dict:
-    """Replace the Job Card's `subsystems` Table MultiSelect with the provided
-    list of Subsystem names. Used by Only Repair / Software Update / Breakdown.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
+	"""Replace the Job Card's `subsystems` Table MultiSelect with the provided
+	list of Subsystem names. Used by Only Repair / Software Update / Breakdown.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, ptype="write", throw=True)
 
-    if isinstance(subsystems, str):
-        subsystems = _json.loads(subsystems)
+	if isinstance(subsystems, str):
+		subsystems = _json.loads(subsystems)
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    doc.set("subsystems", [])
-    for sub in subsystems or []:
-        # Accept both bare strings and {"subsystem": "..."} shapes.
-        val = sub.get("subsystem") if isinstance(sub, dict) else sub
-        if val:
-            doc.append("subsystems", {"subsystem": val})
-    doc.save()
+	doc = frappe.get_doc("Job Card", job_card_name)
+	doc.set("subsystems", [])
+	for sub in subsystems or []:
+		# Accept both bare strings and {"subsystem": "..."} shapes.
+		val = sub.get("subsystem") if isinstance(sub, dict) else sub
+		if val:
+			doc.append("subsystems", {"subsystem": val})
+	doc.save()
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "count": len(doc.get("subsystems", []))},
-        "message": _("Subsystems saved."),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "count": len(doc.get("subsystems", []))},
+		"message": _("Subsystems saved."),
+	}
+
+
+@frappe.whitelist()
+def get_workflow_for_doctype(doctype: str = "Job Card") -> dict:
+	"""Return the workflow graph for a doctype, for client-side form rendering.
+
+	Designed for mobile / Vue screens that need workflow metadata BEFORE a
+	document exists — e.g., the "Create Ticket" flow needs to know the initial
+	state, the full state list, and which first-step actions the current user
+	is allowed to take.
+
+	Why this endpoint exists: Frappe's `Workflow` DocType is locked down to
+	`System Manager` + `Administrator` by default, and we intentionally don't
+	want to grant app roles (Service Engineer, Technician, etc.) direct
+	read access to it. This wrapper gives them the rendering data without the
+	underlying DocPerm grant — the caller still needs `read` permission on
+	`doctype` itself, so a Customer can't fish the workflow for Inventory
+	Request, etc.
+
+	Returns:
+	    {
+	      "success": True,
+	      "data": {
+	        "workflow_name": "Job Card Workflow",
+	        "workflow_state_field": "workflow_state",
+	        "initial_state": "Open",
+	        "states": [
+	          {"state": "Open", "style": "Primary", "doc_status": 0},
+	          ...
+	        ],
+	        "available_first_actions": [
+	          {"action": "Start Work", "next_state": "WIP"},
+	          ...
+	        ],
+	      }
+	    }
+	"""
+	# Gate on the target doctype — same visibility rule the caller already
+	# needed to open the list view. Customers can't peek at Job Card workflow.
+	frappe.has_permission(doctype, ptype="read", throw=True)
+
+	from frappe.model.workflow import get_workflow_name
+
+	# Elevate only the Workflow read; everything else stays permission-checked.
+	prev = frappe.flags.ignore_permissions
+	try:
+		frappe.flags.ignore_permissions = True
+		wf_name = get_workflow_name(doctype)
+		if not wf_name:
+			return {"success": True, "data": None, "message": f"No active workflow for {doctype}."}
+
+		wf = frappe.get_doc("Workflow", wf_name)
+	finally:
+		frappe.flags.ignore_permissions = prev
+
+	states = [
+		{
+			"state": s.state,
+			"style": s.style or "Primary",
+			"doc_status": int(s.doc_status or 0),
+			"allow_edit": s.allow_edit,
+		}
+		for s in wf.states
+	]
+	initial_state = states[0]["state"] if states else None
+
+	# First-step actions = transitions whose `state` == initial_state and the
+	# current user has at least one of the `allowed` roles.
+	user_roles = set(frappe.get_roles(frappe.session.user))
+	available: list[dict] = []
+	for t in wf.transitions:
+		if t.state != initial_state:
+			continue
+		# `allowed` is the role string on the transition.
+		if t.allowed and t.allowed not in user_roles and "Administrator" not in user_roles:
+			continue
+		available.append(
+			{
+				"action": t.action,
+				"next_state": t.next_state,
+				"allowed": t.allowed,
+				"condition": t.condition or "",
+			}
+		)
+
+	return {
+		"success": True,
+		"data": {
+			"workflow_name": wf.name,
+			"workflow_state_field": wf.workflow_state_field or "workflow_state",
+			"initial_state": initial_state,
+			"states": states,
+			"available_first_actions": available,
+		},
+	}
 
 
 @frappe.whitelist()
 def get_available_actions(job_card_name: str) -> dict:
-    """Return the workflow actions available for the current user on this job card.
+	"""Return the workflow actions available for the current user on this job card.
 
-    Args:
-        job_card_name: The Job Card document name.
+	Args:
+	    job_card_name: The Job Card document name.
 
-    Returns:
-        dict with list of available action strings.
-    """
-    frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	Returns:
+	    dict with list of available action strings.
+	"""
+	# Permission gate is on the business object. The Workflow DocType itself
+	# is not sensitive — it carries the state graph for the whole doctype —
+	# so we elevate just the Workflow read via `ignore_permissions`. This
+	# avoids the need to grant every app role read-access to core Workflow
+	# just so they can see which button to press.
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
 
-    from frappe.model.workflow import get_transitions
+	from frappe.model.workflow import get_transitions
 
-    doc = frappe.get_doc("Job Card", job_card_name)
-    transitions = get_transitions(doc)
+	doc = frappe.get_doc("Job Card", job_card_name)
 
-    actions = [t.get("action") for t in transitions if t.get("action")]
+	prev_flag = frappe.flags.ignore_permissions
+	try:
+		frappe.flags.ignore_permissions = True
+		transitions = get_transitions(doc)
+	finally:
+		frappe.flags.ignore_permissions = prev_flag
 
-    return {
-        "success": True,
-        "data": {
-            "workflow_state": doc.workflow_state,
-            "actions": actions,
-        },
-        "message": "",
-    }
+	actions = [t.get("action") for t in transitions if t.get("action")]
+
+	return {
+		"success": True,
+		"data": {
+			"workflow_state": doc.workflow_state,
+			"actions": actions,
+		},
+		"message": "",
+	}
 
 
 @frappe.whitelist()
 def create_job_card_with_inspection(
-    vehicle_number: str,
-    odometer_reading: int,
-    service_type: str,
-    complaint_description: str = "",
-    technician_notes: str = "",
-    inspection_sheet_id: str = "",
-    inspection_results: str = "{}",
+	vehicle_number: str,
+	odometer_reading: int,
+	service_type: str,
+	complaint_description: str = "",
+	technician_notes: str = "",
+	inspection_sheet_id: str = "",
+	inspection_results: str = "{}",
 ) -> dict:
-    """Create a Job Card with embedded inspection data (Technician flow).
+	"""Create a Job Card with embedded inspection data (Technician flow).
 
-    This endpoint is used by the Technician Inspection Wizard. It creates the
-    Job Card, auto-assigns the current user as technician, and stores the
-    inspection checklist results as a comment for audit trail.
+	This endpoint is used by the Technician Inspection Wizard. It creates the
+	Job Card, auto-assigns the current user as technician, and stores the
+	inspection checklist results as a comment for audit trail.
 
-    Args:
-        vehicle_number: Vehicle registration (used to look up the Vehicle doc).
-        odometer_reading: Current odometer in km.
-        service_type: One of the allowed service type options.
-        complaint_description: Optional complaint text.
-        technician_notes: Optional technician observations.
-        inspection_sheet_id: "A", "B", or "C" — auto-selected by frontend.
-        inspection_results: JSON string of {check_id: {value, label, category, inputType}}.
+	Args:
+	    vehicle_number: Vehicle registration (used to look up the Vehicle doc).
+	    odometer_reading: Current odometer in km.
+	    service_type: One of the allowed service type options.
+	    complaint_description: Optional complaint text.
+	    technician_notes: Optional technician observations.
+	    inspection_sheet_id: "A", "B", or "C" — auto-selected by frontend.
+	    inspection_results: JSON string of {check_id: {value, label, category, inputType}}.
 
-    Returns:
-        dict with the created Job Card name.
-    """
-    frappe.only_for(["Technician", "Service Engineer", "Depot Manager"])
+	Returns:
+	    dict with the created Job Card name.
+	"""
+	frappe.only_for(["Technician", "Service Engineer", "Depot Manager"])
 
-    # Resolve vehicle
-    vehicle_name = frappe.db.get_value(
-        "Vehicle", {"registration_number": vehicle_number}, "name"
-    )
-    if not vehicle_name:
-        frappe.throw(
-            _("Vehicle with registration {0} not found.").format(vehicle_number)
-        )
+	# Resolve vehicle
+	vehicle_name = frappe.db.get_value("Vehicle", {"registration_number": vehicle_number}, "name")
+	if not vehicle_name:
+		frappe.throw(_("Vehicle with registration {0} not found.").format(vehicle_number))
 
-    # Resolve customer from vehicle
-    customer = frappe.db.get_value("Vehicle", vehicle_name, "customer")
+	# Resolve customer from vehicle
+	customer = frappe.db.get_value("Vehicle", vehicle_name, "customer")
 
-    odometer_reading = int(odometer_reading)
-    if odometer_reading <= 0:
-        frappe.throw(_("Odometer reading must be positive."))
+	odometer_reading = int(odometer_reading)
+	if odometer_reading <= 0:
+		frappe.throw(_("Odometer reading must be positive."))
 
-    # Create the Job Card
-    doc = frappe.get_doc({
-        "doctype": "Job Card",
-        "vehicle": vehicle_name,
-        "odometer_reading": odometer_reading,
-        "customer": customer,
-        "service_type": service_type,
-        "priority": "Medium",
-        "complaint_description": complaint_description,
-        "assigned_technician": frappe.session.user,
-    })
-    doc.insert()
+	# Create the Job Card.
+	#
+	# We elevate permissions ONLY for the duration of the insert. Caller auth
+	# was already established by `frappe.only_for([Technician, Service
+	# Engineer, Depot Manager])` above, so this isn't a privilege escalation.
+	# The flag is necessary because Frappe's internal `_validate_workflow()`
+	# does `frappe.get_doc("Workflow", ...)` — and our app roles do not have
+	# (and should not need) read access to the core Workflow DocType.
+	doc = frappe.get_doc(
+		{
+			"doctype": "Job Card",
+			"vehicle": vehicle_name,
+			"odometer_reading": odometer_reading,
+			"customer": customer,
+			"service_type": service_type,
+			"priority": "Medium",
+			"complaint_description": complaint_description,
+			"assigned_technician": frappe.session.user,
+		}
+	)
+	prev = frappe.flags.ignore_permissions
+	try:
+		frappe.flags.ignore_permissions = True
+		doc.insert()
+	finally:
+		frappe.flags.ignore_permissions = prev
 
-    # Store inspection results as a structured comment for audit
-    results = _json.loads(inspection_results) if isinstance(inspection_results, str) else inspection_results
+	# Store inspection results as a structured comment for audit
+	results = _json.loads(inspection_results) if isinstance(inspection_results, str) else inspection_results
 
-    if results:
-        # Build a human-readable summary
-        passes = sum(1 for v in results.values() if v.get("value") == "pass")
-        fails = sum(1 for v in results.values() if v.get("value") == "fail")
-        measurements = sum(1 for v in results.values() if v.get("inputType") == "measurement")
-        total = len(results)
+	if results:
+		# Build a human-readable summary
+		passes = sum(1 for v in results.values() if v.get("value") == "pass")
+		fails = sum(1 for v in results.values() if v.get("value") == "fail")
+		measurements = sum(1 for v in results.values() if v.get("inputType") == "measurement")
+		total = len(results)
 
-        summary_lines = [
-            _("**Inspection Sheet {0}** — {1} checks completed").format(
-                inspection_sheet_id, total
-            ),
-            _("Passed: {0} | Failed: {1} | Measurements: {2}").format(
-                passes, fails, measurements
-            ),
-        ]
+		summary_lines = [
+			_("**Inspection Sheet {0}** — {1} checks completed").format(inspection_sheet_id, total),
+			_("Passed: {0} | Failed: {1} | Measurements: {2}").format(passes, fails, measurements),
+		]
 
-        # List failures explicitly
-        for check_id, check in results.items():
-            if check.get("value") == "fail":
-                summary_lines.append(
-                    _("- FAIL: {0} ({1})").format(check.get("label", check_id), check.get("category", ""))
-                )
+		# List failures explicitly
+		for check_id, check in results.items():
+			if check.get("value") == "fail":
+				summary_lines.append(
+					_("- FAIL: {0} ({1})").format(check.get("label", check_id), check.get("category", ""))
+				)
 
-        # List out-of-range measurements
-        for check_id, check in results.items():
-            if check.get("inputType") == "measurement" and check.get("value"):
-                summary_lines.append(
-                    _("- {0}: {1}").format(check.get("label", check_id), check.get("value"))
-                )
+		# List out-of-range measurements
+		for check_id, check in results.items():
+			if check.get("inputType") == "measurement" and check.get("value"):
+				summary_lines.append(_("- {0}: {1}").format(check.get("label", check_id), check.get("value")))
 
-        if technician_notes:
-            summary_lines.append(_("\n**Technician Notes:** {0}").format(technician_notes))
+		if technician_notes:
+			summary_lines.append(_("\n**Technician Notes:** {0}").format(technician_notes))
 
-        doc.add_comment("Comment", "\n".join(summary_lines))
+		doc.add_comment("Comment", "\n".join(summary_lines))
 
-        # Also store the raw JSON for programmatic access
-        doc.add_comment(
-            "Comment",
-            _("Inspection raw data (Sheet {0}): ```{1}```").format(
-                inspection_sheet_id, _json.dumps(results, indent=2)
-            ),
-        )
+		# Also store the raw JSON for programmatic access
+		doc.add_comment(
+			"Comment",
+			_("Inspection raw data (Sheet {0}): ```{1}```").format(
+				inspection_sheet_id, _json.dumps(results, indent=2)
+			),
+		)
 
-    return {
-        "success": True,
-        "data": {"name": doc.name, "workflow_state": doc.workflow_state},
-        "message": _("Job Card {0} created with inspection data.").format(doc.name),
-    }
+	return {
+		"success": True,
+		"data": {"name": doc.name, "workflow_state": doc.workflow_state},
+		"message": _("Job Card {0} created with inspection data.").format(doc.name),
+	}

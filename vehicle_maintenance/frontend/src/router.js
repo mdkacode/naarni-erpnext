@@ -54,6 +54,19 @@ const routes = [
 		meta: { requiresAuth: true },
 	},
 	{
+		path: "/service-portal/job-card/:jobCard/pms-checklist",
+		name: "PmsChecklistFill",
+		component: () => import("./pages/PmsChecklistFill.vue"),
+		meta: { requiresAuth: true },
+		props: true,
+	},
+	{
+		path: "/service-portal/admin/checklist-templates",
+		name: "ChecklistTemplatesAdmin",
+		component: () => import("./pages/ChecklistTemplatesAdmin.vue"),
+		meta: { requiresAuth: true },
+	},
+	{
 		path: "/service-portal/crm/leads",
 		name: "LeadsList",
 		component: () => import("./pages/LeadsList.vue"),

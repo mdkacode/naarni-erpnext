@@ -29,6 +29,15 @@ jobs:
             export PATH="$HOME/.local/bin:$PATH"
             cd ~/frappe-bench
 
+            # Safety net: whatever happens below (e.g. a frontend build error),
+            # always bring the site out of maintenance mode and restart services
+            # so a failed deploy can never leave the site down.
+            cleanup() {
+              bench --site "$SITE" set-maintenance-mode off || true
+              sudo supervisorctl restart all || true
+            }
+            trap cleanup EXIT
+
             bench --site "$SITE" set-maintenance-mode on
 
             # Re-sync vehicle_maintenance from the fork's subdirectory
@@ -45,16 +54,19 @@ jobs:
 
             bench --site "$SITE" migrate
 
-            # Build the Vite/Vue SPA (bench build doesn't touch the frontend dir)
+            # Build the Vite/Vue SPA (bench build doesn't touch the frontend dir).
+            # Use `npm ci` against the committed package-lock.json for a
+            # reproducible install — `yarn install` had no yarn.lock and resolved
+            # latest (breaking) transitive versions on each run, which broke the
+            # build (PostCSS plugin error) and stranded the site.
             if [ -f apps/vehicle_maintenance/frontend/package.json ]; then
               pushd apps/vehicle_maintenance/frontend >/dev/null
-              yarn install --frozen-lockfile
-              yarn build
+              npm ci
+              npm run build
               popd >/dev/null
             fi
 
             bench build --app vehicle_maintenance
             bench --site "$SITE" clear-cache
-            bench --site "$SITE" set-maintenance-mode off
-            sudo supervisorctl restart all
+            # maintenance-mode off + restart are handled by the EXIT trap above.
           EOF

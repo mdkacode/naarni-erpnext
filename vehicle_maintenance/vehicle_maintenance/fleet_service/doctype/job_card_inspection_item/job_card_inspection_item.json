@@ -1,0 +1,91 @@
+{
+  "name": "Job Card Inspection Item",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "One PMS inspection checklist result on a Job Card. Three-tier items carry a component_status that feeds the health score; measurement items carry a numeric value with range bounds.",
+  "fields": [
+    {
+      "fieldname": "check_id",
+      "label": "Check ID",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "label",
+      "label": "Check",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "category",
+      "label": "Category",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "input_type",
+      "label": "Input Type",
+      "fieldtype": "Select",
+      "options": "three_tier\nmeasurement\ntext"
+    },
+    {
+      "fieldname": "component_status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "\nGood\nRepair/Replace Recommended\nRepair/Replace Immediately",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "value",
+      "label": "Value",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "measurement_value",
+      "label": "Measurement",
+      "fieldtype": "Float"
+    },
+    {
+      "fieldname": "min_value",
+      "label": "Min",
+      "fieldtype": "Float"
+    },
+    {
+      "fieldname": "max_value",
+      "label": "Max",
+      "fieldtype": "Float"
+    },
+    {
+      "fieldname": "out_of_range",
+      "label": "Out of Range",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "phase",
+      "label": "Phase",
+      "fieldtype": "Select",
+      "options": "Pre\nPost",
+      "default": "Pre"
+    },
+    {
+      "fieldname": "pre_photo",
+      "label": "Pre Photo",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "post_photo",
+      "label": "Post Photo",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "remarks",
+      "label": "Remarks",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": []
+}

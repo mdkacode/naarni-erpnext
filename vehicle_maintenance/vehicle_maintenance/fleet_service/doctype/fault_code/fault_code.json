@@ -1,0 +1,65 @@
+{
+  "name": "Fault Code",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:fault_code",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "description": "OEM/CAN fault codes that back the searchable Fault Code dropdown on Breakdown job cards (replaces free-text fault entry).",
+  "fields": [
+    {
+      "fieldname": "fault_code",
+      "label": "Fault Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Small Text",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "part_group",
+      "label": "Part Group",
+      "fieldtype": "Link",
+      "options": "Part Group",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "subsystem",
+      "label": "Subsystem",
+      "fieldtype": "Link",
+      "options": "Subsystem",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "severity",
+      "label": "Severity",
+      "fieldtype": "Select",
+      "options": "\nLow\nMedium\nHigh\nCritical",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Aftersales Eng", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Central Ops", "read": 1}
+  ],
+  "sort_field": "fault_code",
+  "sort_order": "ASC",
+  "title_field": "fault_code"
+}

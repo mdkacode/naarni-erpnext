@@ -655,6 +655,19 @@
       "fieldtype": "Table",
       "options": "Job Card Repair Item"
     },
+    {
+      "fieldname": "section_inspection",
+      "label": "PMS Inspection",
+      "fieldtype": "Section Break",
+      "depends_on": "eval:doc.job_card_type=='PMS + Repair'",
+      "description": "Structured PMS checklist results. Three-tier items feed the health score."
+    },
+    {
+      "fieldname": "inspection_items",
+      "label": "Inspection Items",
+      "fieldtype": "Table",
+      "options": "Job Card Inspection Item"
+    },
 
     {
       "fieldname": "section_maintenance_jobs",

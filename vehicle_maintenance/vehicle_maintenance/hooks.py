@@ -22,6 +22,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v0_5.seed_alert_types.execute",
 	"vehicle_maintenance.patches.v0_7.upgrade_alert_operators.execute",
 	"vehicle_maintenance.patches.v0_9.seed_alerts_dashboard.execute",
+	"vehicle_maintenance.patches.v1_0.seed_suggestion_masters.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -97,10 +98,16 @@ doctype_js = {
 # Scheduled tasks
 scheduler_events = {
 	"cron": {
-		"*/5 * * * *": [
+		# Sensitive, time-critical SLA monitors run EVERY MINUTE so breach and
+		# breakdown escalations reach users within ~60s (notifications must be
+		# instant). Idempotency flags on the Job Card prevent duplicate alerts.
+		"* * * * *": [
 			"vehicle_maintenance.fleet_service.tasks.monitor_job_card_tat",
 			"vehicle_maintenance.fleet_service.tasks.monitor_customer_approval_sla",
 			"vehicle_maintenance.fleet_service.tasks.monitor_remote_resolution_sla",
+		],
+		# Non-urgent housekeeping stays on a relaxed cadence.
+		"*/5 * * * *": [
 			"vehicle_maintenance.fleet_service.tasks.monitor_critical_followups",
 		],
 		"*/15 * * * *": [

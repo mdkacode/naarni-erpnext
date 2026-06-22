@@ -1,0 +1,53 @@
+{
+  "name": "Complaint Catalog",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "CMP-.#####",
+  "naming_rule": "Expression (old style)",
+  "track_changes": 1,
+  "description": "Reusable customer/driver complaints (VOC) that back the searchable complaint dropdown on the Job Card create form. New complaints captured in the field become future suggestions.",
+  "fields": [
+    {
+      "fieldname": "complaint_text",
+      "label": "Complaint",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "subsystem",
+      "label": "Subsystem",
+      "fieldtype": "Link",
+      "options": "Subsystem",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "usage_count",
+      "label": "Usage Count",
+      "fieldtype": "Int",
+      "read_only": 1,
+      "default": "0"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1, "create": 1},
+    {"role": "Technician", "read": 1, "create": 1},
+    {"role": "Central Ops", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "usage_count",
+  "sort_order": "DESC",
+  "title_field": "complaint_text"
+}

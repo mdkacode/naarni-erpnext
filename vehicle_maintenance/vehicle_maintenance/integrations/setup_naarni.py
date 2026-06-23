@@ -32,10 +32,10 @@ from frappe.installer import update_site_config
 from vehicle_maintenance.integrations import naarni_client
 
 
-def bootstrap_device(platform: str = "ANDROID") -> dict:
+def bootstrap_device(device_type: str = "MOBILE_APP") -> dict:
 	"""Register a fresh broker device with Naarni and persist its uuid + numeric id."""
 	device_uuid = str(uuidlib.uuid4())
-	device_id = naarni_client.register_device(device_uuid, platform=platform)
+	device_id = naarni_client.register_device(device_uuid, device_type=device_type)
 	update_site_config("naarni_broker_device_uuid", device_uuid)
 	update_site_config("naarni_broker_device_id", device_id)
 	print(f"Broker device registered: uuid={device_uuid} id={device_id}")

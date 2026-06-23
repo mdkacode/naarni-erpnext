@@ -152,20 +152,48 @@ def _get(path: str, bearer: str) -> Any:
 # ──────────────────────────── devices ────────────────────────────
 
 
-def register_device(device_uuid: str, platform: str = DEFAULT_PLATFORM) -> int:
+def _device_type_for(platform: str) -> str:
+	"""Map an x-platform value to a Naarni DeviceType enum (MOBILE_APP | WEB_BROWSER)."""
+	return "WEB_BROWSER" if (platform or "").upper() in {"WEB", "BACKEND"} else "MOBILE_APP"
+
+
+def register_device(
+	device_uuid: str,
+	device_type: str = "MOBILE_APP",
+	*,
+	metadata: dict | None = None,
+	ip_address: str | None = None,
+	push_token: str | None = None,
+) -> int:
 	"""Register (idempotently, by UUID) a device with Naarni; return its numeric id.
 
 	`POST /v1/devices` is public and returns the existing device if the UUID is
-	already known, so this is safe to call repeatedly.
+	already known, so this is safe to call repeatedly. `device_type` is the Naarni
+	DeviceType enum (MOBILE_APP | WEB_BROWSER) — distinct from the x-platform value
+	(ANDROID/IOS/WEB/BACKEND) sent on the auth calls.
+
+	NOTE (verified against prod): the backend 500s on a payload without `metadata`,
+	so we always send a non-empty metadata object. The created device record is
+	returned under the envelope's `body` key (NaarniHttpResponse), not `data`.
 	"""
-	body = _post_json(
-		"/v1/devices",
-		{"deviceUuid": device_uuid, "type": platform, "status": "ACTIVE"},
-	)
-	# NaarniHttpResponse envelope: {"success": true, "data": {"id": .., "deviceUuid": ..}}
-	data = (body or {}).get("data") if isinstance(body, dict) else None
-	data = data if isinstance(data, dict) else (body if isinstance(body, dict) else {})
-	device_id = data.get("id")
+	payload: dict[str, Any] = {
+		"deviceUuid": device_uuid,
+		"type": device_type,
+		"status": "ACTIVE",
+		"metadata": metadata or {"source": "vehicle_maintenance", "deviceType": device_type},
+	}
+	if ip_address:
+		payload["ipAddress"] = ip_address
+	if push_token:
+		payload["pushNotificationToken"] = push_token
+
+	body = _post_json("/v1/devices", payload)
+	env = body if isinstance(body, dict) else {}
+	# NaarniHttpResponse: {"body": {"id": .., "deviceUuid": ..}, "success": true, ...}
+	record = env.get("body") or env.get("data") or env
+	if not isinstance(record, dict):
+		record = {}
+	device_id = record.get("id")
 	if device_id is None:
 		raise NaarniApiError(f"Device registration returned no id: {body}")
 	return int(device_id)
@@ -187,7 +215,7 @@ def _resolve_device(device_uuid: str | None, platform: str = DEFAULT_PLATFORM) -
 	cached = cache.get_value(cache_key)
 	if cached:
 		return device_uuid, int(cached)
-	device_id = register_device(device_uuid, platform=platform)
+	device_id = register_device(device_uuid, device_type=_device_type_for(platform))
 	cache.set_value(cache_key, device_id, expires_in_sec=30 * 24 * 60 * 60)
 	return device_uuid, device_id
 

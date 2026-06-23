@@ -46,6 +46,18 @@
       "fieldname": "address",
       "label": "Address",
       "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "sec_engineers",
+      "label": "Service Engineers",
+      "fieldtype": "Section Break",
+      "description": "Engineers assigned to this depot — they receive its buses' alerts and tickets."
+    },
+    {
+      "fieldname": "service_engineers",
+      "label": "Assigned Service Engineers",
+      "fieldtype": "Table MultiSelect",
+      "options": "Depot Engineer"
     }
   ],
   "permissions": [

@@ -619,5 +619,14 @@ def ingest_alert_event(service_key: str | None = None, payload: Any = None, **kw
 	else:
 		doc = frappe.get_doc({"doctype": "Alert Event", "status": "Open", **values})
 		doc.insert(ignore_permissions=True)
+
+	# Phase-0: auto-raise a Service Ticket for the depot's engineers (dedup-safe).
+	try:
+		from vehicle_maintenance.api.tickets import create_ticket_from_alert
+
+		create_ticket_from_alert(doc.name)
+	except Exception:
+		frappe.log_error(title="Ticket auto-raise failed", message=frappe.get_traceback())
+
 	frappe.db.commit()
 	return _ok({"name": doc.name}, _("Alert event recorded."))

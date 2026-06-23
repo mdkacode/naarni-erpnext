@@ -101,7 +101,7 @@
       "fieldtype": "Link",
       "options": "Depot",
       "in_standard_filter": 1,
-      "description": "Depot the vehicle is based at (synced from Naarni; drives alert/ticket routing to the depot's Service Engineers)."
+      "description": "Depot that services this bus — routes its alerts/tickets to that depot's engineers (synced from Naarni)."
     },
     {
       "fieldname": "last_synced_at",

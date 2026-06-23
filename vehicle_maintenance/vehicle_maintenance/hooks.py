@@ -23,6 +23,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v0_7.upgrade_alert_operators.execute",
 	"vehicle_maintenance.patches.v0_9.seed_alerts_dashboard.execute",
 	"vehicle_maintenance.patches.v1_0.seed_suggestion_masters.execute",
+	"vehicle_maintenance.patches.v1_1.seed_naarni_custom_fields.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -112,6 +113,11 @@ scheduler_events = {
 		],
 		"*/15 * * * *": [
 			"vehicle_maintenance.api.crm.dispatch_due_reminders",
+		],
+		# Pull the Naarni vehicle directory (operators, status, depot) so the app's
+		# vehicle dropdown stays current. No-op when the integration is disabled.
+		"*/30 * * * *": [
+			"vehicle_maintenance.integrations.naarni_vehicles.sync_vehicle_directory",
 		],
 	},
 	# Feedback requests trickle out hourly — a 5-minute cadence is overkill

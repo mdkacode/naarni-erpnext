@@ -3,7 +3,12 @@ import frappe.sessions
 from frappe import _
 from frappe.auth import LoginManager
 
+from vehicle_maintenance.integrations import naarni_client
 from vehicle_maintenance.overrides.user import normalize_phone
+
+# Role granted to a user auto-provisioned on first Naarni OTP login. Overridable
+# per-site via the `naarni_default_role` site_config key.
+DEFAULT_NAARNI_ROLE = "Service Engineer"
 
 
 @frappe.whitelist()
@@ -53,3 +58,117 @@ def login_with_phone(phone: str, password: str) -> dict:
 		},
 		"message": _("Logged in."),
 	}
+
+
+# ──────────────────────────── Unified OTP SSO (Naarni-brokered) ────────────────────────────
+
+
+@frappe.whitelist(allow_guest=True)
+def request_otp(phone: str) -> dict:
+	"""Ask the Naarni backend to send a login OTP to `phone`.
+
+	The app talks only to Frappe; Frappe relays to Naarni (api.naarni.com) using the
+	shared broker device. Returns a generic success envelope — we never reveal whether
+	the number exists, to avoid user enumeration.
+	"""
+	if not naarni_client.is_enabled():
+		frappe.throw(_("Phone login is temporarily unavailable."), frappe.ValidationError)
+
+	# Validate shape early (also the canonical form we'll match the Frappe user on).
+	normalize_phone(phone)
+
+	try:
+		naarni_client.request_otp(phone.strip())
+	except naarni_client.NaarniApiError:
+		# Don't leak Naarni-side detail (rate limits, unknown number) to the client.
+		frappe.log_error(title="Naarni request_otp failed")
+		frappe.throw(_("Could not send the code. Please try again."), frappe.ValidationError)
+
+	return {"success": True, "data": {"sent": True}, "message": _("Code sent.")}
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_otp(phone: str, otp: str) -> dict:
+	"""Verify phone + OTP via Naarni, then establish a Frappe session.
+
+	On success: exchanges the OTP for Naarni tokens, finds-or-creates the Frappe user
+	keyed by phone, stores the Naarni user UUID, and logs the user in (sets `sid`).
+	"""
+	if not naarni_client.is_enabled():
+		frappe.throw(_("Phone login is temporarily unavailable."), frappe.ValidationError)
+	if not (otp or "").strip():
+		frappe.throw(_("Enter the code."), frappe.AuthenticationError)
+
+	normalized = normalize_phone(phone)
+
+	try:
+		tokens = naarni_client.exchange_phone_otp(phone.strip(), otp.strip())
+	except naarni_client.NaarniApiError:
+		frappe.throw(_("That code is invalid or expired."), frappe.AuthenticationError)
+
+	# Best-effort: verify signature (iff a public key is configured) and read claims.
+	claims = naarni_client.verify_access_token(tokens["access_token"])
+	naarni_uuid = claims.get("sub")
+	authorities = claims.get("authorities") or []
+
+	user = _provision_naarni_user(normalized, naarni_uuid, authorities)
+
+	lm = LoginManager()
+	lm.user = user
+	if getattr(frappe.local, "request", None) is not None:
+		lm.post_login()
+	else:  # non-HTTP callers (tests/console)
+		frappe.set_user(user)
+
+	doc = frappe.get_cached_doc("User", user)
+	return {
+		"success": True,
+		"data": {
+			"user": user,
+			"full_name": doc.full_name,
+			"user_type": doc.user_type,
+			"roles": frappe.get_roles(user),
+		},
+		"message": _("Logged in."),
+	}
+
+
+def _provision_naarni_user(phone: str, naarni_uuid: str | None, authorities: list) -> str:
+	"""Find-or-create the Frappe user for a Naarni phone login; return its name.
+
+	Non-destructive: existing roles are preserved; we only *add* the default app
+	role on first provisioning and keep the stored Naarni UUID fresh.
+	"""
+	existing = frappe.db.get_all(
+		"User",
+		filters={"mobile_no": phone},
+		fields=["name", "enabled"],
+		limit=2,
+	)
+	if len(existing) > 1:
+		frappe.throw(_("Multiple accounts share this phone number. Contact an administrator."))
+
+	if existing:
+		user = existing[0].name
+		if not existing[0].enabled:
+			frappe.throw(_("This account is disabled. Contact an administrator."), frappe.AuthenticationError)
+		if naarni_uuid and frappe.db.get_value("User", user, "naarni_user_uuid") != naarni_uuid:
+			frappe.db.set_value("User", user, "naarni_user_uuid", naarni_uuid, update_modified=False)
+		return user
+
+	# Auto-provision. Phone-only identity: synthesise a stable, non-routable email
+	# (Frappe requires User.name to be an email) and grant the default app role.
+	default_role = (frappe.conf or {}).get("naarni_default_role") or DEFAULT_NAARNI_ROLE
+	email = f"{phone}@naarni.phone"
+	doc = frappe.new_doc("User")
+	doc.email = email
+	doc.first_name = phone
+	doc.mobile_no = phone
+	doc.user_type = "System User"
+	doc.send_welcome_email = 0
+	if naarni_uuid:
+		doc.naarni_user_uuid = naarni_uuid
+	doc.append("roles", {"role": default_role})
+	doc.flags.ignore_permissions = True
+	doc.insert(ignore_permissions=True)
+	return doc.name

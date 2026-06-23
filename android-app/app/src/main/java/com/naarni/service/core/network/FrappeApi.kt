@@ -8,6 +8,7 @@ import com.naarni.service.data.dto.TicketItem
 import com.naarni.service.data.dto.JobCardListItem
 import com.naarni.service.data.dto.LoginData
 import com.naarni.service.data.dto.NotificationItem
+import com.naarni.service.data.dto.OtpStatus
 import com.naarni.service.data.dto.SuggestionItem
 import com.naarni.service.data.dto.UnreadCount
 import com.naarni.service.data.dto.VehicleHit
@@ -33,6 +34,20 @@ interface FrappeApi {
     suspend fun loginWithPhone(
         @Field("phone") phone: String,
         @Field("password") password: String,
+    ): FrappeWrap<Envelope<LoginData>>
+
+    // ── Unified OTP SSO (Naarni-brokered) ──
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.auth.request_otp")
+    suspend fun requestOtp(
+        @Field("phone") phone: String,
+    ): FrappeWrap<Envelope<OtpStatus>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.auth.verify_otp")
+    suspend fun verifyOtp(
+        @Field("phone") phone: String,
+        @Field("otp") otp: String,
     ): FrappeWrap<Envelope<LoginData>>
 
     @GET("api/method/vehicle_maintenance.fleet_service.doctype.job_card.job_card.get_user_roles")

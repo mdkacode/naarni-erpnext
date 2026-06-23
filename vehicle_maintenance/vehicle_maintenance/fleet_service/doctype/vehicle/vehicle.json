@@ -46,6 +46,31 @@
       "description": "Maps this vehicle to its telemetry stream (vehicle_recent_info_silver.device_id). The bridge between Frappe and the alert engine."
     },
     {
+      "fieldname": "naarni_vehicle_id",
+      "label": "Naarni Vehicle ID",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "search_index": 1,
+      "description": "Numeric vehicleId in the Naarni backend (api.naarni.com). Key for the vehicle-directory sync and live-detail lookups."
+    },
+    {
+      "fieldname": "operator",
+      "label": "Operator",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "in_standard_filter": 1,
+      "description": "Fleet operator, synced from Naarni telemetry (vehicle_recent_info_silver.operator)."
+    },
+    {
+      "fieldname": "vehicle_status",
+      "label": "Vehicle Status",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "in_standard_filter": 1,
+      "description": "Operational status synced from Naarni (e.g. ACTIVE)."
+    },
+    {
       "fieldname": "engine_number",
       "label": "Engine Number",
       "fieldtype": "Data"
@@ -69,6 +94,20 @@
       "label": "Owner / Customer",
       "fieldtype": "Link",
       "options": "Customer"
+    },
+    {
+      "fieldname": "depot",
+      "label": "Home Depot",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "in_standard_filter": 1,
+      "description": "Depot the vehicle is based at (synced from Naarni; drives alert/ticket routing to the depot's Service Engineers)."
+    },
+    {
+      "fieldname": "last_synced_at",
+      "label": "Last Synced From Naarni",
+      "fieldtype": "Datetime",
+      "read_only": 1
     },
     {
       "fieldname": "fuel_type",

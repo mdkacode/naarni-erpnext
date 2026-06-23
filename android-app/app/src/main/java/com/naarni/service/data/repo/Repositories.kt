@@ -44,6 +44,35 @@ class AuthRepository(
         }
     }
 
+    /** Step 1 of OTP login: ask the backend to send a code to this phone. */
+    suspend fun requestOtp(phone: String): Result<Unit> = runCatching {
+        val env = api.requestOtp(phone).message
+        if (env?.success == false) throw ApiException(env.message ?: "Could not send code")
+    }
+
+    /**
+     * Step 2 of OTP login: verify the code. On success the `sid` cookie is set by
+     * the backend (Naarni-brokered) and we enrich display user/roles.
+     */
+    suspend fun verifyOtp(phone: String, otp: String): Result<Unit> = runCatching {
+        val resp = api.verifyOtp(phone, otp)
+        resp.message?.let { env ->
+            if (!env.success && session.sid.isNullOrBlank()) {
+                throw ApiException(env.message ?: "Invalid code")
+            }
+            env.data?.let { data ->
+                session.user = data.user
+                session.fullName = data.full_name
+                if (data.roles.isNotEmpty()) session.roles = data.roles.toSet()
+            }
+        }
+        if (session.sid.isNullOrBlank()) throw ApiException("Login failed — no session")
+        if (session.roles.isEmpty()) {
+            runCatching { api.getUserRoles().message }.getOrNull()
+                ?.let { session.roles = it.toSet() }
+        }
+    }
+
     fun logout() = session.clear()
 }
 

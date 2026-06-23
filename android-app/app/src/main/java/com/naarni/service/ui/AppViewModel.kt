@@ -13,6 +13,10 @@ data class AppUiState(
     val loggedIn: Boolean = false,
     val loading: Boolean = false,
     val error: String? = null,
+    /** True once an OTP has been sent — the login screen then shows the code field. */
+    val otpSent: Boolean = false,
+    /** Phone the OTP was sent to (shown on the verify step). */
+    val otpPhone: String = "",
 )
 
 /**
@@ -29,16 +33,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var ui by mutableStateOf(AppUiState(loggedIn = session.isLoggedIn))
         private set
 
-    fun login(phone: String, password: String) {
+    /** Step 1: request an OTP for [phone]. On success the screen reveals the code field. */
+    fun requestOtp(phone: String) {
         viewModelScope.launch {
             ui = ui.copy(loading = true, error = null)
-            val result = auth.login(phone, password)
+            val result = auth.requestOtp(phone)
+            ui = if (result.isSuccess) {
+                ui.copy(loading = false, otpSent = true, otpPhone = phone)
+            } else {
+                ui.copy(loading = false, error = result.exceptionOrNull()?.message ?: "Could not send code")
+            }
+        }
+    }
+
+    /** Step 2: verify the [otp] for the phone we sent it to; on success, log in. */
+    fun verifyOtp(otp: String) {
+        viewModelScope.launch {
+            ui = ui.copy(loading = true, error = null)
+            val result = auth.verifyOtp(ui.otpPhone, otp)
             ui = if (result.isSuccess) {
                 ui.copy(loading = false, loggedIn = true)
             } else {
-                ui.copy(loading = false, error = result.exceptionOrNull()?.message ?: "Login failed")
+                ui.copy(loading = false, error = result.exceptionOrNull()?.message ?: "Invalid code")
             }
         }
+    }
+
+    /** Back to the phone step (change number / resend). */
+    fun resetOtp() {
+        ui = ui.copy(otpSent = false, otpPhone = "", error = null)
     }
 
     fun logout() {

@@ -2,6 +2,10 @@ package com.naarni.service.data.dto
 
 import kotlinx.serialization.Serializable
 
+/** Result of an OTP-send request. */
+@Serializable
+data class OtpStatus(val sent: Boolean = false)
+
 /** Result of phone login. Auth itself rides on the session cookie; this is display data. */
 @Serializable
 data class LoginData(

@@ -16,8 +16,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Pin
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,22 +36,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.BrandLogo
 import com.naarni.service.ui.theme.BrandGradient
 
 /**
- * Phone-first login (never email — [[feedback-phone-login]]) with a modern
- * gradient hero. Any 10-digit number (soft gate — server normalises).
+ * Phone-first, passwordless login (never email — [[feedback-phone-login]]) using
+ * Naarni OTP SSO. Two steps in one screen: enter mobile → enter the 6-digit code.
+ * No password to remember — ideal for non-tech-savvy field users.
  */
 @Composable
 fun LoginScreen(vm: AppViewModel) {
     var phone by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var otp by remember { mutableStateOf("") }
     val state = vm.ui
     val phoneValid = phone.length == 10
+    val otpValid = otp.length in 4..6
 
     Column(
         Modifier
@@ -92,52 +94,69 @@ fun LoginScreen(vm: AppViewModel) {
             shadowElevation = 6.dp,
         ) {
             Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Sign in", style = MaterialTheme.typography.titleLarge)
-
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { if (it.length <= 10 && it.all(Char::isDigit)) phone = it },
-                    label = { Text("Mobile number") },
-                    prefix = { Text("+91 ") },
-                    leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Password") },
-                    leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null) },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                state.error?.let {
-                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
-                        Text(
-                            it,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        )
+                if (!state.otpSent) {
+                    // ── Step 1: phone ──
+                    Text("Sign in", style = MaterialTheme.typography.titleLarge)
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { if (it.length <= 10 && it.all(Char::isDigit)) phone = it },
+                        label = { Text("Mobile number") },
+                        prefix = { Text("+91 ") },
+                        leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    ErrorBox(state.error)
+                    Button(
+                        onClick = { vm.requestOtp(phone) },
+                        enabled = phoneValid && !state.loading,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                    ) {
+                        if (state.loading) {
+                            CircularProgressIndicator(Modifier.height(20.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text("Send code", style = MaterialTheme.typography.labelLarge)
+                        }
                     }
-                }
-
-                Button(
-                    onClick = { vm.login(phone, password) },
-                    enabled = phoneValid && password.isNotBlank() && !state.loading,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                ) {
-                    if (state.loading) {
-                        CircularProgressIndicator(Modifier.height(20.dp), color = Color.White, strokeWidth = 2.dp)
-                    } else {
-                        Text("Sign in", style = MaterialTheme.typography.labelLarge)
+                } else {
+                    // ── Step 2: OTP ──
+                    Text("Enter code", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Sent to +91 ${state.otpPhone}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = otp,
+                        onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) otp = it },
+                        label = { Text("6-digit code") },
+                        leadingIcon = { Icon(Icons.Filled.Pin, contentDescription = null) },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    ErrorBox(state.error)
+                    Button(
+                        onClick = { vm.verifyOtp(otp) },
+                        enabled = otpValid && !state.loading,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                    ) {
+                        if (state.loading) {
+                            CircularProgressIndicator(Modifier.height(20.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text("Verify & sign in", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                    TextButton(
+                        onClick = { otp = ""; vm.resetOtp() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Change number")
                     }
                 }
             }
@@ -149,6 +168,19 @@ fun LoginScreen(vm: AppViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun ErrorBox(error: String?) {
+    error ?: return
+    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
+        Text(
+            error,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
         )
     }
 }

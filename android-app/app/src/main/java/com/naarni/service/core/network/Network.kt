@@ -38,6 +38,7 @@ object Network {
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(logging)
+            .addInterceptor(FrappeErrorInterceptor())
             .build()
 
         return Retrofit.Builder()

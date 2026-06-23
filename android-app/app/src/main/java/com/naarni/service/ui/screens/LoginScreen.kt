@@ -52,7 +52,7 @@ import com.naarni.service.ui.components.BrandLogo
 import com.naarni.service.ui.theme.BrandGradient
 import kotlinx.coroutines.delay
 
-private const val OTP_LENGTH = 6
+private const val OTP_LENGTH = 4
 private const val RESEND_SECONDS = 30
 
 /**

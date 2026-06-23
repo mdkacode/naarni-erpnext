@@ -1,23 +1,27 @@
 package com.naarni.service.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Pin
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -27,24 +31,35 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.BrandLogo
 import com.naarni.service.ui.theme.BrandGradient
+import kotlinx.coroutines.delay
+
+private const val OTP_LENGTH = 6
+private const val RESEND_SECONDS = 30
 
 /**
  * Phone-first, passwordless login (never email — [[feedback-phone-login]]) using
- * Naarni OTP SSO. Two steps in one screen: enter mobile → enter the 6-digit code.
- * No password to remember — ideal for non-tech-savvy field users.
+ * Naarni OTP SSO. Two steps: enter mobile → enter the 6-digit code. The code step
+ * has a segmented input, auto-submits on the 6th digit, and a resend countdown —
+ * so a non-tech-savvy field user just types and is in.
  */
 @Composable
 fun LoginScreen(vm: AppViewModel) {
@@ -52,7 +67,6 @@ fun LoginScreen(vm: AppViewModel) {
     var otp by remember { mutableStateOf("") }
     val state = vm.ui
     val phoneValid = phone.length == 10
-    val otpValid = otp.length in 4..6
 
     Column(
         Modifier
@@ -64,7 +78,7 @@ fun LoginScreen(vm: AppViewModel) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(300.dp)
+                .height(280.dp)
                 .background(
                     Brush.verticalGradient(BrandGradient),
                     RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp),
@@ -83,7 +97,6 @@ fun LoginScreen(vm: AppViewModel) {
             }
         }
 
-        // Form card, overlapping the hero
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -95,69 +108,28 @@ fun LoginScreen(vm: AppViewModel) {
         ) {
             Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (!state.otpSent) {
-                    // ── Step 1: phone ──
-                    Text("Sign in", style = MaterialTheme.typography.titleLarge)
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { if (it.length <= 10 && it.all(Char::isDigit)) phone = it },
-                        label = { Text("Mobile number") },
-                        prefix = { Text("+91 ") },
-                        leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
-                        singleLine = true,
-                        shape = MaterialTheme.shapes.medium,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        modifier = Modifier.fillMaxWidth(),
+                    PhoneStep(
+                        phone = phone,
+                        onPhoneChange = { phone = it },
+                        canSubmit = phoneValid && !state.loading,
+                        loading = state.loading,
+                        error = state.error,
+                        onSend = { vm.requestOtp(phone) },
                     )
-                    ErrorBox(state.error)
-                    Button(
-                        onClick = { vm.requestOtp(phone) },
-                        enabled = phoneValid && !state.loading,
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                    ) {
-                        if (state.loading) {
-                            CircularProgressIndicator(Modifier.height(20.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            Text("Send code", style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
                 } else {
-                    // ── Step 2: OTP ──
-                    Text("Enter code", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        "Sent to +91 ${state.otpPhone}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    OtpStep(
+                        otpPhone = state.otpPhone,
+                        otp = otp,
+                        onOtpChange = {
+                            otp = it
+                            if (it.length == OTP_LENGTH && !state.loading) vm.verifyOtp(it)
+                        },
+                        loading = state.loading,
+                        error = state.error,
+                        onVerify = { vm.verifyOtp(otp) },
+                        onResend = { otp = ""; vm.requestOtp(state.otpPhone) },
+                        onChangeNumber = { otp = ""; vm.resetOtp() },
                     )
-                    OutlinedTextField(
-                        value = otp,
-                        onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) otp = it },
-                        label = { Text("6-digit code") },
-                        leadingIcon = { Icon(Icons.Filled.Pin, contentDescription = null) },
-                        singleLine = true,
-                        shape = MaterialTheme.shapes.medium,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    ErrorBox(state.error)
-                    Button(
-                        onClick = { vm.verifyOtp(otp) },
-                        enabled = otpValid && !state.loading,
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                    ) {
-                        if (state.loading) {
-                            CircularProgressIndicator(Modifier.height(20.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            Text("Verify & sign in", style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                    TextButton(
-                        onClick = { otp = ""; vm.resetOtp() },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Change number")
-                    }
                 }
             }
         }
@@ -167,8 +139,165 @@ fun LoginScreen(vm: AppViewModel) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
         )
+    }
+}
+
+@Composable
+private fun PhoneStep(
+    phone: String,
+    onPhoneChange: (String) -> Unit,
+    canSubmit: Boolean,
+    loading: Boolean,
+    error: String?,
+    onSend: () -> Unit,
+) {
+    Text("Sign in", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "We'll text you a one-time code.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    OutlinedTextField(
+        value = phone,
+        onValueChange = { if (it.length <= 10 && it.all(Char::isDigit)) onPhoneChange(it) },
+        label = { Text("Mobile number") },
+        prefix = { Text("+91 ") },
+        leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+        singleLine = true,
+        shape = MaterialTheme.shapes.medium,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    ErrorBox(error)
+    Button(
+        onClick = onSend,
+        enabled = canSubmit,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.height(20.dp), color = Color.White, strokeWidth = 2.dp)
+        } else {
+            Text("Send code", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun OtpStep(
+    otpPhone: String,
+    otp: String,
+    onOtpChange: (String) -> Unit,
+    loading: Boolean,
+    error: String?,
+    onVerify: () -> Unit,
+    onResend: () -> Unit,
+    onChangeNumber: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = onChangeNumber, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Change number", Modifier.size(20.dp))
+            Spacer(Modifier.size(4.dp))
+            Text("Change")
+        }
+    }
+    Text("Enter code", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "Sent to +91 $otpPhone",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    OtpInput(value = otp, onValueChange = onOtpChange, enabled = !loading)
+
+    ErrorBox(error)
+
+    Button(
+        onClick = onVerify,
+        enabled = otp.length == OTP_LENGTH && !loading,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.height(20.dp), color = Color.White, strokeWidth = 2.dp)
+        } else {
+            Text("Verify & sign in", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+
+    ResendRow(onResend = onResend)
+}
+
+/** Segmented OTP field: a hidden text field drives 6 visible cells. */
+@Composable
+private fun OtpInput(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    length: Int = OTP_LENGTH,
+) {
+    val focusRequester = remember { FocusRequester() }
+    BasicTextField(
+        value = value,
+        onValueChange = { if (it.length <= length && it.all(Char::isDigit)) onValueChange(it) },
+        enabled = enabled,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        textStyle = TextStyle(color = Color.Transparent),
+        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+        decorationBox = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                repeat(length) { i ->
+                    val char = value.getOrNull(i)?.toString() ?: ""
+                    val active = i == value.length
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                            .border(
+                                width = if (active) 2.dp else 1.dp,
+                                color = if (active) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant,
+                                shape = MaterialTheme.shapes.medium,
+                            )
+                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(char, style = MaterialTheme.typography.headlineSmall)
+                    }
+                }
+            }
+        },
+    )
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+}
+
+/** "Resend code" gated by a countdown so a slow SMS doesn't trigger a re-send storm. */
+@Composable
+private fun ResendRow(onResend: () -> Unit) {
+    var secondsLeft by remember { mutableIntStateOf(RESEND_SECONDS) }
+    LaunchedEffect(secondsLeft) {
+        if (secondsLeft > 0) {
+            delay(1000)
+            secondsLeft--
+        }
+    }
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        if (secondsLeft > 0) {
+            Text(
+                "Resend code in 0:%02d".format(secondsLeft),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            TextButton(onClick = { secondsLeft = RESEND_SECONDS; onResend() }) {
+                Text("Resend code")
+            }
+        }
     }
 }
 

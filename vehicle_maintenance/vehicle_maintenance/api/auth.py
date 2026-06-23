@@ -73,7 +73,7 @@ def request_otp(phone: str, device_uuid: str | None = None, platform: str = "AND
 	shared broker device. Returns a generic success envelope — we never reveal
 	whether the number exists, to avoid user enumeration.
 	"""
-	if not naarni_client.is_enabled():
+	if not naarni_client.is_login_enabled():
 		frappe.throw(_("Phone login is temporarily unavailable."), frappe.ValidationError)
 
 	# Validate shape early (also the canonical form we'll match the Frappe user on).
@@ -98,7 +98,7 @@ def verify_otp(phone: str, otp: str, device_uuid: str | None = None, platform: s
 	finds-or-creates the Frappe user keyed by phone, stores the Naarni user UUID,
 	and logs the user in (sets `sid`).
 	"""
-	if not naarni_client.is_enabled():
+	if not naarni_client.is_login_enabled():
 		frappe.throw(_("Phone login is temporarily unavailable."), frappe.ValidationError)
 	if not (otp or "").strip():
 		frappe.throw(_("Enter the code."), frappe.AuthenticationError)

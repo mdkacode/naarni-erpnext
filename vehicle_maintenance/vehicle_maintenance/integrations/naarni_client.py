@@ -80,7 +80,22 @@ def _conf() -> dict:
 
 
 def is_enabled() -> bool:
+	"""Master switch for service-account features (vehicle directory sync).
+
+	Off by default — the sync needs the service refresh token, so it stays inert
+	until explicitly configured + enabled.
+	"""
 	return bool(_conf().get("enable_naarni_integration"))
+
+
+def is_login_enabled() -> bool:
+	"""Whether OTP login is available.
+
+	OTP login only uses PUBLIC Naarni endpoints (device register + otp/generate +
+	token) and needs no service account — so it is ON by default and works with
+	zero site_config. Set `naarni_login_disabled` to 1 to turn it off (kill switch).
+	"""
+	return not bool(_conf().get("naarni_login_disabled"))
 
 
 def base_url() -> str:
@@ -112,6 +127,11 @@ def _broker_device() -> tuple[str, int]:
 def _require_enabled() -> None:
 	if not is_enabled():
 		raise NaarniConfigError("Naarni integration is disabled (enable_naarni_integration)")
+
+
+def _require_login_enabled() -> None:
+	if not is_login_enabled():
+		raise NaarniConfigError("Naarni OTP login is disabled (naarni_login_disabled)")
 
 
 # ──────────────────────────── transport ────────────────────────────
@@ -229,7 +249,7 @@ def request_otp(phone: str, device_uuid: str | None = None, platform: str = DEFA
 	`device_uuid` is the app install's own device id (registered on first use);
 	omit it to use the shared broker device.
 	"""
-	_require_enabled()
+	_require_login_enabled()
 	dev_uuid, dev_id = _resolve_device(device_uuid, platform)
 	_post_json(
 		"/v1/auth/otp/generate",
@@ -246,7 +266,7 @@ def exchange_phone_otp(
 	Must use the SAME device as the matching `request_otp` call (Naarni keys the
 	OTP on contact + deviceId). Raises NaarniApiError on an invalid/expired OTP.
 	"""
-	_require_enabled()
+	_require_login_enabled()
 	dev_uuid, dev_id = _resolve_device(device_uuid, platform)
 	body = _post_form(
 		"/v1/auth/token",

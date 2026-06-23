@@ -71,6 +71,13 @@
       "options": "Customer"
     },
     {
+      "fieldname": "depot",
+      "label": "Home Depot",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "description": "Depot that services this bus — routes its alerts/tickets to that depot's engineers."
+    },
+    {
       "fieldname": "fuel_type",
       "label": "Fuel Type",
       "fieldtype": "Select",

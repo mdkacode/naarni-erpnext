@@ -1,0 +1,12 @@
+{
+  "name": "Depot Engineer",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "description": "A Service Engineer assigned to a Depot (Table MultiSelect child of Depot.service_engineers).",
+  "fields": [
+    {"fieldname": "user", "label": "Service Engineer", "fieldtype": "Link", "options": "User", "reqd": 1, "in_list_view": 1}
+  ],
+  "permissions": []
+}

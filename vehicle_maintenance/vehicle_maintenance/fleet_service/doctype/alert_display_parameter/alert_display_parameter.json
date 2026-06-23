@@ -1,0 +1,47 @@
+{
+  "name": "Alert Display Parameter",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "description": "An extra reading shown in the alert (message, Teams card, Alert Event) but not part of the trigger logic.",
+  "fields": [
+    {
+      "fieldname": "parameter",
+      "label": "Reading",
+      "fieldtype": "Link",
+      "options": "Telemetry Parameter",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "label",
+      "label": "Label",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "columns": 3,
+      "description": "Friendly name shown in the alert, e.g. 'SOC'. Defaults to the reading name."
+    },
+    {
+      "fieldname": "unit",
+      "label": "Unit",
+      "fieldtype": "Data",
+      "fetch_from": "parameter.unit",
+      "read_only": 1,
+      "in_list_view": 1,
+      "columns": 2
+    },
+    {
+      "fieldname": "placeholder",
+      "label": "Placeholder",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "in_list_view": 1,
+      "columns": 2,
+      "description": "Use this token in the Message to print the value."
+    }
+  ],
+  "permissions": []
+}

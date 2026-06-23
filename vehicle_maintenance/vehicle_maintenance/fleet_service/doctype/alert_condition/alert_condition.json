@@ -1,0 +1,66 @@
+{
+  "name": "Alert Condition",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "description": "One predicate of a compound Alert Type. Conditions sharing a Group are combined with AND; groups are combined with OR (fires when any group fully matches).",
+  "fields": [
+    {
+      "fieldname": "condition_group",
+      "label": "Group",
+      "fieldtype": "Int",
+      "default": "1",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 1,
+      "description": "Same group = AND. Different groups = OR."
+    },
+    {
+      "fieldname": "parameter",
+      "label": "Reading",
+      "fieldtype": "Link",
+      "options": "Telemetry Parameter",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "param_type",
+      "label": "Kind",
+      "fieldtype": "Data",
+      "fetch_from": "parameter.data_type",
+      "read_only": 1
+    },
+    {
+      "fieldname": "op",
+      "label": "Condition",
+      "fieldtype": "Select",
+      "options": "is greater than (>)\nis greater than or equal to (≥)\nis less than (<)\nis less than or equal to (≤)\nis exactly (=)\nis not (≠)",
+      "default": "is greater than (>)",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "value",
+      "label": "Value",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 2,
+      "description": "Number for numeric readings; the state (e.g. OFFLINE / Yes) for category or Yes-No readings."
+    },
+    {
+      "fieldname": "unit",
+      "label": "Unit",
+      "fieldtype": "Data",
+      "fetch_from": "parameter.unit",
+      "read_only": 1,
+      "in_list_view": 1,
+      "columns": 1
+    }
+  ],
+  "permissions": []
+}

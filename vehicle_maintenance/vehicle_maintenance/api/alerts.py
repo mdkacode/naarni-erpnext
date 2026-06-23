@@ -25,6 +25,32 @@ from frappe import _
 from vehicle_maintenance.fleet_service.doctype.alert_type.alert_type import op_to_symbol
 
 STAFF_ROLES = {"Central Ops", "System Manager", "Administrator"}
+
+
+def _compile_condition(c: dict, param_types: dict) -> dict:
+	"""Compile one Alert Condition child row into the engine wire shape, splitting the
+	free-text value into a numeric threshold or a categorical match_value by the
+	reading's data type (mirrors the primary condition's split)."""
+	ptype = param_types.get(c["parameter"], "Numeric")
+	value = (c.get("value") or "").strip()
+	out = {
+		"group": c.get("condition_group") or 1,
+		"parameter": c["parameter"],
+		"op": op_to_symbol(c.get("op")),
+		"unit": c.get("unit"),
+	}
+	if ptype in ("Categorical", "Boolean"):
+		out["threshold"] = 0
+		out["match_value"] = value
+	else:
+		try:
+			out["threshold"] = float(value)
+		except (TypeError, ValueError):
+			out["threshold"] = 0.0
+		out["match_value"] = None
+	return out
+
+
 CHANNEL_MAP = (
 	# (DocType fieldname, engine channel token)
 	("notify_in_app", "in_app"),
@@ -422,6 +448,36 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		)
 	}
 
+	# Telemetry parameter -> data_type, to split each condition's free-text value into
+	# a numeric threshold or a categorical match_value (same rule as the primary).
+	param_types = {
+		p["name"]: (p["data_type"] or "Numeric")
+		for p in frappe.get_all("Telemetry Parameter", fields=["name", "data_type"], limit_page_length=0)
+	}
+
+	# Compound conditions + display parameters, grouped by their parent Alert Type.
+	conditions_by_at: dict[str, list[dict]] = {}
+	for c in frappe.get_all(
+		"Alert Condition",
+		filters={"parenttype": "Alert Type"},
+		fields=["parent", "condition_group", "parameter", "op", "value", "unit"],
+		order_by="parent asc, idx asc",
+		limit_page_length=0,
+	):
+		conditions_by_at.setdefault(c["parent"], []).append(_compile_condition(c, param_types))
+
+	display_by_at: dict[str, list[dict]] = {}
+	for d in frappe.get_all(
+		"Alert Display Parameter",
+		filters={"parenttype": "Alert Type"},
+		fields=["parent", "parameter", "label", "unit"],
+		order_by="parent asc, idx asc",
+		limit_page_length=0,
+	):
+		display_by_at.setdefault(d["parent"], []).append(
+			{"parameter": d["parameter"], "label": d.get("label"), "unit": d.get("unit")}
+		)
+
 	# Teams channel registry: friendly name -> decrypted webhook URL, + the default.
 	# A subscription's `teams_channel` selects one of these; the engine resolves the
 	# webhook and posts there (falling back to the default, then the env webhook).
@@ -512,6 +568,8 @@ def get_engine_config(service_key: str | None = None) -> dict:
 					"suppression_min": sub.suppression_min or 15,
 					"channels": _channels_to_list(sub),
 					"channel": sub.get("teams_channel") or None,
+					"conditions": conditions_by_at.get(sub.alert_type, []),
+					"display_parameters": display_by_at.get(sub.alert_type, []),
 					"vehicles": rule_vehicles,  # [] = applies to all of the customer's vehicles
 				}
 			)
@@ -606,6 +664,7 @@ def ingest_alert_event(service_key: str | None = None, payload: Any = None, **kw
 		"threshold": _to_float(data.get("threshold")),
 		"match_value": data.get("match_value"),
 		"message": data.get("message"),
+		"details": data.get("details"),
 		"latitude": _to_float(data.get("latitude")),
 		"longitude": _to_float(data.get("longitude")),
 		"maps_link": data.get("maps_link"),

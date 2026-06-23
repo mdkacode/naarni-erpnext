@@ -123,6 +123,25 @@
       "options": "<div style='color:#888;font-size:13px'>Fill in the steps above to see a preview of when this alert fires.</div>"
     },
     {
+      "fieldname": "section_step3b",
+      "label": "Step 3b · More conditions (optional)",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "description": "Combine several readings. Conditions in the SAME group must all be true together (AND); different groups are alternatives (OR). The alert fires when any one group fully matches. Leave empty for a single-condition alert. Example: Group 1 = motor temp > 80 AND speed > 5; Group 2 = coolant < 10  →  fires on either situation."
+    },
+    {
+      "fieldname": "conditions",
+      "label": "Additional Conditions",
+      "fieldtype": "Table",
+      "options": "Alert Condition"
+    },
+    {
+      "fieldname": "expression_preview",
+      "label": "Trigger Expression",
+      "fieldtype": "HTML",
+      "options": "<div style='color:#888;font-size:13px'>Add conditions above to see the full trigger expression.</div>"
+    },
+    {
       "fieldname": "section_step4",
       "label": "Step 4 · How it looks & where it goes",
       "fieldtype": "Section Break",
@@ -145,7 +164,20 @@
       "fieldname": "message_template",
       "label": "Message",
       "fieldtype": "Small Text",
-      "description": "The line shown in the notification. Use placeholders in {curly braces}: {vehicle} {registration} {parameter} {value} {unit} {op} {limit} {location} {time}. Example: 💨 {vehicle} speeding at {value}{unit} near {location}. Leave blank for a sensible default. Vehicle number + position are always shown regardless."
+      "description": "The line shown in the notification. Placeholders in {curly braces}: {vehicle} {registration} {parameter} {value} {unit} {op} {limit} {location} {time} {details}. {details} prints all the readings below. You can also use a reading's own token, e.g. {p_bat_soc}. Example: 🌡️ {value}{unit}; also {details}. Leave blank for a sensible default."
+    },
+    {
+      "fieldname": "section_readings",
+      "label": "Also show these readings in the alert (optional)",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "description": "Extra readings to display in the alert message/card (not part of the trigger). Each is available as {details} (all together) and as its own token shown in the Placeholder column."
+    },
+    {
+      "fieldname": "display_parameters",
+      "label": "Readings to Show",
+      "fieldtype": "Table",
+      "options": "Alert Display Parameter"
     },
     {
       "fieldname": "column_break_s4",

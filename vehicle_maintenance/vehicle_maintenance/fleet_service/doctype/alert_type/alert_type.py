@@ -58,6 +58,43 @@ class AlertType(Document):
 		if not self.title:
 			self.title = self.alert_name
 		self._validate_rule()
+		self._validate_conditions()
+		self._validate_display_parameters()
+
+	def _validate_conditions(self) -> None:
+		"""Each additional condition must be self-consistent: numeric reading -> a
+		number + numeric operator; category/Yes-No -> an equality operator + a value.
+		This is the engine's safety net regardless of what the form did."""
+		for c in self.conditions or []:
+			sym = op_to_symbol(c.op)
+			ptype = frappe.db.get_value("Telemetry Parameter", c.parameter, "data_type") or "Numeric"
+			value = (c.value or "").strip()
+			if not value:
+				frappe.throw(_("Set a value for the condition on {0}.").format(c.parameter))
+			if ptype in ("Categorical", "Boolean"):
+				if sym not in ("==", "!="):
+					frappe.throw(
+						_('Condition on {0} ({1}) must use "is exactly" or "is not".').format(
+							c.parameter, ptype
+						)
+					)
+			else:
+				try:
+					float(value)
+				except ValueError:
+					frappe.throw(_("Condition on {0} needs a number, got '{1}'.").format(c.parameter, value))
+			if not c.condition_group or c.condition_group < 1:
+				c.condition_group = 1
+
+	def _validate_display_parameters(self) -> None:
+		seen = set()
+		for d in self.display_parameters or []:
+			if d.parameter in seen:
+				frappe.throw(_("Reading {0} is listed twice in 'Readings to Show'.").format(d.parameter))
+			seen.add(d.parameter)
+			# Must match the engine's placeholder exactly: f"p_{parameter}" (raw
+			# Telemetry Parameter name = the silver column the engine reads).
+			d.placeholder = "{p_" + d.parameter + "}"
 
 	def _validate_rule(self) -> None:
 		"""Number readings need a value + numeric condition; Category / Yes-No

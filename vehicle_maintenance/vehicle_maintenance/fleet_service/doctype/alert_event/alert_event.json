@@ -148,6 +148,13 @@
       "read_only": 1
     },
     {
+      "fieldname": "details",
+      "label": "Readings",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "description": "Extra readings captured at the time of the alert (display parameters)."
+    },
+    {
       "fieldname": "section_location",
       "label": "Location & Timing",
       "fieldtype": "Section Break"

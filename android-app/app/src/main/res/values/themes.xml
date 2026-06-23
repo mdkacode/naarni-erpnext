@@ -1,0 +1,5 @@
+<resources>
+    <!-- Base theme: Compose owns the real theming (ui/theme/Theme.kt). This is the
+         launch theme used before the first Compose frame. -->
+    <style name="Theme.NaarniService" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

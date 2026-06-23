@@ -1,0 +1,122 @@
+package com.naarni.service.core.network
+
+import com.naarni.service.data.dto.CreatedJobCard
+import com.naarni.service.data.dto.FileUploadData
+import com.naarni.service.data.dto.FormContext
+import com.naarni.service.data.dto.JobCardListItem
+import com.naarni.service.data.dto.LoginData
+import com.naarni.service.data.dto.NotificationItem
+import com.naarni.service.data.dto.SuggestionItem
+import com.naarni.service.data.dto.UnreadCount
+import com.naarni.service.data.dto.VehicleHit
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
+import retrofit2.http.GET
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
+import retrofit2.http.Query
+
+/**
+ * Retrofit interface for the deployed `vehicle_maintenance` whitelisted methods
+ * (base https://service.naarni.com/). Every method auto-fills or feeds a
+ * searchable dropdown — there is no free-text-only endpoint.
+ */
+interface FrappeApi {
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.auth.login_with_phone")
+    suspend fun loginWithPhone(
+        @Field("phone") phone: String,
+        @Field("password") password: String,
+    ): FrappeWrap<Envelope<LoginData>>
+
+    @GET("api/method/vehicle_maintenance.fleet_service.doctype.job_card.job_card.get_user_roles")
+    suspend fun getUserRoles(): FrappeWrap<List<String>>
+
+    // ── Auto-fill ──
+    @GET("api/method/vehicle_maintenance.api.job_card.get_job_card_form_context")
+    suspend fun getFormContext(
+        @Query("vehicle") vehicle: String,
+        @Query("job_card_type") jobCardType: String,
+        @Query("odometer") odometer: Int? = null,
+    ): FrappeWrap<Envelope<FormContext>>
+
+    // ── SmartSelect sources ──
+    @GET("api/method/vehicle_maintenance.api.job_card.search_vehicles")
+    suspend fun searchVehicles(
+        @Query("txt") txt: String,
+        @Query("limit") limit: Int = 10,
+    ): FrappeWrap<Envelope<List<VehicleHit>>>
+
+    @GET("api/method/vehicle_maintenance.api.job_card.list_complaints")
+    suspend fun listComplaints(
+        @Query("subsystem") subsystem: String = "",
+        @Query("txt") txt: String = "",
+        @Query("limit") limit: Int = 20,
+    ): FrappeWrap<Envelope<List<SuggestionItem>>>
+
+    @GET("api/method/vehicle_maintenance.api.job_card.list_fault_codes")
+    suspend fun listFaultCodes(
+        @Query("part_group") partGroup: String = "",
+        @Query("subsystem") subsystem: String = "",
+        @Query("txt") txt: String = "",
+        @Query("limit") limit: Int = 20,
+    ): FrappeWrap<Envelope<List<SuggestionItem>>>
+
+    @GET("api/method/vehicle_maintenance.api.job_card.list_observation_templates")
+    suspend fun listObservationTemplates(
+        @Query("subsystem") subsystem: String = "",
+        @Query("txt") txt: String = "",
+        @Query("limit") limit: Int = 20,
+    ): FrappeWrap<Envelope<List<SuggestionItem>>>
+
+    // ── Job cards ──
+    @GET("api/method/vehicle_maintenance.api.job_card.get_my_job_cards")
+    suspend fun getMyJobCards(
+        @Query("status") status: String = "",
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0,
+    ): FrappeWrap<Envelope<List<JobCardListItem>>>
+
+    // ── Notifications ──
+    @GET("api/method/vehicle_maintenance.api.notifications.get_my_notifications")
+    suspend fun getMyNotifications(
+        @Query("limit") limit: Int = 30,
+        @Query("offset") offset: Int = 0,
+    ): FrappeWrap<Envelope<List<NotificationItem>>>
+
+    @GET("api/method/vehicle_maintenance.api.notifications.get_unread_count")
+    suspend fun getUnreadCount(): FrappeWrap<Envelope<UnreadCount>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.notifications.register_push_token")
+    suspend fun registerPushToken(
+        @Field("device_token") deviceToken: String,
+        @Field("platform") platform: String = "android",
+    ): FrappeWrap<Envelope<Map<String, String>>>
+
+    // ── Create ──
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.job_card.create_job_card_with_inspection")
+    suspend fun createJobCard(
+        @Field("vehicle_number") vehicleNumber: String,
+        @Field("odometer_reading") odometer: Int,
+        @Field("service_type") serviceType: String,
+        @Field("job_card_type") jobCardType: String,
+        @Field("complaint_description") complaint: String = "",
+        @Field("technician_notes") technicianNotes: String = "",
+    ): FrappeWrap<Envelope<CreatedJobCard>>
+
+    // ── File upload (Frappe built-in; attaches to the Job Card) ──
+    @Multipart
+    @POST("api/method/upload_file")
+    suspend fun uploadFile(
+        @Part file: MultipartBody.Part,
+        @Part("doctype") doctype: RequestBody,
+        @Part("docname") docname: RequestBody,
+        @Part("is_private") isPrivate: RequestBody,
+    ): FrappeWrap<FileUploadData>
+}

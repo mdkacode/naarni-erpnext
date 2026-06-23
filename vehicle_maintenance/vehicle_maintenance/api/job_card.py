@@ -113,10 +113,12 @@ def search_vehicles(txt: str = "", limit: int = 10) -> dict:
 
 	vehicles = frappe.db.sql(
 		"""
-        SELECT name, registration_number, make_model, customer, fuel_type, color
+        SELECT name, registration_number, make_model, customer, fuel_type, color,
+               operator, depot, naarni_vehicle_id
         FROM tabVehicle
         WHERE registration_number LIKE %(txt)s
            OR make_model LIKE %(txt)s
+           OR operator LIKE %(txt)s
         ORDER BY registration_number ASC
         LIMIT %(limit)s
     """,
@@ -335,6 +337,12 @@ def get_job_card_form_context(vehicle: str, job_card_type: str, odometer: int | 
 			data["last_pms_odometer"] = d.get("last_pms_odometer")
 			data["last_serviced_by"] = d.get("last_serviced_by")
 			data["last_service_tolerance_level"] = d.get("last_service_tolerance_level")
+
+	# Fold in live Naarni telemetry (running-km odometer, operator, location) when
+	# the vehicle is linked. Best-effort — never blocks the form if Naarni is down.
+	from vehicle_maintenance.integrations import naarni_vehicles
+
+	naarni_vehicles.enrich_form_context(vehicle, data)
 
 	return {"success": True, "data": data}
 

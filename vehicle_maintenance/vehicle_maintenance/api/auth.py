@@ -119,6 +119,11 @@ def verify_otp(phone: str, otp: str, device_uuid: str | None = None, platform: s
 
 	user = _provision_naarni_user(normalized, naarni_uuid, authorities)
 
+	# If a Naarni admin logs in and the vehicle-sync service account isn't seeded
+	# yet, bootstrap it from this login so the whole fleet starts flowing into
+	# Frappe — no manual console step needed. Best-effort; never blocks login.
+	_maybe_bootstrap_vehicle_sync(authorities, tokens, device_uuid)
+
 	lm = LoginManager()
 	lm.user = user
 	if getattr(frappe.local, "request", None) is not None:
@@ -137,6 +142,49 @@ def verify_otp(phone: str, otp: str, device_uuid: str | None = None, platform: s
 		},
 		"message": _("Logged in."),
 	}
+
+
+def _is_naarni_admin(authorities: list) -> bool:
+	"""True if the Naarni claims grant an admin role (vehicle endpoints need ADMIN)."""
+	return any("ADMIN" in str(a).upper() for a in (authorities or []))
+
+
+def _maybe_bootstrap_vehicle_sync(authorities: list, tokens: dict, device_uuid: str | None) -> None:
+	"""Seed the vehicle-sync service account from an admin's OTP login (once).
+
+	The vehicle directory is ADMIN-gated, so the sync needs an admin's token. Rather
+	than a manual console bootstrap, the first Naarni admin to log in donates their
+	90-day refresh token + this device as the service credentials, enables the
+	integration, and triggers an immediate sync. Idempotent (skips once seeded) and
+	fully guarded so a failure here never breaks login.
+	"""
+	try:
+		if not _is_naarni_admin(authorities):
+			return
+		conf = frappe.conf or {}
+		if conf.get("naarni_service_refresh_token"):
+			return  # already bootstrapped
+		refresh = (tokens or {}).get("refresh_token")
+		if not refresh or not device_uuid:
+			return
+
+		from frappe.installer import update_site_config
+
+		# The refresh-token grant needs the same device the token was issued for.
+		dev_uuid, dev_id = naarni_client._resolve_device(device_uuid)
+		update_site_config("naarni_broker_device_uuid", dev_uuid)
+		update_site_config("naarni_broker_device_id", dev_id)
+		update_site_config("naarni_service_refresh_token", refresh)
+		update_site_config("enable_naarni_integration", 1)
+
+		frappe.enqueue(
+			"vehicle_maintenance.integrations.naarni_vehicles.sync_vehicle_directory",
+			queue="long",
+			enqueue_after_commit=True,
+		)
+		frappe.logger("naarni").info("vehicle-sync service account bootstrapped from admin login")
+	except Exception:
+		frappe.log_error(title="Naarni vehicle-sync bootstrap from login failed")
 
 
 def _provision_naarni_user(phone: str, naarni_uuid: str | None, authorities: list) -> str:

@@ -22,7 +22,7 @@ Two distinct auth surfaces are used:
 Required site_config entries (never commit these — set with `bench set-config`):
 
     enable_naarni_integration     1                       # master on/off
-    naarni_base_url               https://api.naarni.com/api  # optional, this default
+    naarni_base_url               https://api.naarni.com      # optional, this default
     naarni_client_id              <oauth client id>
     naarni_broker_device_uuid     <uuid>                  # from setup_naarni.bootstrap
     naarni_broker_device_id       <numeric device id>     # from setup_naarni.bootstrap
@@ -44,11 +44,11 @@ from typing import Any
 import frappe
 import requests
 
-# The Naarni backend is served behind the `/api` ALB path prefix (helm
-# API_BASE_PATH=/api). Verified live: GET /api/v1/analytics/vehicles -> 401,
-# POST /api/v1/auth/token -> 401 "Invalid phone". Override per-site with
-# `naarni_base_url` if a different environment is used.
-DEFAULT_BASE_URL = "https://api.naarni.com/api"
+# The Naarni backend endpoint. Request paths carry the `/api` ALB prefix (helm
+# API_BASE_PATH=/api) themselves, so the base is just the host. Verified live:
+# GET https://api.naarni.com/api/v1/analytics/vehicles -> 401, POST .../v1/auth/token
+# -> 401 "Invalid phone". Override per-site with `naarni_base_url`.
+DEFAULT_BASE_URL = "https://api.naarni.com"
 DEFAULT_CLIENT_ID = "naarni-app"
 DEFAULT_PLATFORM = "ANDROID"
 
@@ -99,7 +99,12 @@ def is_login_enabled() -> bool:
 
 
 def base_url() -> str:
-	return (_conf().get("naarni_base_url") or DEFAULT_BASE_URL).rstrip("/")
+	# Request paths already include the /api prefix, so normalise a configured base
+	# that carries it too (accept both https://api.naarni.com and .../api).
+	raw = (_conf().get("naarni_base_url") or DEFAULT_BASE_URL).rstrip("/")
+	if raw.endswith("/api"):
+		raw = raw[: -len("/api")]
+	return raw
 
 
 def client_id() -> str:
@@ -207,7 +212,7 @@ def register_device(
 	if push_token:
 		payload["pushNotificationToken"] = push_token
 
-	body = _post_json("/v1/devices", payload)
+	body = _post_json("/api/v1/devices", payload)
 	env = body if isinstance(body, dict) else {}
 	# NaarniHttpResponse: {"body": {"id": .., "deviceUuid": ..}, "success": true, ...}
 	record = env.get("body") or env.get("data") or env
@@ -252,7 +257,7 @@ def request_otp(phone: str, device_uuid: str | None = None, platform: str = DEFA
 	_require_login_enabled()
 	dev_uuid, dev_id = _resolve_device(device_uuid, platform)
 	_post_json(
-		"/v1/auth/otp/generate",
+		"/api/v1/auth/otp/generate",
 		{"contact": phone, "contactType": "PHONE", "deviceId": dev_id},
 		headers={HEADER_DEVICE_ID: dev_uuid, HEADER_PLATFORM: platform},
 	)
@@ -269,7 +274,7 @@ def exchange_phone_otp(
 	_require_login_enabled()
 	dev_uuid, dev_id = _resolve_device(device_uuid, platform)
 	body = _post_form(
-		"/v1/auth/token",
+		"/api/v1/auth/token",
 		{
 			"grant_type": GRANT_PHONE,
 			"phone": phone,
@@ -296,7 +301,7 @@ def _mint_service_token() -> str:
 		)
 	dev_uuid, dev_id = _broker_device()
 	body = _post_form(
-		"/v1/auth/token",
+		"/api/v1/auth/token",
 		{
 			"grant_type": GRANT_REFRESH,
 			"refresh_token": refresh_token,
@@ -343,7 +348,7 @@ def list_vehicles() -> list[dict]:
 	Each row: {vehicleId, registrationNumber, model, make, status, depotName, operator}.
 	"""
 	_require_enabled()
-	body = _get_with_service_token("/v1/analytics/vehicles")
+	body = _get_with_service_token("/api/v1/analytics/vehicles")
 	return body if isinstance(body, list) else []
 
 
@@ -354,7 +359,7 @@ def get_vehicle_detail(vehicle_id: int | str) -> dict | None:
 	job-card odometer. Returns None if the vehicle is not accessible / unknown.
 	"""
 	_require_enabled()
-	body = _get_with_service_token(f"/v1/analytics/vehicles/{vehicle_id}")
+	body = _get_with_service_token(f"/api/v1/analytics/vehicles/{vehicle_id}")
 	return body if isinstance(body, dict) else None
 
 

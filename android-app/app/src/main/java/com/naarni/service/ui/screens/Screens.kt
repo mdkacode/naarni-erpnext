@@ -158,18 +158,68 @@ private fun JobCardRow(jc: JobCardListItem) {
 }
 
 @Composable
-fun AlertsScreen() = PlaceholderTab(
-    icon = Icons.Filled.NotificationsActive,
-    title = "Alerts",
-    body = "Live alerts for the buses and depots you cover will appear here — severity, the reading vs threshold, a map pin, and a link to the ticket. Activates with the Phase-0 backend feed.",
-)
+fun AlertsScreen(vm: AppViewModel) {
+    var items by remember { mutableStateOf<List<com.naarni.service.data.dto.AlertEventItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        runCatching { vm.jobCards.myAlertEvents() }.onSuccess { items = it }.also { loading = false }
+    }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(20.dp)) {
+        Text("Alerts", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        when {
+            loading -> Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(Icons.Filled.NotificationsActive, "No alerts", "Alerts for the buses at your depot show up here. (None yet, or your depot has no assigned buses.)")
+            }
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(items, key = { it.name }) { a ->
+                    Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(a.title ?: a.parameter ?: a.name, style = MaterialTheme.typography.titleMedium)
+                                Text("${a.registration_number ?: ""}  ·  ${a.message ?: ""}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            StatusChip(a.severity)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
-fun TicketsScreen() = PlaceholderTab(
-    icon = Icons.Filled.ConfirmationNumber,
-    title = "Tickets",
-    body = "Tickets auto-raised from alerts for your depot's buses. Acknowledge, resolve, or turn one into a Job Card — and push notifications deeplink straight here. Activates with the Phase-0 backend.",
-)
+fun TicketsScreen(vm: AppViewModel) {
+    var items by remember { mutableStateOf<List<com.naarni.service.data.dto.TicketItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        runCatching { vm.jobCards.myTickets() }.onSuccess { items = it }.also { loading = false }
+    }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(20.dp)) {
+        Text("Tickets", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        when {
+            loading -> Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(Icons.Filled.ConfirmationNumber, "No tickets", "Tickets auto-raised from alerts for your depot's buses appear here.")
+            }
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(items, key = { it.name }) { t ->
+                    Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(t.title ?: t.name, style = MaterialTheme.typography.titleMedium)
+                                Text(t.registration_number ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            StatusChip(t.status)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun ProfileScreen(vm: AppViewModel) {

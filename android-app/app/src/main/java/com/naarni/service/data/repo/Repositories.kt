@@ -4,10 +4,12 @@ import com.naarni.service.core.auth.SessionManager
 import com.naarni.service.core.network.ApiException
 import com.naarni.service.core.network.FrappeApi
 import com.naarni.service.core.network.payload
+import com.naarni.service.data.dto.AlertEventItem
 import com.naarni.service.data.dto.FormContext
 import com.naarni.service.data.dto.JobCardListItem
 import com.naarni.service.data.dto.NotificationItem
 import com.naarni.service.data.dto.SuggestionItem
+import com.naarni.service.data.dto.TicketItem
 import com.naarni.service.data.dto.VehicleHit
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -97,4 +99,18 @@ class JobCardRepository(private val api: FrappeApi) {
         fun text(v: String) = v.toRequestBody("text/plain".toMediaType())
         api.uploadFile(part, text("Job Card"), text(jobCardName), text("0"))
     }
+
+    // ── Tickets + SE-scoped alerts ──
+    suspend fun myTickets(status: String = ""): List<TicketItem> =
+        api.getMyTickets(status).payload()
+
+    suspend fun myAlertEvents(): List<AlertEventItem> =
+        api.getMyAlertEvents().payload()
+
+    suspend fun acknowledgeTicket(name: String) { api.acknowledgeTicket(name).payload() }
+
+    suspend fun resolveTicket(name: String, reason: String) { api.resolveTicket(name, reason).payload() }
+
+    suspend fun createJobCardFromTicket(name: String): String =
+        api.createJobCardFromTicket(name).payload()["job_card"].orEmpty()
 }

@@ -92,3 +92,31 @@ data class FileUploadData(
     val name: String? = null,
     val file_url: String? = null,
 )
+
+@Serializable
+data class TicketItem(
+    val name: String,
+    val title: String? = null,
+    val status: String? = null,
+    val severity: String? = null,
+    val registration_number: String? = null,
+    val depot: String? = null,
+    val vehicle: String? = null,
+    val job_card: String? = null,
+    val deeplink: String? = null,
+)
+
+@Serializable
+data class AlertEventItem(
+    val name: String,
+    val title: String? = null,
+    val severity: String? = null,
+    val status: String? = null,
+    val registration_number: String? = null,
+    val parameter: String? = null,
+    val value: Double? = null,
+    val unit: String? = null,
+    val threshold: Double? = null,
+    val message: String? = null,
+    val occurred_at: String? = null,
+)

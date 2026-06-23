@@ -1,8 +1,10 @@
 package com.naarni.service.core.network
 
+import com.naarni.service.data.dto.AlertEventItem
 import com.naarni.service.data.dto.CreatedJobCard
 import com.naarni.service.data.dto.FileUploadData
 import com.naarni.service.data.dto.FormContext
+import com.naarni.service.data.dto.TicketItem
 import com.naarni.service.data.dto.JobCardListItem
 import com.naarni.service.data.dto.LoginData
 import com.naarni.service.data.dto.NotificationItem
@@ -119,4 +121,36 @@ interface FrappeApi {
         @Part("docname") docname: RequestBody,
         @Part("is_private") isPrivate: RequestBody,
     ): FrappeWrap<FileUploadData>
+
+    // ── Tickets + SE-scoped alerts (Phase-0) ──
+    @GET("api/method/vehicle_maintenance.api.tickets.get_my_tickets")
+    suspend fun getMyTickets(
+        @Query("status") status: String = "",
+        @Query("limit") limit: Int = 50,
+    ): FrappeWrap<Envelope<List<TicketItem>>>
+
+    @GET("api/method/vehicle_maintenance.api.tickets.get_my_alert_events")
+    suspend fun getMyAlertEvents(
+        @Query("severity") severity: String = "",
+        @Query("status") status: String = "",
+        @Query("limit") limit: Int = 50,
+    ): FrappeWrap<Envelope<List<AlertEventItem>>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.tickets.acknowledge_ticket")
+    suspend fun acknowledgeTicket(@Field("name") name: String): FrappeWrap<Envelope<Map<String, String>>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.tickets.resolve_ticket")
+    suspend fun resolveTicket(
+        @Field("name") name: String,
+        @Field("reason") reason: String = "",
+    ): FrappeWrap<Envelope<Map<String, String>>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.tickets.create_job_card_from_ticket")
+    suspend fun createJobCardFromTicket(
+        @Field("name") name: String,
+        @Field("job_card_type") jobCardType: String = "Breakdown",
+    ): FrappeWrap<Envelope<Map<String, String>>>
 }

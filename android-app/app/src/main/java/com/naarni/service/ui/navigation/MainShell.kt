@@ -70,8 +70,8 @@ fun MainShell(vm: AppViewModel) {
         ) {
             composable(Tab.Home.route) { HomeScreen(vm = vm, onCreateJobCard = { nav.navigate("create") }) }
             composable(Tab.JobCards.route) { JobCardsScreen(vm) }
-            composable(Tab.Alerts.route) { AlertsScreen() }
-            composable(Tab.Tickets.route) { TicketsScreen() }
+            composable(Tab.Alerts.route) { AlertsScreen(vm) }
+            composable(Tab.Tickets.route) { TicketsScreen(vm) }
             composable(Tab.Profile.route) { ProfileScreen(vm) }
             composable("create") { CreateJobCardScreen(vm, onDone = { nav.popBackStack() }) }
         }

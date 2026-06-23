@@ -44,9 +44,9 @@ class AuthRepository(
         }
     }
 
-    /** Step 1 of OTP login: ask the backend to send a code to this phone. */
+    /** Step 1 of OTP login: ask the backend to send a code to this phone (device-bound). */
     suspend fun requestOtp(phone: String): Result<Unit> = runCatching {
-        val env = api.requestOtp(phone).message
+        val env = api.requestOtp(phone, session.deviceUuid).message
         if (env?.success == false) throw ApiException(env.message ?: "Could not send code")
     }
 
@@ -55,7 +55,7 @@ class AuthRepository(
      * the backend (Naarni-brokered) and we enrich display user/roles.
      */
     suspend fun verifyOtp(phone: String, otp: String): Result<Unit> = runCatching {
-        val resp = api.verifyOtp(phone, otp)
+        val resp = api.verifyOtp(phone, otp, session.deviceUuid)
         resp.message?.let { env ->
             if (!env.success && session.sid.isNullOrBlank()) {
                 throw ApiException(env.message ?: "Invalid code")

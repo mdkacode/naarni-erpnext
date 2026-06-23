@@ -171,27 +171,55 @@ def register_device(device_uuid: str, platform: str = DEFAULT_PLATFORM) -> int:
 	return int(device_id)
 
 
+def _resolve_device(device_uuid: str | None, platform: str = DEFAULT_PLATFORM) -> tuple[str, int]:
+	"""Resolve (uuid, numeric_id) for the device to use on an OTP/token call.
+
+	With a per-app `device_uuid` (the proper flow — each install owns a device),
+	register it with Naarni (idempotent) and cache uuid->id so the OTP *request*
+	and *verify* hit the same device (Naarni validates the OTP against
+	contact + deviceId). With no uuid, fall back to the shared broker device
+	(web / legacy callers / the service account).
+	"""
+	if not device_uuid:
+		return _broker_device()
+	cache = frappe.cache()
+	cache_key = f"naarni_device_id:{device_uuid}"
+	cached = cache.get_value(cache_key)
+	if cached:
+		return device_uuid, int(cached)
+	device_id = register_device(device_uuid, platform=platform)
+	cache.set_value(cache_key, device_id, expires_in_sec=30 * 24 * 60 * 60)
+	return device_uuid, device_id
+
+
 # ──────────────────────────── user OTP login (brokered) ────────────────────────────
 
 
-def request_otp(phone: str) -> None:
-	"""Ask Naarni to send a login OTP to `phone`, via the shared broker device."""
+def request_otp(phone: str, device_uuid: str | None = None, platform: str = DEFAULT_PLATFORM) -> None:
+	"""Ask Naarni to send a login OTP to `phone` from the caller's device.
+
+	`device_uuid` is the app install's own device id (registered on first use);
+	omit it to use the shared broker device.
+	"""
 	_require_enabled()
-	dev_uuid, dev_id = _broker_device()
+	dev_uuid, dev_id = _resolve_device(device_uuid, platform)
 	_post_json(
 		"/v1/auth/otp/generate",
 		{"contact": phone, "contactType": "PHONE", "deviceId": dev_id},
-		headers={HEADER_DEVICE_ID: dev_uuid, HEADER_PLATFORM: DEFAULT_PLATFORM},
+		headers={HEADER_DEVICE_ID: dev_uuid, HEADER_PLATFORM: platform},
 	)
 
 
-def exchange_phone_otp(phone: str, otp: str | int) -> dict:
+def exchange_phone_otp(
+	phone: str, otp: str | int, device_uuid: str | None = None, platform: str = DEFAULT_PLATFORM
+) -> dict:
 	"""Verify phone+OTP against Naarni; return {'access_token', 'refresh_token'}.
 
-	Raises NaarniApiError on an invalid/expired OTP (Naarni answers 4xx).
+	Must use the SAME device as the matching `request_otp` call (Naarni keys the
+	OTP on contact + deviceId). Raises NaarniApiError on an invalid/expired OTP.
 	"""
 	_require_enabled()
-	dev_uuid, dev_id = _broker_device()
+	dev_uuid, dev_id = _resolve_device(device_uuid, platform)
 	body = _post_form(
 		"/v1/auth/token",
 		{
@@ -201,7 +229,7 @@ def exchange_phone_otp(phone: str, otp: str | int) -> dict:
 			"device_id": str(dev_id),
 			"client_id": client_id(),
 		},
-		headers={HEADER_DEVICE_ID: dev_uuid, HEADER_PLATFORM: DEFAULT_PLATFORM},
+		headers={HEADER_DEVICE_ID: dev_uuid, HEADER_PLATFORM: platform},
 	)
 	if not isinstance(body, dict) or not body.get("access_token"):
 		raise NaarniApiError(f"Token endpoint returned no access_token: {body}")

@@ -36,11 +36,13 @@ interface FrappeApi {
         @Field("password") password: String,
     ): FrappeWrap<Envelope<LoginData>>
 
-    // ── Unified OTP SSO (Naarni-brokered) ──
+    // ── Unified OTP SSO (Naarni-brokered, device-bound) ──
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.auth.request_otp")
     suspend fun requestOtp(
         @Field("phone") phone: String,
+        @Field("device_uuid") deviceUuid: String,
+        @Field("platform") platform: String = "ANDROID",
     ): FrappeWrap<Envelope<OtpStatus>>
 
     @FormUrlEncoded
@@ -48,6 +50,8 @@ interface FrappeApi {
     suspend fun verifyOtp(
         @Field("phone") phone: String,
         @Field("otp") otp: String,
+        @Field("device_uuid") deviceUuid: String,
+        @Field("platform") platform: String = "ANDROID",
     ): FrappeWrap<Envelope<LoginData>>
 
     @GET("api/method/vehicle_maintenance.fleet_service.doctype.job_card.job_card.get_user_roles")

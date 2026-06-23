@@ -64,12 +64,14 @@ def login_with_phone(phone: str, password: str) -> dict:
 
 
 @frappe.whitelist(allow_guest=True)
-def request_otp(phone: str) -> dict:
+def request_otp(phone: str, device_uuid: str | None = None, platform: str = "ANDROID") -> dict:
 	"""Ask the Naarni backend to send a login OTP to `phone`.
 
-	The app talks only to Frappe; Frappe relays to Naarni (api.naarni.com) using the
-	shared broker device. Returns a generic success envelope — we never reveal whether
-	the number exists, to avoid user enumeration.
+	The app talks only to Frappe; Frappe relays to Naarni. `device_uuid` is the
+	app install's own device identity (registered with Naarni on first use); the
+	same device must be replayed to `verify_otp`. Omit it (web/legacy) to use the
+	shared broker device. Returns a generic success envelope — we never reveal
+	whether the number exists, to avoid user enumeration.
 	"""
 	if not naarni_client.is_enabled():
 		frappe.throw(_("Phone login is temporarily unavailable."), frappe.ValidationError)
@@ -78,7 +80,7 @@ def request_otp(phone: str) -> dict:
 	normalize_phone(phone)
 
 	try:
-		naarni_client.request_otp(phone.strip())
+		naarni_client.request_otp(phone.strip(), device_uuid=device_uuid, platform=platform)
 	except naarni_client.NaarniApiError:
 		# Don't leak Naarni-side detail (rate limits, unknown number) to the client.
 		frappe.log_error(title="Naarni request_otp failed")
@@ -88,11 +90,13 @@ def request_otp(phone: str) -> dict:
 
 
 @frappe.whitelist(allow_guest=True)
-def verify_otp(phone: str, otp: str) -> dict:
+def verify_otp(phone: str, otp: str, device_uuid: str | None = None, platform: str = "ANDROID") -> dict:
 	"""Verify phone + OTP via Naarni, then establish a Frappe session.
 
-	On success: exchanges the OTP for Naarni tokens, finds-or-creates the Frappe user
-	keyed by phone, stores the Naarni user UUID, and logs the user in (sets `sid`).
+	`device_uuid` MUST be the same device passed to `request_otp` (Naarni keys the
+	OTP on contact + device). On success: exchanges the OTP for Naarni tokens,
+	finds-or-creates the Frappe user keyed by phone, stores the Naarni user UUID,
+	and logs the user in (sets `sid`).
 	"""
 	if not naarni_client.is_enabled():
 		frappe.throw(_("Phone login is temporarily unavailable."), frappe.ValidationError)
@@ -102,7 +106,9 @@ def verify_otp(phone: str, otp: str) -> dict:
 	normalized = normalize_phone(phone)
 
 	try:
-		tokens = naarni_client.exchange_phone_otp(phone.strip(), otp.strip())
+		tokens = naarni_client.exchange_phone_otp(
+			phone.strip(), otp.strip(), device_uuid=device_uuid, platform=platform
+		)
 	except naarni_client.NaarniApiError:
 		frappe.throw(_("That code is invalid or expired."), frappe.AuthenticationError)
 

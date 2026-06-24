@@ -114,9 +114,9 @@ scheduler_events = {
 		"*/15 * * * *": [
 			"vehicle_maintenance.api.crm.dispatch_due_reminders",
 		],
-		# Pull the Naarni vehicle directory (operators, status, depot) so the app's
-		# vehicle dropdown stays current. No-op when the integration is disabled.
-		"*/30 * * * *": [
+		# Pull the Naarni vehicle directory (operators, status, depot) every 2 hours
+		# so the app's fleet list stays current. No-op when the integration is disabled.
+		"0 */2 * * *": [
 			"vehicle_maintenance.integrations.naarni_vehicles.sync_vehicle_directory",
 		],
 	},

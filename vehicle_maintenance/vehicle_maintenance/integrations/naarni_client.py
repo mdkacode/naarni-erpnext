@@ -317,14 +317,20 @@ def _mint_service_token() -> str:
 
 
 def service_token(*, force_refresh: bool = False) -> str:
-	"""A cached Naarni access token for the service account (minted via refresh grant)."""
+	"""A Naarni access token for the service account, used for vehicle reads.
+
+	Prefers a stored long-lived token (`naarni_service_token` — set by
+	naarni_vehicles.connect_naarni or an admin OTP login). Falls back to minting one
+	from a stored refresh token (legacy). Cached briefly so a rotated token self-heals.
+	"""
 	_require_enabled()
 	cache = frappe.cache()
 	if not force_refresh:
 		cached = cache.get_value(_SERVICE_TOKEN_CACHE_KEY)
 		if cached:
 			return cached
-	token = _mint_service_token()
+	stored = _conf().get("naarni_service_token")
+	token = stored if stored else _mint_service_token()
 	cache.set_value(_SERVICE_TOKEN_CACHE_KEY, token, expires_in_sec=_SERVICE_TOKEN_TTL_SECS)
 	return token
 
@@ -349,6 +355,12 @@ def list_vehicles() -> list[dict]:
 	"""
 	_require_enabled()
 	body = _get_with_service_token("/api/v1/analytics/vehicles")
+	return body if isinstance(body, list) else []
+
+
+def list_vehicles_with_token(token: str) -> list[dict]:
+	"""List the vehicle directory using an explicit bearer token (for connect/validation)."""
+	body = _get("/api/v1/analytics/vehicles", token)
 	return body if isinstance(body, list) else []
 
 

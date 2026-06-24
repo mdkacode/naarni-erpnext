@@ -140,14 +140,48 @@ def sync_vehicle_directory() -> dict:
 	return summary
 
 
-# ──────────────────────────── live detail ────────────────────────────
+# ──────────────────────────── live detail (full, IST) ────────────────────────────
+
+IST_OFFSET_HOURS = 5
+IST_OFFSET_MINUTES = 30
+
+
+def _to_ist(ts_utc: str | None) -> str | None:
+	"""Convert a Naarni UTC timestamp to an IST string.
+
+	Naarni sends e.g. "2026-06-24 09:13:27.475000 UTC". Per the requirement, every
+	time we surface is IST → "2026-06-24 14:43:27 IST". Returns the input unchanged
+	if it can't be parsed.
+	"""
+	if not ts_utc:
+		return None
+	from datetime import datetime, timedelta, timezone
+
+	raw = str(ts_utc).replace(" UTC", "").replace("Z", "").strip()
+	for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+		try:
+			dt = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+			ist = dt.astimezone(timezone(timedelta(hours=IST_OFFSET_HOURS, minutes=IST_OFFSET_MINUTES)))
+			return ist.strftime("%Y-%m-%d %H:%M:%S IST")
+		except ValueError:
+			continue
+	return ts_utc
+
+
+def _num(v) -> float | None:
+	try:
+		return float(v) if v is not None else None
+	except (TypeError, ValueError):
+		return None
 
 
 def live_detail(vehicle: str) -> dict | None:
-	"""Live Naarni detail for a Frappe Vehicle, normalised to a flat dict.
+	"""Full live Naarni detail for a Frappe Vehicle, normalised + IST-stamped.
 
-	Returns None when the vehicle isn't linked to Naarni or Naarni is unreachable
-	(callers must treat this as "no live data", never an error).
+	Returns every group from `/v1/analytics/vehicles/{id}` (identity, location,
+	battery, motor, charging, distance, status) flattened for easy consumption by
+	tickets, job cards, and the app. None when the vehicle isn't linked or Naarni is
+	unreachable (callers treat that as "no live data", never an error).
 	"""
 	if not naarni_client.is_enabled():
 		return None
@@ -163,34 +197,70 @@ def live_detail(vehicle: str) -> dict | None:
 		return None
 
 	identity = detail.get("identity") or {}
-	distance = detail.get("distance") or {}
 	location = detail.get("location") or {}
-	status = detail.get("status") or {}
 	battery = detail.get("battery") or {}
+	motor = detail.get("motor") or {}
+	charging = detail.get("charging") or {}
+	distance = detail.get("distance") or {}
+	status = detail.get("status") or {}
 
-	odo = distance.get("odometerreading")
+	odo = _num(distance.get("odometerreading"))
+	lat, lng = _num(location.get("latitude")), _num(location.get("longitude"))
 	return {
-		"odometer": int(float(odo)) if odo is not None else None,
+		# identity
+		"registration_number": identity.get("registrationNumber"),
 		"operator": identity.get("operator"),
 		"make": identity.get("make"),
 		"model": identity.get("model"),
 		"route_name": identity.get("routeName"),
 		"activity": identity.get("activity"),
 		"connectivity_status": identity.get("connectivityStatus"),
-		"latitude": location.get("latitude"),
-		"longitude": location.get("longitude"),
-		"battery_soc": battery.get("batSoc"),
-		"telemetry_timestamp": status.get("timestamp"),
-		"distance_to_empty": distance.get("distancetoempty"),
+		"is_registered": identity.get("isRegistered"),
+		# distance
+		"odometer": int(odo) if odo is not None else None,
+		"odometer_exact": odo,
+		"distance_to_empty": _num(distance.get("distancetoempty")),
+		# location
+		"latitude": lat,
+		"longitude": lng,
+		"altitude": _num(location.get("altitude")),
+		"ground_speed_kmph": _num(location.get("groundSpeedKmph")),
+		"maps_link": f"https://maps.google.com/?q={lat},{lng}"
+		if lat is not None and lng is not None
+		else None,
+		# battery
+		"battery_soc": _num(battery.get("batSoc")),
+		"battery_soh": _num(battery.get("soh")),
+		"battery_voltage": _num(battery.get("batVoltage")),
+		"battery_current": _num(battery.get("totalBatteryCurrent")),
+		"cell_max_c": _num(battery.get("cellmaxC")),
+		"battery_coolant_temp": _num(battery.get("batterycoolanttemperature")),
+		# motor
+		"motor_rpm": _num(motor.get("motorRpm")),
+		"motor_torque": _num(motor.get("motorTorque")),
+		"motor_temp": _num(motor.get("motorTemperature")),
+		"igbt_temp": _num(motor.get("igbtTemperature")),
+		# charging
+		"gun_connection_status": charging.get("gunConnectionStatus"),
+		"charger_current": _num(charging.get("chargerCurrent")),
+		"charger_voltage": _num(charging.get("chargerVoltage")),
+		"gun_thermal_status": charging.get("gunThermalStatus"),
+		"pack_thermal_status": charging.get("packThermalStatus"),
+		# status (timestamp in IST)
+		"ac_status": status.get("acStatus"),
+		"ignition_status": status.get("ignitionstatus"),
+		"vehicle_operation_mode": status.get("vehicleOperationMode"),
+		"last_msg_interval_mins": _num(status.get("lastMsgIntervalMins")),
+		"telemetry_at_ist": _to_ist(status.get("timestamp")),
 	}
 
 
 def enrich_form_context(vehicle: str, data: dict) -> dict:
-	"""Fold live Naarni values into a `get_job_card_form_context` payload (in place).
+	"""Fold full live Naarni detail into a `get_job_card_form_context` payload.
 
-	Live running-km becomes the odometer estimate (more accurate than the last job
-	card), operator/make/model fill gaps, and a `live` sub-dict carries telemetry
-	for display. No-op when there's no live data.
+	Live running-km becomes the odometer estimate, operator/make/model fill gaps,
+	and the complete telemetry snapshot rides along under `live_telemetry` so the
+	job-card create flow can show all of the vehicle's information.
 	"""
 	live = live_detail(vehicle)
 	if not live:
@@ -202,20 +272,87 @@ def enrich_form_context(vehicle: str, data: dict) -> dict:
 		data["odometer_source"] = "naarni_live"
 	if live.get("operator"):
 		data["operator"] = live["operator"]
-		# Operator is the human-facing owner label when no CRM customer is linked.
 		if not data.get("customer_name"):
 			data["customer_name"] = live["operator"]
 	if not data.get("make_model"):
 		mm = " ".join(p for p in (live.get("make"), live.get("model")) if p)
 		if mm:
 			data["make_model"] = mm
-	data["live_telemetry"] = {
-		"latitude": live.get("latitude"),
-		"longitude": live.get("longitude"),
-		"battery_soc": live.get("battery_soc"),
-		"activity": live.get("activity"),
-		"connectivity_status": live.get("connectivity_status"),
-		"route_name": live.get("route_name"),
-		"timestamp": live.get("telemetry_timestamp"),
-	}
+	data["live_telemetry"] = live
 	return data
+
+
+# ──────────────────────────── app: fleet list ────────────────────────────
+
+
+@frappe.whitelist()
+def list_fleet(txt: str = "", limit: int = 200, offset: int = 0) -> dict:
+	"""All synced vehicles, for the Service Engineer's in-app fleet list.
+
+	Browseable + searchable by registration / model / operator. Served from the
+	locally-synced Vehicle doctype (fast, offline-resilient).
+	"""
+	frappe.has_permission("Vehicle", "read", throw=True)
+	params: dict = {"limit": min(int(limit), 500), "offset": int(offset)}
+	cond = ""
+	if (txt or "").strip():
+		cond = "WHERE registration_number LIKE %(t)s OR make_model LIKE %(t)s OR operator LIKE %(t)s"
+		params["t"] = f"%{txt.strip()}%"
+	rows = frappe.db.sql(
+		f"""
+		SELECT name, registration_number, make_model, operator, depot, vehicle_status,
+		       naarni_vehicle_id, last_synced_at
+		FROM tabVehicle
+		{cond}
+		ORDER BY registration_number ASC
+		LIMIT %(limit)s OFFSET %(offset)s
+		""",
+		params,
+		as_dict=True,
+	)
+	total = frappe.db.count("Vehicle")
+	return {"success": True, "data": {"vehicles": rows, "total": total}}
+
+
+@frappe.whitelist()
+def get_vehicle_live(vehicle: str) -> dict:
+	"""Full live telemetry for one vehicle (IST timestamps), for the app detail view."""
+	frappe.has_permission("Vehicle", "read", throw=True)
+	return {"success": True, "data": live_detail(vehicle)}
+
+
+# ──────────────────────────── one-time bootstrap ────────────────────────────
+
+
+@frappe.whitelist(allow_guest=True)
+def connect_naarni(access_token: str) -> dict:
+	"""Bootstrap the vehicle-sync service account from an admin Naarni access token.
+
+	The vehicle directory is ADMIN-gated; this stores an admin token as the service
+	credential, enables the integration, and runs an immediate sync. The token IS
+	the credential — we only store it after confirming it can read the directory
+	(proving admin), so exposing this as a guest endpoint is safe.
+	"""
+	access_token = (access_token or "").strip()
+	if not access_token:
+		frappe.throw(_("access_token is required."))
+
+	try:
+		vehicles = naarni_client.list_vehicles_with_token(access_token)
+	except Exception as exc:
+		frappe.throw(
+			_("That token cannot read the vehicle directory (admin required): {0}").format(str(exc)[:200])
+		)
+
+	from frappe.installer import update_site_config
+
+	update_site_config("naarni_service_token", access_token)
+	update_site_config("enable_naarni_integration", 1)
+	# update_site_config mutates frappe.conf in-process, but be explicit so the
+	# immediate sync below sees the new values.
+	frappe.conf["naarni_service_token"] = access_token
+	frappe.conf["enable_naarni_integration"] = 1
+	frappe.cache().delete_value("naarni_service_access_token")
+
+	summary = sync_vehicle_directory()
+	return {"success": True, "data": {"vehicles_visible": len(vehicles), "sync": summary}}

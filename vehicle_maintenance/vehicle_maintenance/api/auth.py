@@ -161,28 +161,27 @@ def _maybe_bootstrap_vehicle_sync(authorities: list, tokens: dict, device_uuid: 
 	try:
 		if not _is_naarni_admin(authorities):
 			return
-		conf = frappe.conf or {}
-		if conf.get("naarni_service_refresh_token"):
-			return  # already bootstrapped
-		refresh = (tokens or {}).get("refresh_token")
-		if not refresh or not device_uuid:
+		access = (tokens or {}).get("access_token")
+		if not access:
 			return
 
 		from frappe.installer import update_site_config
 
-		# The refresh-token grant needs the same device the token was issued for.
-		dev_uuid, dev_id = naarni_client._resolve_device(device_uuid)
-		update_site_config("naarni_broker_device_uuid", dev_uuid)
-		update_site_config("naarni_broker_device_id", dev_id)
-		update_site_config("naarni_service_refresh_token", refresh)
-		update_site_config("enable_naarni_integration", 1)
-
-		frappe.enqueue(
-			"vehicle_maintenance.integrations.naarni_vehicles.sync_vehicle_directory",
-			queue="long",
-			enqueue_after_commit=True,
-		)
-		frappe.logger("naarni").info("vehicle-sync service account bootstrapped from admin login")
+		first_time = not (frappe.conf or {}).get("naarni_service_token")
+		# Refresh the stored service token on every admin login so it never goes
+		# stale (the access token is ~30-day); enable + kick off a sync the first time.
+		update_site_config("naarni_service_token", access)
+		frappe.conf["naarni_service_token"] = access
+		frappe.cache().delete_value("naarni_service_access_token")
+		if first_time:
+			update_site_config("enable_naarni_integration", 1)
+			frappe.conf["enable_naarni_integration"] = 1
+			frappe.enqueue(
+				"vehicle_maintenance.integrations.naarni_vehicles.sync_vehicle_directory",
+				queue="long",
+				enqueue_after_commit=True,
+			)
+		frappe.logger("naarni").info("vehicle-sync service token refreshed from admin login")
 	except Exception:
 		frappe.log_error(title="Naarni vehicle-sync bootstrap from login failed")
 

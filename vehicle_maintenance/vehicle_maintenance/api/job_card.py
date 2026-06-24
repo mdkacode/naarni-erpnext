@@ -530,6 +530,22 @@ def get_job_card_summary(job_card_name: str) -> dict:
 			}
 			for row in doc.get("software_components", [])
 		]
+		data["inventory_requests"] = frappe.get_all(
+			"Inventory Request",
+			filters={"job_card_ref": doc.name},
+			fields=[
+				"name",
+				"part",
+				"part_name",
+				"part_group",
+				"quantity",
+				"urgency_level",
+				"status",
+				"requested_by",
+			],
+			order_by="creation asc",
+			limit_page_length=0,
+		)
 
 	return {"success": True, "data": data, "message": ""}
 
@@ -648,6 +664,8 @@ def update_job_card(job_card_name: str, updates: str | dict) -> dict:
 	ALLOWED_FIELDS = {
 		"priority",
 		"complaint_description",
+		"se_observations",
+		"send_report_to_customer",
 		"assigned_technician",
 		"assigned_service_engineer",
 		"depot",
@@ -1020,6 +1038,55 @@ def list_part_groups() -> dict:
 		"Part Group",
 		fields=["name", "part_group_name", "bus_system"],
 		order_by="part_group_name asc",
+		limit_page_length=0,
+	)
+	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def list_parts(part_group: str = "", txt: str = "", limit: int = 20) -> dict:
+	"""Searchable Part master for the Inventory Request picker.
+
+	Opens with parts (optionally scoped to a `part_group`); narrows by `txt`.
+	Returns rows with name + part_name + part_group + uom for the app dropdown.
+	"""
+	filters: list = []
+	if part_group:
+		filters.append(["part_group", "=", part_group])
+	if (txt or "").strip():
+		filters.append(["part_name", "like", f"%{txt.strip()}%"])
+	rows = frappe.get_all(
+		"Part",
+		filters=filters,
+		fields=["name", "part_name", "part_group", "uom"],
+		order_by="part_name asc",
+		limit_page_length=int(limit or 20),
+	)
+	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def list_inventory_requests(job_card_name: str) -> dict:
+	"""Return the Inventory Requests raised against a Job Card (PRD inventory flow).
+
+	Drives the app's allocation/issue/acknowledge UI: Requested → Parts Allocated
+	→ Parts Issued → Received.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	rows = frappe.get_all(
+		"Inventory Request",
+		filters={"job_card_ref": job_card_name},
+		fields=[
+			"name",
+			"part",
+			"part_name",
+			"part_group",
+			"quantity",
+			"urgency_level",
+			"status",
+			"requested_by",
+		],
+		order_by="creation asc",
 		limit_page_length=0,
 	)
 	return {"success": True, "data": rows}

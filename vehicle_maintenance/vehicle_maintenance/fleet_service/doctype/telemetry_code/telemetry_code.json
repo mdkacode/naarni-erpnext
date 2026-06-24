@@ -1,0 +1,66 @@
+{
+  "name": "Telemetry Code",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Setup",
+  "engine": "InnoDB",
+  "autoname": "format:{parameter}-{code}",
+  "naming_rule": "Expression (old style)",
+  "track_changes": 1,
+  "description": "Dictionary that maps a coded telemetry value to its meaning, e.g. vcu_fault_code 142 = 'Motor over-temperature'. Used to show the human meaning of a code in alerts. Bulk-load via Data Import (CSV) or edit by hand.",
+  "fields": [
+    {
+      "fieldname": "parameter",
+      "label": "Reading",
+      "fieldtype": "Link",
+      "options": "Telemetry Parameter",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "The coded reading, e.g. vcu_fault_code."
+    },
+    {
+      "fieldname": "code",
+      "label": "Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "The raw value as it appears in telemetry, e.g. 142."
+    },
+    {
+      "fieldname": "meaning",
+      "label": "Meaning",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Short human meaning shown in the alert, e.g. 'Motor over-temperature'."
+    },
+    {
+      "fieldname": "column_break_tc1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "severity",
+      "label": "Severity",
+      "fieldtype": "Select",
+      "options": "\ninfo\nwarning\ncritical",
+      "description": "Optional. How serious this code is (for reference / future routing)."
+    },
+    {
+      "fieldname": "recommended_action",
+      "label": "Recommended Action",
+      "fieldtype": "Small Text",
+      "description": "Optional. What to do when this code appears."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "import": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "import": 1},
+    {"role": "Depot Manager", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "parameter",
+  "sort_order": "ASC",
+  "title_field": "meaning"
+}

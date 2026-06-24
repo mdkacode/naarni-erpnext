@@ -118,6 +118,13 @@
       "read_only": 1
     },
     {
+      "fieldname": "value_meaning",
+      "label": "Meaning",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "description": "Human meaning of a coded value (from Telemetry Code), e.g. vcu_fault_code 142 = 'Motor over-temperature'."
+    },
+    {
       "fieldname": "unit",
       "label": "Unit",
       "fieldtype": "Data",

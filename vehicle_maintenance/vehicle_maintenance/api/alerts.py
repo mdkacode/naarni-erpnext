@@ -478,6 +478,14 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			{"parameter": d["parameter"], "label": d.get("label"), "unit": d.get("unit")}
 		)
 
+	# Code dictionary: parameter -> {code: meaning}. Lets the engine show the human
+	# meaning of a coded value, e.g. vcu_fault_code 142 -> "Motor over-temperature".
+	codes: dict[str, dict[str, str]] = {}
+	for tc in frappe.get_all("Telemetry Code", fields=["parameter", "code", "meaning"], limit_page_length=0):
+		if tc.get("code") is None or not tc.get("meaning"):
+			continue
+		codes.setdefault(tc["parameter"], {})[str(tc["code"]).strip()] = tc["meaning"]
+
 	# Teams channel registry: friendly name -> decrypted webhook URL, + the default.
 	# A subscription's `teams_channel` selects one of these; the engine resolves the
 	# webhook and posts there (falling back to the default, then the env webhook).
@@ -594,6 +602,7 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			"registrations": registrations,
 			"teams_channels": teams_channels,
 			"default_teams_channel": default_teams_channel,
+			"codes": codes,
 		}
 	)
 
@@ -660,6 +669,7 @@ def ingest_alert_event(service_key: str | None = None, payload: Any = None, **kw
 		"op": data.get("op"),
 		"value": _to_float(data.get("value")),
 		"value_text": data.get("value_text"),
+		"value_meaning": data.get("value_meaning"),
 		"unit": data.get("unit"),
 		"threshold": _to_float(data.get("threshold")),
 		"match_value": data.get("match_value"),

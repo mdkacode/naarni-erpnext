@@ -417,7 +417,15 @@ def get_job_card_summary(job_card_name: str) -> dict:
 		"followup_job_card": doc.followup_job_card,
 		"source_force_close_job_card": doc.source_force_close_job_card,
 		"send_report_to_customer": int(doc.send_report_to_customer or 0),
+		"odometer_reading": doc.odometer_reading,
 	}
+
+	# Workflow actions available to THIS user in the current state — drives the
+	# app's "progress the job card" buttons.
+	try:
+		data["available_actions"] = [t.action for t in doc.get_transitions()]
+	except Exception:
+		data["available_actions"] = []
 
 	# Type-specific blocks — included only when relevant.
 	if doc.job_card_type == "Breakdown":

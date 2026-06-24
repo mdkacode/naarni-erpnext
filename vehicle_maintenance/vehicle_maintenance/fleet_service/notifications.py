@@ -510,49 +510,116 @@ def _dispatch_push(user: str, subject: str, body: str, doc_name: str | None, pri
 		)
 
 
+def _fcm_access_token() -> tuple[str, str] | None:
+	"""Return (oauth_access_token, project_id) for FCM HTTP v1, or None if unconfigured.
+
+	Mints a short-lived OAuth token from the Firebase **service-account JSON** stored
+	in site_config as `notifications_fcm_service_account` (the whole JSON, as a dict
+	or string). Signs the assertion with PyJWT — no google-auth dependency. Cached
+	~50 min. The legacy `fcm/send` server-key API was shut down by Google in 2024.
+	"""
+	conf = frappe.get_conf()
+	sa = conf.get("notifications_fcm_service_account")
+	if not sa:
+		return None
+	if isinstance(sa, str):
+		try:
+			sa = frappe.parse_json(sa)
+		except Exception:
+			return None
+	project_id = sa.get("project_id")
+	client_email = sa.get("client_email")
+	private_key = sa.get("private_key")
+	if not (project_id and client_email and private_key):
+		return None
+
+	cache = frappe.cache()
+	cached = cache.get_value("fcm_access_token")
+	if cached:
+		return cached, project_id
+
+	import time
+
+	import jwt
+	import requests
+
+	now = int(time.time())
+	assertion = jwt.encode(
+		{
+			"iss": client_email,
+			"scope": "https://www.googleapis.com/auth/firebase.messaging",
+			"aud": "https://oauth2.googleapis.com/token",
+			"iat": now,
+			"exp": now + 3600,
+		},
+		private_key,
+		algorithm="RS256",
+	)
+	resp = requests.post(
+		"https://oauth2.googleapis.com/token",
+		data={
+			"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+			"assertion": assertion,
+		},
+		timeout=15,
+	)
+	token = resp.json().get("access_token") if resp.ok else None
+	if not token:
+		frappe.log_error(title="FCM OAuth token mint failed", message=resp.text[:500])
+		return None
+	cache.set_value("fcm_access_token", token, expires_in_sec=3000)
+	return token, project_id
+
+
 def _dispatch_push_job(
 	device_token: str, subject: str, body: str, doc_name: str | None, priority: str
 ) -> None:
-	"""Background worker — sends one FCM message. Invoked only via `frappe.enqueue`.
+	"""Background worker — sends one FCM message via **HTTP v1**. Enqueue-only.
 
-	Uses FCM's HTTP endpoint with a server key from site config
-	(`notifications_fcm_server_key`). No-ops with a log line when unconfigured.
+	No-ops with a log line when `notifications_fcm_service_account` is unconfigured,
+	so this is safe to ship before Firebase credentials are wired.
 	"""
-	server_key = frappe.get_conf().get("notifications_fcm_server_key")
-	if not server_key:
+	creds = _fcm_access_token()
+	if not creds:
 		frappe.logger().info(f"[push] FCM not configured; skipped doc={doc_name} priority={priority}")
 		return
+	access_token, project_id = creds
 	try:
 		import requests
 
 		resp = requests.post(
-			"https://fcm.googleapis.com/fcm/send",
+			f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send",
 			headers={
-				"Authorization": f"key={server_key}",
+				"Authorization": f"Bearer {access_token}",
 				"Content-Type": "application/json",
 			},
 			json={
-				"to": device_token,
-				"priority": "high" if priority in ("High", "Urgent", "Critical") else "normal",
-				"notification": {"title": subject, "body": body},
-				"data": {"job_card": doc_name or "", "priority": priority},
+				"message": {
+					"token": device_token,
+					"notification": {"title": subject, "body": body},
+					"data": {
+						"job_card": doc_name or "",
+						"priority": str(priority),
+						"deeplink": f"naarni://jobcard/{doc_name}" if doc_name else "",
+					},
+					"android": {
+						"priority": "HIGH" if priority in ("High", "Urgent", "Critical") else "NORMAL"
+					},
+				}
 			},
 			timeout=15,
 		)
-		# An invalid/expired token: deactivate it so we stop trying.
-		if resp.status_code == 200 and '"error"' in resp.text:
+		# Invalid/expired token (UNREGISTERED / INVALID_ARGUMENT) → deactivate it.
+		if resp.status_code in (400, 404) and (
+			"UNREGISTERED" in resp.text or "registration-token-not-registered" in resp.text
+		):
 			frappe.db.set_value(
-				"Push Token",
-				{"device_token": device_token},
-				"is_active",
-				0,
-				update_modified=False,
+				"Push Token", {"device_token": device_token}, "is_active", 0, update_modified=False
 			)
+		elif resp.status_code >= 300:
+			frappe.log_error(title="FCM v1 push non-2xx", message=resp.text[:500])
 	except Exception:
-		frappe.log_error(
-			title="FCM push send failed",
-			message=frappe.get_traceback(),
-		)
+		frappe.log_error(title="FCM push send failed", message=frappe.get_traceback())
 
 
 # SMS is reserved for genuinely urgent triggers (PRD: TAT breached, breakdown

@@ -292,7 +292,7 @@ def get_job_card_form_context(vehicle: str, job_card_type: str, odometer: int | 
 	veh = frappe.db.get_value(
 		"Vehicle",
 		vehicle,
-		["registration_number", "make_model", "oem", "customer"],
+		["registration_number", "make_model", "oem", "customer", "depot"],
 		as_dict=True,
 	)
 	if not veh:
@@ -314,7 +314,9 @@ def get_job_card_form_context(vehicle: str, job_card_type: str, odometer: int | 
 		order_by="creation desc",
 		limit_page_length=1,
 	)
-	default_depot = last_card[0]["depot"] if last_card else None
+	# Prefer the last job card's depot, then fall back to the vehicle's home depot;
+	# if still blank the app shows a Depot picker so the user adds one inline.
+	default_depot = (last_card[0]["depot"] if last_card else None) or veh.get("depot")
 	depot_name = frappe.db.get_value("Depot", default_depot, "depot_name") if default_depot else None
 	odo_estimate = last_card[0]["odometer_reading"] if last_card else None
 

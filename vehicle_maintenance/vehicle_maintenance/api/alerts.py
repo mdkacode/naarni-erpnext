@@ -27,17 +27,20 @@ from vehicle_maintenance.fleet_service.doctype.alert_type.alert_type import op_t
 STAFF_ROLES = {"Central Ops", "System Manager", "Administrator"}
 
 
-def _compile_condition(c: dict, param_types: dict) -> dict:
+def _compile_condition(c: dict, param_meta: dict) -> dict:
 	"""Compile one Alert Condition child row into the engine wire shape, splitting the
 	free-text value into a numeric threshold or a categorical match_value by the
-	reading's data type (mirrors the primary condition's split)."""
-	ptype = param_types.get(c["parameter"], "Numeric")
+	reading's data type (mirrors the primary condition's split). Carries the friendly
+	label so alerts read 'Battery SOC = 15%' instead of the raw column name."""
+	meta = param_meta.get(c["parameter"], {})
+	ptype = meta.get("data_type") or "Numeric"
 	value = (c.get("value") or "").strip()
 	out = {
 		"group": c.get("condition_group") or 1,
 		"parameter": c["parameter"],
+		"label": meta.get("label") or c["parameter"],
 		"op": op_to_symbol(c.get("op")),
-		"unit": c.get("unit"),
+		"unit": c.get("unit") or meta.get("unit"),
 	}
 	if ptype in ("Categorical", "Boolean"):
 		out["threshold"] = 0
@@ -49,6 +52,53 @@ def _compile_condition(c: dict, param_types: dict) -> dict:
 			out["threshold"] = 0.0
 		out["match_value"] = None
 	return out
+
+
+_OP_DISPLAY = {">": ">", ">=": "≥", "<": "<", "<=": "≤", "==": "=", "!=": "≠"}
+
+
+def _fmt_num(v) -> str:
+	"""Trim a threshold for display: 80.0 -> '80', 12.50 -> '12.5'."""
+	try:
+		f = float(v)
+		return str(int(f)) if f == int(f) else str(f)
+	except (TypeError, ValueError):
+		return str(v) if v is not None else ""
+
+
+def _condition_text(at: dict, cond_rows: list[dict], param_meta: dict) -> str:
+	"""Human AND/OR trigger expression with friendly labels, e.g.
+	'(Motor Temperature > 80 AND Battery SOC < 20) OR Coolant < 10'. Mirrors the
+	form's live preview: same group = AND, different groups = OR."""
+
+	def clause(parameter: str, label: str, op: str, value: str, unit: str) -> str:
+		return f"{label} {_OP_DISPLAY.get(op_to_symbol(op), op_to_symbol(op))} {value}{unit or ''}"
+
+	groups: dict[int, list[str]] = {}
+	if at.get("parameter"):
+		meta = param_meta.get(at["parameter"], {})
+		plabel = meta.get("label") or at["parameter"]
+		pval = at.get("match_value") or _fmt_num(at.get("default_threshold"))
+		groups.setdefault(1, []).append(
+			clause(at["parameter"], plabel, at.get("op"), pval, at.get("unit") or meta.get("unit"))
+		)
+	for c in cond_rows:
+		meta = param_meta.get(c["parameter"], {})
+		label = meta.get("label") or c["parameter"]
+		groups.setdefault(c.get("condition_group") or 1, []).append(
+			clause(
+				c["parameter"],
+				label,
+				c.get("op"),
+				(c.get("value") or "").strip(),
+				c.get("unit") or meta.get("unit"),
+			)
+		)
+	parts = []
+	for g in sorted(groups):
+		members = groups[g]
+		parts.append("(" + " AND ".join(members) + ")" if len(members) > 1 else members[0])
+	return "  OR  ".join(parts)
 
 
 CHANNEL_MAP = (
@@ -448,15 +498,21 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		)
 	}
 
-	# Telemetry parameter -> data_type, to split each condition's free-text value into
-	# a numeric threshold or a categorical match_value (same rule as the primary).
-	param_types = {
-		p["name"]: (p["data_type"] or "Numeric")
-		for p in frappe.get_all("Telemetry Parameter", fields=["name", "data_type"], limit_page_length=0)
+	# Telemetry parameter -> {data_type, label, unit}: splits each condition's value
+	# into threshold/match_value AND supplies the friendly label/unit shown in alerts.
+	param_meta = {
+		p["name"]: {
+			"data_type": p.get("data_type") or "Numeric",
+			"label": p.get("label"),
+			"unit": p.get("unit"),
+		}
+		for p in frappe.get_all(
+			"Telemetry Parameter", fields=["name", "data_type", "label", "unit"], limit_page_length=0
+		)
 	}
 
-	# Compound conditions + display parameters, grouped by their parent Alert Type.
-	conditions_by_at: dict[str, list[dict]] = {}
+	# Compound conditions (raw rows kept for condition_text) + display parameters.
+	cond_rows_by_at: dict[str, list[dict]] = {}
 	for c in frappe.get_all(
 		"Alert Condition",
 		filters={"parenttype": "Alert Type"},
@@ -464,8 +520,14 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		order_by="parent asc, idx asc",
 		limit_page_length=0,
 	):
-		conditions_by_at.setdefault(c["parent"], []).append(_compile_condition(c, param_types))
+		cond_rows_by_at.setdefault(c["parent"], []).append(c)
+	conditions_by_at = {
+		at_name: [_compile_condition(c, param_meta) for c in rows]
+		for at_name, rows in cond_rows_by_at.items()
+	}
 
+	# Readings to show: a Table MultiSelect stores only the parameter; resolve the
+	# friendly label + unit from the Telemetry Parameter catalog.
 	display_by_at: dict[str, list[dict]] = {}
 	for d in frappe.get_all(
 		"Alert Display Parameter",
@@ -474,8 +536,13 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		order_by="parent asc, idx asc",
 		limit_page_length=0,
 	):
+		meta = param_meta.get(d["parameter"], {})
 		display_by_at.setdefault(d["parent"], []).append(
-			{"parameter": d["parameter"], "label": d.get("label"), "unit": d.get("unit")}
+			{
+				"parameter": d["parameter"],
+				"label": d.get("label") or meta.get("label") or d["parameter"],
+				"unit": d.get("unit") or meta.get("unit"),
+			}
 		)
 
 	# Code dictionary: parameter -> {code: meaning}. Lets the engine show the human
@@ -583,6 +650,12 @@ def get_engine_config(service_key: str | None = None) -> dict:
 					"channel": sub.get("teams_channel") or None,
 					"conditions": conditions_by_at.get(sub.alert_type, []),
 					"display_parameters": display_by_at.get(sub.alert_type, []),
+					"parameter_label": (param_meta.get(primary_param, {}).get("label") or primary_param)
+					if primary_param
+					else None,
+					"condition_text": _condition_text(
+						at, cond_rows_by_at.get(sub.alert_type, []), param_meta
+					),
 					"vehicles": rule_vehicles,  # [] = applies to all of the customer's vehicles
 				}
 			)
@@ -680,6 +753,7 @@ def ingest_alert_event(service_key: str | None = None, payload: Any = None, **kw
 		"match_value": data.get("match_value"),
 		"message": data.get("message"),
 		"details": data.get("details"),
+		"condition_text": data.get("condition_text"),
 		"latitude": _to_float(data.get("latitude")),
 		"longitude": _to_float(data.get("longitude")),
 		"maps_link": data.get("maps_link"),

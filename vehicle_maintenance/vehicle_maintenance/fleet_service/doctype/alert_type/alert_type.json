@@ -159,23 +159,30 @@
       "description": "Headline shown on the notification. Leave blank to use the Alert Name."
     },
     {
-      "fieldname": "message_template",
-      "label": "Message",
-      "fieldtype": "Small Text",
-      "description": "The line shown in the notification. Placeholders in {curly braces}: {vehicle} {registration} {parameter} {value} {unit} {op} {limit} {location} {time} {details}. {details} prints all the readings below. You can also use a reading's own token, e.g. {p_bat_soc}. Example: 🌡️ {value}{unit}; also {details}. Leave blank for a sensible default."
-    },
-    {
       "fieldname": "section_readings",
-      "label": "Also show these readings in the alert (optional)",
+      "label": "Readings to show in the alert",
       "fieldtype": "Section Break",
-      "collapsible": 1,
-      "description": "Extra readings to display in the alert message/card (not part of the trigger). Each is available as {details} (all together) and as its own token shown in the Placeholder column."
+      "description": "Pick the readings the service engineer should see. They appear in the alert (and on Teams) as 'Label = Value', e.g. Motor Temperature = 142, Battery SOC = 15%. The reading(s) the alert triggers on are always included automatically."
     },
     {
       "fieldname": "display_parameters",
       "label": "Readings to Show",
-      "fieldtype": "Table",
-      "options": "Alert Display Parameter"
+      "fieldtype": "Table MultiSelect",
+      "options": "Alert Display Parameter",
+      "description": "Type to search and select one or more readings."
+    },
+    {
+      "fieldname": "section_advanced",
+      "label": "Advanced",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "collapsible_depends_on": "message_template"
+    },
+    {
+      "fieldname": "message_template",
+      "label": "Custom Message (optional)",
+      "fieldtype": "Small Text",
+      "description": "Leave blank — by default the alert shows the readings above as 'Label = Value'. To override, write your own line using {curly} placeholders: {vehicle} {registration} {parameter} {value} {unit} {op} {limit} {location} {time} {details} {condition}, or a reading's own token e.g. {p_bat_soc}."
     },
     {
       "fieldname": "column_break_s4",

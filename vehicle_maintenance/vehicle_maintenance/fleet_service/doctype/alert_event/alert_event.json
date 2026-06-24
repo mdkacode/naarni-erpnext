@@ -159,7 +159,14 @@
       "label": "Readings",
       "fieldtype": "Small Text",
       "read_only": 1,
-      "description": "Extra readings captured at the time of the alert (display parameters)."
+      "description": "Readings captured at the time of the alert, shown as 'Label = Value'."
+    },
+    {
+      "fieldname": "condition_text",
+      "label": "Trigger Condition",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "description": "The exact AND/OR condition that fired, e.g. '(Motor Temperature > 80 AND Battery SOC < 20) OR Coolant < 10'."
     },
     {
       "fieldname": "section_location",

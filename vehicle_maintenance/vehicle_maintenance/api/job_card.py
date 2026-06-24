@@ -1963,8 +1963,14 @@ def create_job_card_with_inspection(
 		job_card_data["assigned_service_engineer"] = creator
 
 	# Create the Job Card with structured inspection rows so before_save scores them.
+	# NOTE: assigned_service_engineer / assigned_technician are permlevel-1 fields
+	# (only DM/Aftersales/N.Maint can write them). A Service Engineer inserting their
+	# own card would have those assignments SILENTLY STRIPPED by the permlevel
+	# validator — so the card would never appear in their "My Job Cards" list. We've
+	# already gated access via frappe.only_for above, so insert with
+	# ignore_permissions=True to make the self-assignment persist (validations still run).
 	doc = frappe.get_doc(job_card_data)
-	doc.insert()
+	doc.insert(ignore_permissions=True)
 
 	if results:
 		# Build a human-readable summary

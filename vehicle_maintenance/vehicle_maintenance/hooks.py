@@ -25,6 +25,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_0.seed_suggestion_masters.execute",
 	"vehicle_maintenance.patches.v1_1.seed_naarni_custom_fields.execute",
 	"vehicle_maintenance.patches.v1_2.seed_fleet_workspace.execute",
+	"vehicle_maintenance.patches.v1_3.seed_parts_catalog.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

@@ -82,6 +82,37 @@ data class FleetResponse(
     val total: Int = 0,
 )
 
+/** Live Naarni telemetry for one vehicle (timestamps already in IST). */
+@Serializable
+data class VehicleLive(
+    val registration_number: String? = null,
+    val operator: String? = null,
+    val make: String? = null,
+    val model: String? = null,
+    val route_name: String? = null,
+    val activity: String? = null,
+    val connectivity_status: String? = null,
+    val odometer: Int? = null,
+    val distance_to_empty: Double? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val ground_speed_kmph: Double? = null,
+    val maps_link: String? = null,
+    val battery_soc: Double? = null,
+    val battery_soh: Double? = null,
+    val battery_voltage: Double? = null,
+    val battery_current: Double? = null,
+    val battery_coolant_temp: Double? = null,
+    val motor_rpm: Double? = null,
+    val motor_temp: Double? = null,
+    val charger_current: Double? = null,
+    val charger_voltage: Double? = null,
+    val gun_thermal_status: String? = null,
+    val pack_thermal_status: String? = null,
+    val ac_status: String? = null,
+    val telemetry_at_ist: String? = null,
+)
+
 @Serializable
 data class JobCardListItem(
     val name: String,

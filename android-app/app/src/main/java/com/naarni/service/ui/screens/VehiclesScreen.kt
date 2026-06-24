@@ -1,6 +1,7 @@
 package com.naarni.service.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,7 +47,7 @@ import kotlinx.coroutines.delay
  * Each row shows registration, make/model, operator, depot and live-ish status.
  */
 @Composable
-fun VehiclesScreen(vm: AppViewModel) {
+fun VehiclesScreen(vm: AppViewModel, onOpenVehicle: (String) -> Unit = {}) {
     var query by remember { mutableStateOf("") }
     var vehicles by remember { mutableStateOf<List<FleetVehicle>>(emptyList()) }
     var total by remember { mutableStateOf(0) }
@@ -124,7 +125,7 @@ fun VehiclesScreen(vm: AppViewModel) {
                 }
             else ->
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(vehicles, key = { it.name }) { VehicleRow(it) }
+                    items(vehicles, key = { it.name }) { VehicleRow(it, onClick = { onOpenVehicle(it.name) }) }
                     item { Spacer(Modifier.height(12.dp)) }
                 }
         }
@@ -132,9 +133,9 @@ fun VehiclesScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun VehicleRow(v: FleetVehicle) {
+private fun VehicleRow(v: FleetVehicle, onClick: () -> Unit) {
     Card(
-        Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         shape = MaterialTheme.shapes.large,

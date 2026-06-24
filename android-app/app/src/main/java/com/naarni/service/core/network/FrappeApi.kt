@@ -13,6 +13,7 @@ import com.naarni.service.data.dto.OtpStatus
 import com.naarni.service.data.dto.SuggestionItem
 import com.naarni.service.data.dto.UnreadCount
 import com.naarni.service.data.dto.VehicleHit
+import com.naarni.service.data.dto.VehicleLive
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.http.Field
@@ -102,6 +103,11 @@ interface FrappeApi {
         @Query("limit") limit: Int = 300,
         @Query("offset") offset: Int = 0,
     ): FrappeWrap<Envelope<FleetResponse>>
+
+    @GET("api/method/vehicle_maintenance.integrations.naarni_vehicles.get_vehicle_live")
+    suspend fun getVehicleLive(
+        @Query("vehicle") vehicle: String,
+    ): FrappeWrap<Envelope<VehicleLive?>>
 
     // ── Job cards ──
     @GET("api/method/vehicle_maintenance.api.job_card.get_my_job_cards")

@@ -105,26 +105,42 @@ def list_users_by_role(role: str, txt: str = "", limit: int = 50) -> dict:
 
 
 @frappe.whitelist()
-def search_vehicles(txt: str = "", limit: int = 10) -> dict:
-	"""Search vehicles by registration number or model. For portal vehicle dropdown."""
-	txt = (txt or "").strip()
-	if len(txt) < 1:
-		return {"success": True, "data": []}
+def search_vehicles(txt: str = "", limit: int = 20) -> dict:
+	"""Vehicles for the create-job-card dropdown (PRD: filtered, searchable list).
 
-	vehicles = frappe.db.sql(
-		"""
-        SELECT name, registration_number, make_model, customer, fuel_type, color,
-               operator, depot, naarni_vehicle_id
-        FROM tabVehicle
-        WHERE registration_number LIKE %(txt)s
-           OR make_model LIKE %(txt)s
-           OR operator LIKE %(txt)s
-        ORDER BY registration_number ASC
-        LIMIT %(limit)s
-    """,
-		{"txt": f"%{txt}%", "limit": int(limit)},
-		as_dict=True,
-	)
+	With no query it returns the first `limit` vehicles so the dropdown is populated
+	the moment it opens — the user never has to type to see options. Typing filters by
+	registration / model / operator.
+	"""
+	txt = (txt or "").strip()
+	limit = min(int(limit), 50)
+	fields = "name, registration_number, make_model, customer, fuel_type, color, operator, depot, naarni_vehicle_id"
+
+	if txt:
+		vehicles = frappe.db.sql(
+			f"""
+			SELECT {fields}
+			FROM tabVehicle
+			WHERE registration_number LIKE %(txt)s
+			   OR make_model LIKE %(txt)s
+			   OR operator LIKE %(txt)s
+			ORDER BY registration_number ASC
+			LIMIT %(limit)s
+			""",
+			{"txt": f"%{txt}%", "limit": limit},
+			as_dict=True,
+		)
+	else:
+		vehicles = frappe.db.sql(
+			f"""
+			SELECT {fields}
+			FROM tabVehicle
+			ORDER BY registration_number ASC
+			LIMIT %(limit)s
+			""",
+			{"limit": limit},
+			as_dict=True,
+		)
 
 	return {"success": True, "data": vehicles}
 
@@ -1787,22 +1803,30 @@ def create_job_card_with_inspection(
 
 	results = _json.loads(inspection_results) if isinstance(inspection_results, str) else inspection_results
 
+	# Assign the creator so the card shows up in THEIR "My Job Cards" list. The list
+	# scopes a Technician by assigned_technician and a Service Engineer by
+	# assigned_service_engineer, so set whichever role(s) the creator holds — an SE
+	# creating from the app must see their own card.
+	creator = frappe.session.user
+	creator_roles = set(frappe.get_roles(creator))
+	job_card_data = {
+		"doctype": "Job Card",
+		"job_card_type": job_card_type,
+		"vehicle": vehicle_name,
+		"odometer_reading": odometer_reading,
+		"customer": customer,
+		"depot": depot,
+		"priority": "Medium",
+		"complaint_description": complaint_description,
+		"se_observations": technician_notes,
+		"assigned_technician": creator,
+		"inspection_items": _inspection_rows_from_results(results or {}),
+	}
+	if "Service Engineer" in creator_roles:
+		job_card_data["assigned_service_engineer"] = creator
+
 	# Create the Job Card with structured inspection rows so before_save scores them.
-	doc = frappe.get_doc(
-		{
-			"doctype": "Job Card",
-			"job_card_type": job_card_type,
-			"vehicle": vehicle_name,
-			"odometer_reading": odometer_reading,
-			"customer": customer,
-			"depot": depot,
-			"priority": "Medium",
-			"complaint_description": complaint_description,
-			"se_observations": technician_notes,
-			"assigned_technician": frappe.session.user,
-			"inspection_items": _inspection_rows_from_results(results or {}),
-		}
-	)
+	doc = frappe.get_doc(job_card_data)
 	doc.insert()
 
 	if results:

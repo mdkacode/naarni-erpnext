@@ -697,6 +697,19 @@
       "options": "Job Card Software Component"
     },
     {
+      "fieldname": "section_bus_images",
+      "label": "Bus Photos (this visit)",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "bus_images",
+      "label": "Bus Photos",
+      "fieldtype": "Table",
+      "options": "Vehicle Image",
+      "description": "Multi-angle photos captured during this visit."
+    },
+    {
       "fieldname": "send_report_to_customer",
       "label": "Send Report to Customer",
       "fieldtype": "Check",

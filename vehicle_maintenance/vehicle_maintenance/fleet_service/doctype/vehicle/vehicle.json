@@ -128,6 +128,24 @@
       "fieldname": "insurance_expiry",
       "label": "Insurance Expiry",
       "fieldtype": "Date"
+    },
+    {
+      "fieldname": "section_images",
+      "label": "Bus Photos",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "master_image",
+      "label": "Master Image",
+      "fieldtype": "Attach Image",
+      "description": "Primary photo of the bus, shown as the identity image."
+    },
+    {
+      "fieldname": "images",
+      "label": "Image Gallery",
+      "fieldtype": "Table",
+      "options": "Vehicle Image",
+      "description": "Multi-angle photos of the bus (Master, Front, Rear, Left, Right, Engine, Interior, Odometer, Damage)."
     }
   ],
   "permissions": [

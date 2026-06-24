@@ -24,6 +24,17 @@ _GALLERY_FIELD = {
 ANGLES = ("Master", "Front", "Rear", "Left", "Right", "Engine", "Interior", "Odometer", "Damage")
 
 
+def _valid_angles() -> tuple:
+	"""Allowed angles — read live from the Vehicle Image.angle field so admins can
+	add/rename angles via Customize Form. Falls back to the hardcoded set."""
+	try:
+		field = frappe.get_meta("Vehicle Image").get_field("angle")
+		opts = tuple(line.strip() for line in (field.options or "").split("\n") if line.strip())
+		return opts or ANGLES
+	except Exception:
+		return ANGLES
+
+
 def _resolve(parent_doctype: str) -> str:
 	"""Validate the parent doctype and return its gallery fieldname."""
 	field = _GALLERY_FIELD.get(parent_doctype)
@@ -62,7 +73,7 @@ def upload_bus_image(
 	field = _resolve(parent_doctype)
 	frappe.has_permission(parent_doctype, doc=parent_name, ptype="write", throw=True)
 
-	if angle not in ANGLES:
+	if angle not in _valid_angles():
 		frappe.throw(_("Invalid angle: {0}").format(angle))
 	if not file_url:
 		frappe.throw(_("A file URL is required."))

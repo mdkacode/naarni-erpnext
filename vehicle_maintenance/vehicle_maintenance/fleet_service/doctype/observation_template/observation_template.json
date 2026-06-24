@@ -2,6 +2,7 @@
   "name": "Observation Template",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "engine": "InnoDB",
   "autoname": "OBS-.#####",
   "naming_rule": "Expression (old style)",

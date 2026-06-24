@@ -2,6 +2,7 @@
   "name": "Fault Code",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "engine": "InnoDB",
   "autoname": "field:fault_code",
   "naming_rule": "By fieldname",

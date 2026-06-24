@@ -2,6 +2,7 @@
   "name": "OEM",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "engine": "InnoDB",
   "autoname": "field:oem_name",
   "naming_rule": "By fieldname",
@@ -24,16 +25,40 @@
     {
       "fieldname": "support_contact",
       "label": "Support Contact",
-      "fieldtype": "Data"
+      "fieldtype": "Data",
+      "in_list_view": 1
     }
   ],
   "permissions": [
-    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
-    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
-    {"role": "Service Engineer", "read": 1},
-    {"role": "Technician", "read": 1},
-    {"role": "Central Ops", "read": 1},
-    {"role": "Customer", "read": 1}
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    },
+    {
+      "role": "Depot Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    },
+    {
+      "role": "Service Engineer",
+      "read": 1
+    },
+    {
+      "role": "Technician",
+      "read": 1
+    },
+    {
+      "role": "Central Ops",
+      "read": 1
+    },
+    {
+      "role": "Customer",
+      "read": 1
+    }
   ],
   "sort_field": "oem_name",
   "sort_order": "ASC",

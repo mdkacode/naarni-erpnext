@@ -175,6 +175,58 @@ def get_customer_name(customer: str) -> dict:
 	return {"success": True, "data": {"customer_name": name or customer}}
 
 
+@frappe.whitelist()
+def search_customers(txt: str = "", limit: int = 20) -> dict:
+	"""Search Customers by name, code or mobile — for the create-job-card picker."""
+	filters = []
+	t = (txt or "").strip()
+	if t:
+		filters = [["customer_name", "like", f"%{t}%"]]
+	rows = frappe.get_all(
+		"Customer",
+		filters=filters or None,
+		or_filters=[["mobile_no", "like", f"%{t}%"], ["customer_code", "like", f"%{t}%"]] if t else None,
+		fields=["name", "customer_name", "mobile_no"],
+		order_by="customer_name asc",
+		limit_page_length=int(limit or 20),
+	)
+	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def create_customer(customer_name: str, mobile_no: str = "") -> dict:
+	"""Create a Customer on the spot (name + optional phone) from the app.
+
+	Used when a vehicle has no customer yet so the SE can add one inline instead
+	of being blocked by 'Customer is mandatory'. Reuses an existing record when
+	the same name already exists.
+	"""
+	frappe.only_for(["Service Engineer", "Depot Manager", "Technician", "Central Ops"])
+	name = (customer_name or "").strip()
+	if not name:
+		frappe.throw(_("Customer name is required."))
+
+	existing = frappe.db.get_value("Customer", {"customer_name": name}, "name")
+	if existing:
+		if mobile_no and not frappe.db.get_value("Customer", existing, "mobile_no"):
+			frappe.db.set_value("Customer", existing, "mobile_no", mobile_no.strip())
+		return {
+			"success": True,
+			"data": {"name": existing, "customer_name": name},
+			"message": _("Existing customer used."),
+		}
+
+	doc = frappe.get_doc(
+		{"doctype": "Customer", "customer_name": name, "mobile_no": (mobile_no or "").strip()}
+	)
+	doc.insert(ignore_permissions=True)
+	return {
+		"success": True,
+		"data": {"name": doc.name, "customer_name": doc.customer_name},
+		"message": _("Customer added."),
+	}
+
+
 def _select_check_sheet(odometer: int | None) -> str:
 	"""Mirror JobCard._auto_select_check_sheet for pre-create display (PRD thresholds)."""
 	odo = int(odometer or 0)
@@ -1825,6 +1877,7 @@ def create_job_card_with_inspection(
 	inspection_results: str = "{}",
 	job_card_type: str = "PMS + Repair",
 	depot: str = "",
+	customer: str = "",
 ) -> dict:
 	"""Create a Job Card with structured inspection data (Technician flow).
 
@@ -1857,8 +1910,15 @@ def create_job_card_with_inspection(
 	if not vehicle_name:
 		frappe.throw(_("Vehicle with registration {0} not found.").format(vehicle_number))
 
-	# Resolve customer from vehicle
-	customer = frappe.db.get_value("Vehicle", vehicle_name, "customer")
+	# Resolve customer: the vehicle's customer, else the one passed by the caller.
+	# When the vehicle had none, persist the chosen customer back onto the vehicle
+	# so future job cards don't prompt again.
+	vehicle_customer = frappe.db.get_value("Vehicle", vehicle_name, "customer")
+	customer = vehicle_customer or (customer or "").strip()
+	if customer and not vehicle_customer:
+		frappe.db.set_value("Vehicle", vehicle_name, "customer", customer)
+	if not customer:
+		frappe.throw(_("This vehicle has no customer. Please select or add one."))
 
 	# Resolve depot: explicit arg, else the vehicle's most recently used depot.
 	# Depot is mandatory for Job Card naming, so fail clearly if none is known.

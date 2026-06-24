@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.ConfirmationNumber
+import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
@@ -27,10 +28,12 @@ import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardsScreen
 import com.naarni.service.ui.screens.ProfileScreen
 import com.naarni.service.ui.screens.TicketsScreen
+import com.naarni.service.ui.screens.VehiclesScreen
 
 enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Home("home", "Home", Icons.Default.Home),
     JobCards("jobcards", "Jobs", Icons.AutoMirrored.Filled.Assignment),
+    Fleet("fleet", "Fleet", Icons.Default.DirectionsBus),
     Alerts("alerts", "Alerts", Icons.Default.Notifications),
     Tickets("tickets", "Tickets", Icons.Default.ConfirmationNumber),
     Profile("profile", "Profile", Icons.Default.Person),
@@ -70,6 +73,7 @@ fun MainShell(vm: AppViewModel) {
         ) {
             composable(Tab.Home.route) { HomeScreen(vm = vm, onCreateJobCard = { nav.navigate("create") }) }
             composable(Tab.JobCards.route) { JobCardsScreen(vm) }
+            composable(Tab.Fleet.route) { VehiclesScreen(vm) }
             composable(Tab.Alerts.route) { AlertsScreen(vm) }
             composable(Tab.Tickets.route) { TicketsScreen(vm) }
             composable(Tab.Profile.route) { ProfileScreen(vm) }

@@ -100,6 +100,10 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun fleet(txt: String = ""): com.naarni.service.data.dto.FleetResponse =
         api.listFleet(txt).payload()
 
+    /** Live Naarni telemetry for one vehicle (IST); null when not linked/unreachable. */
+    suspend fun vehicleLive(name: String): com.naarni.service.data.dto.VehicleLive? =
+        api.getVehicleLive(name).message?.data
+
     suspend fun notifications(): List<NotificationItem> =
         api.getMyNotifications().payload()
 

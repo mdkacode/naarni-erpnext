@@ -97,13 +97,14 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit) {
         SmartSelect(
             label = "Vehicle",
             value = vehicle,
-            placeholder = "Search registration / model",
+            placeholder = "Tap to pick a vehicle",
+            fetchOnOpen = true,
             fetch = { q ->
                 vm.jobCards.searchVehicles(q).map {
                     SuggestionItem(
                         value = it.name,
                         label = it.registration_number ?: it.name,
-                        sublabel = listOfNotNull(it.make_model, it.customer).joinToString(" · "),
+                        sublabel = listOfNotNull(it.make_model, it.operator ?: it.customer).joinToString(" · "),
                     )
                 }
             },

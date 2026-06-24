@@ -51,6 +51,9 @@ fun SmartSelect(
     onSelect: (SuggestionItem) -> Unit,
     modifier: Modifier = Modifier,
     suggestions: List<SuggestionItem> = emptyList(),
+    /** When true, the list is loaded via fetch("") the moment the sheet opens — so
+     *  the user sees options (e.g. all vehicles) without typing. */
+    fetchOnOpen: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
 
@@ -78,10 +81,17 @@ fun SmartSelect(
         var results by remember { mutableStateOf(suggestions) }
         var loading by remember { mutableStateOf(false) }
 
-        // Debounced search; empty query shows the eager suggestions.
+        // Debounced search. On a blank query we either fetch the default list
+        // (fetchOnOpen — e.g. all vehicles) or show the eager suggestions.
         LaunchedEffect(query) {
             if (query.isBlank()) {
-                results = suggestions
+                if (fetchOnOpen) {
+                    loading = true
+                    results = runCatching { fetch("") }.getOrDefault(suggestions)
+                    loading = false
+                } else {
+                    results = suggestions
+                }
                 return@LaunchedEffect
             }
             loading = true
@@ -125,7 +135,11 @@ fun SmartSelect(
                 if (results.isEmpty() && !loading) {
                     item {
                         Text(
-                            if (query.isBlank()) "Start typing to search…" else "No matches",
+                            when {
+                                query.isNotBlank() -> "No matches"
+                                fetchOnOpen -> "No vehicles yet"
+                                else -> "Start typing to search…"
+                            },
                             Modifier.fillMaxWidth().padding(24.dp),
                         )
                     }

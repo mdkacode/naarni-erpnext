@@ -28,6 +28,7 @@ import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardsScreen
 import com.naarni.service.ui.screens.ProfileScreen
 import com.naarni.service.ui.screens.TicketsScreen
+import com.naarni.service.ui.screens.VehicleDetailScreen
 import com.naarni.service.ui.screens.VehiclesScreen
 
 enum class Tab(val route: String, val label: String, val icon: ImageVector) {
@@ -73,11 +74,32 @@ fun MainShell(vm: AppViewModel) {
         ) {
             composable(Tab.Home.route) { HomeScreen(vm = vm, onCreateJobCard = { nav.navigate("create") }) }
             composable(Tab.JobCards.route) { JobCardsScreen(vm) }
-            composable(Tab.Fleet.route) { VehiclesScreen(vm) }
+            composable(Tab.Fleet.route) {
+                VehiclesScreen(vm, onOpenVehicle = { name -> nav.navigate("vehicle/$name") })
+            }
+            composable("vehicle/{name}") { entry ->
+                VehicleDetailScreen(
+                    vm,
+                    vehicle = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
+            }
             composable(Tab.Alerts.route) { AlertsScreen(vm) }
             composable(Tab.Tickets.route) { TicketsScreen(vm) }
             composable(Tab.Profile.route) { ProfileScreen(vm) }
-            composable("create") { CreateJobCardScreen(vm, onDone = { nav.popBackStack() }) }
+            composable("create") {
+                CreateJobCardScreen(
+                    vm,
+                    onDone = {
+                        // Land on the Jobs tab so the freshly-created card is visible
+                        // immediately (JobCardsScreen reloads on entry).
+                        nav.navigate(Tab.JobCards.route) {
+                            popUpTo(Tab.Home.route) { saveState = false }
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
         }
     }
 }

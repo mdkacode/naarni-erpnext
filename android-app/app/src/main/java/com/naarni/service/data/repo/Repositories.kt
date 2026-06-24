@@ -96,6 +96,21 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun myJobCards(status: String = ""): List<JobCardListItem> =
         api.getMyJobCards(status).payload()
 
+    suspend fun jobCardDetail(name: String): com.naarni.service.data.dto.JobCardDetail =
+        api.getJobCardSummary(name).payload()
+
+    suspend fun transitionJobCard(name: String, action: String) {
+        api.transitionJobCard(name, action).payload()
+    }
+
+    /** Update editable job-card fields (complaint, observations, priority, …). */
+    suspend fun updateJobCard(name: String, updates: Map<String, String>) {
+        val json = updates.entries.joinToString(",", "{", "}") { (k, v) ->
+            "\"$k\":\"${v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")}\""
+        }
+        api.updateJobCard(name, json).payload()
+    }
+
     /** All synced vehicles for the fleet list (optionally filtered). */
     suspend fun fleet(txt: String = ""): com.naarni.service.data.dto.FleetResponse =
         api.listFleet(txt).payload()
@@ -104,13 +119,21 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun vehicleLive(name: String): com.naarni.service.data.dto.VehicleLive? =
         api.getVehicleLive(name).message?.data
 
-    suspend fun notifications(): List<NotificationItem> =
-        api.getMyNotifications().payload()
+    suspend fun notifications(limit: Int = 30, offset: Int = 0): List<NotificationItem> =
+        api.getMyNotifications(limit, offset).payload()
 
     suspend fun unreadCount(): Int = api.getUnreadCount().payload().unread
 
-    suspend fun registerPushToken(token: String) {
-        api.registerPushToken(token).payload()
+    suspend fun markNotificationRead(name: String) {
+        api.markNotificationRead(name = name).payload()
+    }
+
+    suspend fun markAllNotificationsRead() {
+        api.markNotificationRead(markAll = 1).payload()
+    }
+
+    suspend fun registerPushToken(token: String, platform: String = "android") {
+        api.registerPushToken(token, platform).payload()
     }
 
     /** Create a Job Card; returns its name. Reuses the deployed inspection endpoint. */

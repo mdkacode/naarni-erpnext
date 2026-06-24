@@ -5,6 +5,7 @@ import com.naarni.service.data.dto.CreatedJobCard
 import com.naarni.service.data.dto.FileUploadData
 import com.naarni.service.data.dto.FleetResponse
 import com.naarni.service.data.dto.FormContext
+import com.naarni.service.data.dto.JobCardDetail
 import com.naarni.service.data.dto.TicketItem
 import com.naarni.service.data.dto.JobCardListItem
 import com.naarni.service.data.dto.LoginData
@@ -117,6 +118,25 @@ interface FrappeApi {
         @Query("offset") offset: Int = 0,
     ): FrappeWrap<Envelope<List<JobCardListItem>>>
 
+    @GET("api/method/vehicle_maintenance.api.job_card.get_job_card_summary")
+    suspend fun getJobCardSummary(
+        @Query("job_card_name") name: String,
+    ): FrappeWrap<Envelope<JobCardDetail>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.job_card.transition_job_card")
+    suspend fun transitionJobCard(
+        @Field("job_card_name") name: String,
+        @Field("action") action: String,
+    ): FrappeWrap<Envelope<Map<String, String>>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.job_card.update_job_card")
+    suspend fun updateJobCard(
+        @Field("job_card_name") name: String,
+        @Field("updates") updates: String,
+    ): FrappeWrap<Envelope<Map<String, String>>>
+
     // ── Notifications ──
     @GET("api/method/vehicle_maintenance.api.notifications.get_my_notifications")
     suspend fun getMyNotifications(
@@ -126,6 +146,13 @@ interface FrappeApi {
 
     @GET("api/method/vehicle_maintenance.api.notifications.get_unread_count")
     suspend fun getUnreadCount(): FrappeWrap<Envelope<UnreadCount>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.notifications.mark_notification_read")
+    suspend fun markNotificationRead(
+        @Field("name") name: String = "",
+        @Field("mark_all") markAll: Int = 0,
+    ): FrappeWrap<Envelope<Map<String, String>>>
 
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.notifications.register_push_token")

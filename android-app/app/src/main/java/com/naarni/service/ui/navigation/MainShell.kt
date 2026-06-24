@@ -25,7 +25,9 @@ import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.screens.AlertsScreen
 import com.naarni.service.ui.screens.CreateJobCardScreen
 import com.naarni.service.ui.screens.HomeScreen
+import com.naarni.service.ui.screens.JobCardDetailScreen
 import com.naarni.service.ui.screens.JobCardsScreen
+import com.naarni.service.ui.screens.NotificationsScreen
 import com.naarni.service.ui.screens.ProfileScreen
 import com.naarni.service.ui.screens.TicketsScreen
 import com.naarni.service.ui.screens.VehicleDetailScreen
@@ -72,8 +74,31 @@ fun MainShell(vm: AppViewModel) {
             startDestination = Tab.Home.route,
             modifier = Modifier.padding(padding),
         ) {
-            composable(Tab.Home.route) { HomeScreen(vm = vm, onCreateJobCard = { nav.navigate("create") }) }
-            composable(Tab.JobCards.route) { JobCardsScreen(vm) }
+            composable(Tab.Home.route) {
+                HomeScreen(
+                    vm = vm,
+                    onCreateJobCard = { nav.navigate("create") },
+                    onOpenNotifications = { nav.navigate("notifications") },
+                    onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                )
+            }
+            composable("notifications") {
+                NotificationsScreen(
+                    vm,
+                    onBack = { nav.popBackStack() },
+                    onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                )
+            }
+            composable("jobcard/{name}") { entry ->
+                JobCardDetailScreen(
+                    vm,
+                    jobCard = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable(Tab.JobCards.route) {
+                JobCardsScreen(vm, onOpenJobCard = { name -> nav.navigate("jobcard/$name") })
+            }
             composable(Tab.Fleet.route) {
                 VehiclesScreen(vm, onOpenVehicle = { name -> nav.navigate("vehicle/$name") })
             }

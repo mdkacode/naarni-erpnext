@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,7 +41,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.FleetVehicle
 import com.naarni.service.ui.AppViewModel
+import com.naarni.service.ui.components.Refreshable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The Service Engineer's fleet: every vehicle synced from Naarni, searchable.
@@ -52,7 +55,9 @@ fun VehiclesScreen(vm: AppViewModel, onOpenVehicle: (String) -> Unit = {}) {
     var vehicles by remember { mutableStateOf<List<FleetVehicle>>(emptyList()) }
     var total by remember { mutableStateOf(0) }
     var loading by remember { mutableStateOf(true) }
+    var refreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     // Debounced server-side search (also the initial load with empty query).
     LaunchedEffect(query) {
@@ -98,6 +103,18 @@ fun VehiclesScreen(vm: AppViewModel, onOpenVehicle: (String) -> Unit = {}) {
         )
         Spacer(Modifier.height(12.dp))
 
+        Refreshable(
+            refreshing = refreshing,
+            onRefresh = {
+                scope.launch {
+                    refreshing = true
+                    runCatching { vm.jobCards.fleet(query) }
+                        .onSuccess { vehicles = it.vehicles; total = it.total }
+                    refreshing = false
+                }
+            },
+            modifier = Modifier.weight(1f),
+        ) {
         when {
             loading && vehicles.isEmpty() ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -128,6 +145,7 @@ fun VehiclesScreen(vm: AppViewModel, onOpenVehicle: (String) -> Unit = {}) {
                     items(vehicles, key = { it.name }) { VehicleRow(it, onClick = { onOpenVehicle(it.name) }) }
                     item { Spacer(Modifier.height(12.dp)) }
                 }
+        }
         }
     }
 }

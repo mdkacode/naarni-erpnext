@@ -558,14 +558,19 @@ def get_engine_config(service_key: str | None = None) -> dict:
 				else []
 			)
 			match_value = at.get("match_value")
+			# The primary reading is optional (conditions-only alerts). Emit an empty
+			# parameter/op + zero threshold in that case so the engine evaluates purely
+			# from `conditions`.
+			primary_param = at.get("parameter") or ""
+			threshold_val = sub.threshold if sub.threshold is not None else at.get("default_threshold")
 			rules.append(
 				{
 					"id": sub.alert_type,
-					"parameter": at["parameter"],
-					"op": op_to_symbol(at["op"]),
+					"parameter": primary_param,
+					"op": op_to_symbol(at["op"]) if primary_param else "",
 					# Numeric: threshold (customer override or default). Categorical/Boolean:
 					# match_value drives it and threshold is ignored by the engine.
-					"threshold": sub.threshold if sub.threshold is not None else at["default_threshold"],
+					"threshold": float(threshold_val) if threshold_val is not None else 0.0,
 					"match_value": match_value or None,
 					"unit": at.get("unit"),
 					"icon": at.get("icon"),

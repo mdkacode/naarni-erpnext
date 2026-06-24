@@ -57,7 +57,21 @@ class AlertType(Document):
 			frappe.throw(_("Give this alert a name."))
 		if not self.title:
 			self.title = self.alert_name
-		self._validate_rule()
+
+		# The primary reading is OPTIONAL: an alert may be defined purely by its
+		# Conditions table (AND/OR). Require at least one of the two, and clear stray
+		# primary fields when it's conditions-only.
+		has_primary = bool((self.parameter or "").strip())
+		if not has_primary and not (self.conditions or []):
+			frappe.throw(_("Add a primary reading or at least one condition."))
+
+		if has_primary:
+			self._validate_rule()
+		else:
+			self.op = None
+			self.default_threshold = 0
+			self.match_value = None
+
 		self._validate_conditions()
 		self._validate_display_parameters()
 

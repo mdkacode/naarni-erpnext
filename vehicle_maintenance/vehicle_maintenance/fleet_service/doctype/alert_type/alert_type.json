@@ -54,9 +54,8 @@
       "label": "Vehicle reading to watch",
       "fieldtype": "Link",
       "options": "Telemetry Parameter",
-      "reqd": 1,
       "in_list_view": 1,
-      "description": "Start typing to search, e.g. 'speed', 'temperature', 'connectivity'."
+      "description": "Optional. Leave blank to define this alert from the Conditions table only (AND/OR)."
     },
     {
       "fieldname": "param_type",
@@ -87,8 +86,7 @@
       "fieldname": "op",
       "label": "Trigger when the value is…",
       "fieldtype": "Select",
-      "options": "is greater than (>)\nis greater than or equal to (≥)\nis less than (<)\nis less than or equal to (≤)\nis exactly (=)\nis not (≠)",
-      "reqd": 1,
+      "options": "\nis greater than (>)\nis greater than or equal to (≥)\nis less than (<)\nis less than or equal to (≤)\nis exactly (=)\nis not (≠)",
       "default": "is greater than (>)",
       "description": "How to compare the live reading against your value below."
     },

@@ -2,6 +2,7 @@
   "name": "Notification Channel",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "document_type": "Setup",
   "engine": "InnoDB",
   "autoname": "field:channel_name",

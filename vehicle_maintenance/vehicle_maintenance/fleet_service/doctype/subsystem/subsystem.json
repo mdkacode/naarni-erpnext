@@ -2,6 +2,7 @@
   "name": "Subsystem",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "engine": "InnoDB",
   "autoname": "field:subsystem_name",
   "naming_rule": "By fieldname",

@@ -2,6 +2,7 @@
   "name": "Vehicle",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "document_type": "Document",
   "engine": "InnoDB",
   "autoname": "field:registration_number",

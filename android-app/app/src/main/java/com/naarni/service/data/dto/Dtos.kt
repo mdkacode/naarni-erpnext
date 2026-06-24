@@ -123,6 +123,31 @@ data class JobCardListItem(
     val sla_breached: Int? = null,
 )
 
+/** Full job-card detail for the SE detail/edit screen (from get_job_card_summary). */
+@Serializable
+data class JobCardDetail(
+    val name: String,
+    val vehicle_number: String? = null,
+    val vehicle_make_model: String? = null,
+    val customer_name: String? = null,
+    val job_card_type: String? = null,
+    val service_type: String? = null,
+    val priority: String? = null,
+    val workflow_state: String? = null,
+    val complaint_description: String? = null,
+    val se_observations: String? = null,
+    val odometer_reading: Int? = null,
+    val depot: String? = null,
+    val opened_at: String? = null,
+    val closed_at: String? = null,
+    val estimated_cost: Double? = null,
+    val actual_cost: Double? = null,
+    val pre_pms_score: Double? = null,
+    val post_pms_score: Double? = null,
+    val sla_breached: Int? = null,
+    val available_actions: List<String> = emptyList(),
+)
+
 @Serializable
 data class NotificationItem(
     val name: String,

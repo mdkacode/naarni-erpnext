@@ -94,8 +94,43 @@ def create_ticket_from_alert(alert_event_name: str) -> str | None:
 	).insert(ignore_permissions=True)
 	ticket.db_set("deeplink", f"naarni://ticket/{ticket.name}", update_modified=False)
 
+	_populate_vehicle_snapshot(ticket)
 	_notify_ticket(ticket, engineers)
 	return ticket.name
+
+
+def _populate_vehicle_snapshot(ticket) -> None:
+	"""Stamp the ticket with the bus's live telemetry (IST) at raise time.
+
+	Pulls the full `/v1/analytics/vehicles/{id}` detail so the engineer sees the
+	vehicle's complete state on the ticket. Best-effort — never blocks ticket raise.
+	"""
+	try:
+		from vehicle_maintenance.integrations import naarni_vehicles
+
+		live = naarni_vehicles.live_detail(ticket.vehicle)
+		if not live:
+			return
+		mm = " ".join(p for p in (live.get("make"), live.get("model")) if p) or None
+		values = {
+			"operator": live.get("operator"),
+			"make_model": mm,
+			"route_name": live.get("route_name"),
+			"odometer": live.get("odometer_exact"),
+			"activity": live.get("activity"),
+			"connectivity_status": live.get("connectivity_status"),
+			"battery_soc": live.get("battery_soc"),
+			"telemetry_at": live.get("telemetry_at_ist"),
+			"vehicle_snapshot": frappe.as_json(live),
+		}
+		# Fall back to live GPS if the alert carried no coordinates.
+		if live.get("latitude") is not None and not ticket.latitude:
+			values["latitude"] = live.get("latitude")
+			values["longitude"] = live.get("longitude")
+			values["maps_link"] = live.get("maps_link")
+		frappe.db.set_value("Service Ticket", ticket.name, values, update_modified=False)
+	except Exception:
+		frappe.log_error(title="Ticket vehicle snapshot failed")
 
 
 def _notify_ticket(ticket, engineers: list[str]) -> None:

@@ -96,6 +96,10 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun myJobCards(status: String = ""): List<JobCardListItem> =
         api.getMyJobCards(status).payload()
 
+    /** All synced vehicles for the fleet list (optionally filtered). */
+    suspend fun fleet(txt: String = ""): com.naarni.service.data.dto.FleetResponse =
+        api.listFleet(txt).payload()
+
     suspend fun notifications(): List<NotificationItem> =
         api.getMyNotifications().payload()
 

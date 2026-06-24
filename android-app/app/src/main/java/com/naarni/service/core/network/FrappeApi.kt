@@ -3,6 +3,7 @@ package com.naarni.service.core.network
 import com.naarni.service.data.dto.AlertEventItem
 import com.naarni.service.data.dto.CreatedJobCard
 import com.naarni.service.data.dto.FileUploadData
+import com.naarni.service.data.dto.FleetResponse
 import com.naarni.service.data.dto.FormContext
 import com.naarni.service.data.dto.TicketItem
 import com.naarni.service.data.dto.JobCardListItem
@@ -93,6 +94,14 @@ interface FrappeApi {
         @Query("txt") txt: String = "",
         @Query("limit") limit: Int = 20,
     ): FrappeWrap<Envelope<List<SuggestionItem>>>
+
+    // ── Fleet (all synced vehicles, for the SE fleet list) ──
+    @GET("api/method/vehicle_maintenance.integrations.naarni_vehicles.list_fleet")
+    suspend fun listFleet(
+        @Query("txt") txt: String = "",
+        @Query("limit") limit: Int = 300,
+        @Query("offset") offset: Int = 0,
+    ): FrappeWrap<Envelope<FleetResponse>>
 
     // ── Job cards ──
     @GET("api/method/vehicle_maintenance.api.job_card.get_my_job_cards")

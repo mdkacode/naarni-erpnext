@@ -59,6 +59,27 @@ data class VehicleHit(
     val registration_number: String? = null,
     val make_model: String? = null,
     val customer: String? = null,
+    val operator: String? = null,
+    val depot: String? = null,
+)
+
+/** A vehicle row in the Service Engineer's fleet list (synced from Naarni). */
+@Serializable
+data class FleetVehicle(
+    val name: String,
+    val registration_number: String? = null,
+    val make_model: String? = null,
+    val operator: String? = null,
+    val depot: String? = null,
+    val vehicle_status: String? = null,
+    val naarni_vehicle_id: String? = null,
+    val last_synced_at: String? = null,
+)
+
+@Serializable
+data class FleetResponse(
+    val vehicles: List<FleetVehicle> = emptyList(),
+    val total: Int = 0,
 )
 
 @Serializable

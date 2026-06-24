@@ -62,6 +62,23 @@ PARTS = [
 ]
 
 
+# (customer_name, mobile_no, city, state) — demo B2B bus operators for testing.
+CUSTOMERS = [
+	("Zingbus", "9000000001", "Gurugram", "Haryana"),
+	("IntrCity SmartBus", "9000000002", "Bengaluru", "Karnataka"),
+	("Chartered Bus", "9000000003", "Hyderabad", "Telangana"),
+	("NueGo EV Travels", "9000000004", "New Delhi", "Delhi"),
+]
+
+
+def _ensure_customer(name: str, mobile: str, city: str, state: str) -> None:
+	if frappe.db.exists("Customer", {"customer_name": name}):
+		return
+	frappe.get_doc(
+		{"doctype": "Customer", "customer_name": name, "mobile_no": mobile, "city": city, "state": state}
+	).insert(ignore_permissions=True, ignore_if_duplicate=True)
+
+
 def _ensure_part_group(name: str, bus_system: str) -> None:
 	if frappe.db.exists("Part Group", name):
 		return
@@ -93,6 +110,11 @@ def _ensure_part(code, name, group, uom, cost, mfr, lead) -> None:
 def execute() -> None:
 	if not frappe.db.exists("DocType", "Part"):
 		return
+	for cname, mobile, city, state in CUSTOMERS:
+		try:
+			_ensure_customer(cname, mobile, city, state)
+		except Exception:
+			frappe.log_error(title="seed_parts_catalog:customer", message=frappe.get_traceback())
 	for name, system in PART_GROUPS:
 		try:
 			_ensure_part_group(name, system)

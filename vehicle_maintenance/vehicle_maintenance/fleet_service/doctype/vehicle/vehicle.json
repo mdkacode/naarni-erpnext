@@ -1,143 +1,190 @@
 {
-  "name": "Vehicle",
-  "module": "Fleet Service",
-  "doctype": "DocType",
-  "document_type": "Document",
-  "engine": "InnoDB",
-  "autoname": "field:registration_number",
-  "naming_rule": "By fieldname",
-  "track_changes": 1,
-  "fields": [
-    {
-      "fieldname": "registration_number",
-      "label": "Registration Number",
-      "fieldtype": "Data",
-      "unique": 1,
-      "reqd": 1,
-      "in_list_view": 1
-    },
-    {
-      "fieldname": "make_model",
-      "label": "Make / Model",
-      "fieldtype": "Data",
-      "reqd": 1,
-      "in_list_view": 1
-    },
-    {
-      "fieldname": "column_break_v1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "year_of_manufacture",
-      "label": "Year of Manufacture",
-      "fieldtype": "Int"
-    },
-    {
-      "fieldname": "vin",
-      "label": "VIN / Chassis Number",
-      "fieldtype": "Data"
-    },
-    {
-      "fieldname": "device_id",
-      "label": "Telemetry Device ID",
-      "fieldtype": "Data",
-      "in_standard_filter": 1,
-      "search_index": 1,
-      "description": "Maps this vehicle to its telemetry stream (vehicle_recent_info_silver.device_id). The bridge between Frappe and the alert engine."
-    },
-    {
-      "fieldname": "naarni_vehicle_id",
-      "label": "Naarni Vehicle ID",
-      "fieldtype": "Data",
-      "unique": 1,
-      "read_only": 1,
-      "search_index": 1,
-      "description": "Numeric vehicleId in the Naarni backend (api.naarni.com). Key for the vehicle-directory sync and live-detail lookups."
-    },
-    {
-      "fieldname": "operator",
-      "label": "Operator",
-      "fieldtype": "Data",
-      "read_only": 1,
-      "in_standard_filter": 1,
-      "description": "Fleet operator, synced from Naarni telemetry (vehicle_recent_info_silver.operator)."
-    },
-    {
-      "fieldname": "vehicle_status",
-      "label": "Vehicle Status",
-      "fieldtype": "Data",
-      "read_only": 1,
-      "in_standard_filter": 1,
-      "description": "Operational status synced from Naarni (e.g. ACTIVE)."
-    },
-    {
-      "fieldname": "engine_number",
-      "label": "Engine Number",
-      "fieldtype": "Data"
-    },
-    {
-      "fieldname": "oem",
-      "label": "OEM",
-      "fieldtype": "Link",
-      "options": "OEM",
-      "in_list_view": 1,
-      "in_standard_filter": 1,
-      "description": "Original Equipment Manufacturer (e.g., Azad, NaArNi)"
-    },
-    {
-      "fieldname": "section_owner",
-      "label": "Ownership",
-      "fieldtype": "Section Break"
-    },
-    {
-      "fieldname": "customer",
-      "label": "Owner / Customer",
-      "fieldtype": "Link",
-      "options": "Customer"
-    },
-    {
-      "fieldname": "depot",
-      "label": "Home Depot",
-      "fieldtype": "Link",
-      "options": "Depot",
-      "in_standard_filter": 1,
-      "description": "Depot that services this bus — routes its alerts/tickets to that depot's engineers (synced from Naarni)."
-    },
-    {
-      "fieldname": "last_synced_at",
-      "label": "Last Synced From Naarni",
-      "fieldtype": "Datetime",
-      "read_only": 1
-    },
-    {
-      "fieldname": "fuel_type",
-      "label": "Fuel Type",
-      "fieldtype": "Select",
-      "options": "\nPetrol\nDiesel\nCNG\nElectric\nHybrid"
-    },
-    {
-      "fieldname": "column_break_v2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "color",
-      "label": "Color",
-      "fieldtype": "Data"
-    },
-    {
-      "fieldname": "insurance_expiry",
-      "label": "Insurance Expiry",
-      "fieldtype": "Date"
-    }
-  ],
-  "permissions": [
-    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 0},
-    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1},
-    {"role": "Technician", "read": 1},
-    {"role": "Central Ops", "read": 1},
-    {"role": "Customer", "read": 1}
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "title_field": "registration_number"
+ "name": "Vehicle",
+ "module": "Fleet Service",
+ "doctype": "DocType",
+ "allow_import": 1,
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "autoname": "field:registration_number",
+ "naming_rule": "By fieldname",
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "registration_number",
+   "label": "Registration Number",
+   "fieldtype": "Data",
+   "unique": 1,
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "make_model",
+   "label": "Make / Model",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_v1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "year_of_manufacture",
+   "label": "Year of Manufacture",
+   "fieldtype": "Int"
+  },
+  {
+   "fieldname": "vin",
+   "label": "VIN / Chassis Number",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "device_id",
+   "label": "Telemetry Device ID",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "description": "Maps this vehicle to its telemetry stream (vehicle_recent_info_silver.device_id). The bridge between Frappe and the alert engine."
+  },
+  {
+   "fieldname": "mute_alerts",
+   "label": "Mute Alerts",
+   "fieldtype": "Check",
+   "default": "0",
+   "in_standard_filter": 1,
+   "description": "When ticked, the alert engine sends NO alerts for this vehicle (e.g. a faulty sensor or test unit). Takes effect within ~1 minute."
+  },
+  {
+   "fieldname": "naarni_vehicle_id",
+   "label": "Naarni Vehicle ID",
+   "fieldtype": "Data",
+   "unique": 1,
+   "read_only": 1,
+   "search_index": 1,
+   "description": "Numeric vehicleId in the Naarni backend (api.naarni.com). Key for the vehicle-directory sync and live-detail lookups."
+  },
+  {
+   "fieldname": "operator",
+   "label": "Operator",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "Fleet operator, synced from Naarni telemetry (vehicle_recent_info_silver.operator)."
+  },
+  {
+   "fieldname": "vehicle_status",
+   "label": "Vehicle Status",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "Operational status synced from Naarni (e.g. ACTIVE)."
+  },
+  {
+   "fieldname": "engine_number",
+   "label": "Engine Number",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "oem",
+   "label": "OEM",
+   "fieldtype": "Link",
+   "options": "OEM",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Original Equipment Manufacturer (e.g., Azad, NaArNi)"
+  },
+  {
+   "fieldname": "section_owner",
+   "label": "Ownership",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "customer",
+   "label": "Owner / Customer",
+   "fieldtype": "Link",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "depot",
+   "label": "Home Depot",
+   "fieldtype": "Link",
+   "options": "Depot",
+   "in_standard_filter": 1,
+   "description": "Depot that services this bus — routes its alerts/tickets to that depot's engineers (synced from Naarni)."
+  },
+  {
+   "fieldname": "last_synced_at",
+   "label": "Last Synced From Naarni",
+   "fieldtype": "Datetime",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fuel_type",
+   "label": "Fuel Type",
+   "fieldtype": "Select",
+   "options": "\nPetrol\nDiesel\nCNG\nElectric\nHybrid"
+  },
+  {
+   "fieldname": "column_break_v2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "color",
+   "label": "Color",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "insurance_expiry",
+   "label": "Insurance Expiry",
+   "fieldtype": "Date"
+  },
+  {
+   "fieldname": "section_images",
+   "label": "Bus Photos",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "master_image",
+   "label": "Master Image",
+   "fieldtype": "Attach Image",
+   "description": "Primary photo of the bus, shown as the identity image."
+  },
+  {
+   "fieldname": "images",
+   "label": "Image Gallery",
+   "fieldtype": "Table",
+   "options": "Vehicle Image",
+   "description": "Multi-angle photos of the bus (Master, Front, Rear, Left, Right, Engine, Interior, Odometer, Damage)."
+  }
+ ],
+ "permissions": [
+  {
+   "role": "Depot Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 0
+  },
+  {
+   "role": "Service Engineer",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Technician",
+   "read": 1
+  },
+  {
+   "role": "Central Ops",
+   "read": 1
+  },
+  {
+   "role": "Customer",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "registration_number"
 }

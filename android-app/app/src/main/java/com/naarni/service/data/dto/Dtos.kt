@@ -154,6 +154,8 @@ data class JobCardListItem(
     val job_card_type: String? = null,
     val workflow_state: String? = null,
     val vehicle_number: String? = null,
+    val vehicle_make_model: String? = null,
+    val operator: String? = null,
     val customer_name: String? = null,
     val job_card_date: String? = null,
     val odometer_reading: Int? = null,

@@ -7,11 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -65,6 +68,7 @@ import com.naarni.service.ui.components.RefreshableList
 import com.naarni.service.ui.components.SectionHeader
 import com.naarni.service.ui.components.StatTile
 import com.naarni.service.ui.components.StatusChip
+import com.naarni.service.ui.components.statusColor
 import com.naarni.service.ui.theme.BrandGradient
 
 @Composable
@@ -183,43 +187,74 @@ private fun prettyKm(km: Int?): String? {
     return "%,d km".format(km)
 }
 
+/** A small rounded badge for the job-card type. */
+@Composable
+private fun TypeBadge(type: String?) {
+    if (type.isNullOrBlank()) return
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(50)) {
+        Text(
+            type,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+        )
+    }
+}
+
 @Composable
 private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
     val criticality = jc.force_close_severity?.takeIf { it.isNotBlank() } ?: jc.priority
-    Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(
-                Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+    val accent = statusColor(jc.workflow_state)
+    // Lead with the fleet operator (easiest to identify); registration is the sub-line.
+    val operator = jc.operator?.takeIf { it.isNotBlank() }
+    val title = operator ?: jc.vehicle_number ?: jc.name
+    val subtitle = if (operator != null) jc.vehicle_number else jc.vehicle_make_model
 
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                // Line 1: registration number + status
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        jc.vehicle_number ?: jc.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            // Status-coloured accent strip down the left edge.
+            Box(Modifier.width(5.dp).fillMaxHeight().background(accent))
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Header: bus avatar + operator/registration + status
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(
+                        Modifier.size(44.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = accent) }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                        )
+                        if (!subtitle.isNullOrBlank()) {
+                            Text(
+                                subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                     StatusChip(jc.workflow_state)
                 }
-                // Line 2: type + criticality + SLA breach
+                // Badges: type + criticality + SLA
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        jc.job_card_type ?: jc.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    TypeBadge(jc.job_card_type)
                     PriorityPill(criticality)
                     if (jc.sla_breached == 1) {
                         MetaChip(Icons.Filled.Warning, "SLA", tint = MaterialTheme.colorScheme.error)
                     }
                 }
-                // Line 3: customer · created date · odometer
+                // Meta: customer · created date · odometer
                 val customer = jc.customer_name?.takeIf { it.isNotBlank() }
-                // Prefer the business "Date"; fall back to the system created-on so a
-                // date always shows on the card.
                 val date = prettyDate(jc.job_card_date) ?: prettyDate(jc.creation)
                 val km = prettyKm(jc.odometer_reading)
                 if (customer != null || date != null || km != null) {

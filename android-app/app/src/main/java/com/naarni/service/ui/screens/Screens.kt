@@ -126,8 +126,9 @@ fun HomeScreen(
         }
 
         // Primary gradient CTA
+        val feedback = com.naarni.service.core.feedback.LocalFeedback.current
         Surface(
-            onClick = onCreateJobCard,
+            onClick = { feedback.tap(); onCreateJobCard() },
             shape = MaterialTheme.shapes.large,
             color = Color.Transparent,
             modifier = Modifier.fillMaxWidth(),

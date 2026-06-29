@@ -75,6 +75,7 @@ fun JobCardDetailScreen(vm: AppViewModel, jobCard: String, onBack: () -> Unit) {
     var reportToCustomer by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<com.naarni.service.data.dto.CustomerFeedbackData?>(null) }
     val scope = rememberCoroutineScope()
+    val haptics = com.naarni.service.core.feedback.LocalFeedback.current
     val context = androidx.compose.ui.platform.LocalContext.current
 
     suspend fun load() {
@@ -174,8 +175,8 @@ fun JobCardDetailScreen(vm: AppViewModel, jobCard: String, onBack: () -> Unit) {
                                                 vm.jobCards.recordApprovalDecision(d.name, approved = false, perPartFeedback = perPart)
                                                 vm.jobCards.transitionJobCard(d.name, "Customer Rejects")
                                             }
-                                        }.onSuccess { snack = if (approvedAll) "Customer approved" else "Rejection recorded"; load() }
-                                            .onFailure { snack = it.message ?: "Failed" }
+                                        }.onSuccess { snack = if (approvedAll) "Customer approved" else "Rejection recorded"; haptics.success(); load() }
+                                            .onFailure { snack = it.message ?: "Failed"; haptics.error() }
                                         busy = false
                                     }
                                 },
@@ -517,8 +518,8 @@ fun JobCardDetailScreen(vm: AppViewModel, jobCard: String, onBack: () -> Unit) {
                                     scope.launch {
                                         busy = true
                                         runCatching { vm.jobCards.transitionJobCard(d.name, action) }
-                                            .onSuccess { snack = action; load() }
-                                            .onFailure { snack = it.message ?: "Action failed" }
+                                            .onSuccess { snack = action; haptics.success(); load() }
+                                            .onFailure { snack = it.message ?: "Action failed"; haptics.error() }
                                         busy = false
                                     }
                                 },

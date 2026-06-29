@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.naarni.service.core.feedback.LocalFeedback
 import com.naarni.service.data.dto.FormContext
 import com.naarni.service.data.dto.InspectionSheet
 import com.naarni.service.data.dto.SuggestionItem
@@ -61,6 +62,7 @@ import java.io.File
 @Composable
 fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
+    val feedback = LocalFeedback.current
     val jobCardTypes = vm.opt("job_card_type")
     var type by remember { mutableStateOf(jobCardTypes.firstOrNull() ?: "PMS + Repair") }
     var vehicle by remember { mutableStateOf<SuggestionItem?>(null) }
@@ -309,6 +311,7 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit
             Button(
                 onClick = {
                     val c = context ?: return@Button
+                    feedback.tap()
                     submitting = true
                     error = null
                     scope.launch {
@@ -330,8 +333,8 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit
                             photo?.let { runCatching { vm.jobCards.uploadPhoto(it, name) } }
                             vinPhoto?.let { runCatching { vm.jobCards.uploadPhoto(it, name) } }
                             name
-                        }.onSuccess { createdName = it; submitting = false }
-                            .onFailure { error = it.message; submitting = false }
+                        }.onSuccess { createdName = it; submitting = false; feedback.success() }
+                            .onFailure { error = it.message; submitting = false; feedback.error() }
                     }
                 },
                 enabled = complaint != null && odometer.isNotBlank() && !submitting &&

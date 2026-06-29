@@ -216,9 +216,11 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
                         MetaChip(Icons.Filled.Warning, "SLA", tint = MaterialTheme.colorScheme.error)
                     }
                 }
-                // Line 3: customer · date · odometer
+                // Line 3: customer · created date · odometer
                 val customer = jc.customer_name?.takeIf { it.isNotBlank() }
-                val date = prettyDate(jc.job_card_date)
+                // Prefer the business "Date"; fall back to the system created-on so a
+                // date always shows on the card.
+                val date = prettyDate(jc.job_card_date) ?: prettyDate(jc.creation)
                 val km = prettyKm(jc.odometer_reading)
                 if (customer != null || date != null || km != null) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

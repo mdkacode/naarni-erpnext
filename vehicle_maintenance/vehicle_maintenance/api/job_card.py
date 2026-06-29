@@ -657,6 +657,7 @@ def get_my_job_cards(
 			"force_close_severity",
 			"sla_breached",
 			"workflow_state",
+			"creation",
 			"modified",
 		],
 		order_by="modified desc",

@@ -160,6 +160,7 @@ data class JobCardListItem(
     val priority: String? = null,
     val force_close_severity: String? = null,
     val sla_breached: Int? = null,
+    val creation: String? = null,
 )
 
 /** Full job-card detail for the SE detail/edit screen (from get_job_card_summary). */

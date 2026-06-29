@@ -158,7 +158,29 @@ fun JobCardDetailScreen(vm: AppViewModel, jobCard: String, onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (canRecordApproval) {
+                        if (canRecordApproval && d.repair_items.isNotEmpty()) {
+                            // Per-item approval — customer approves/rejects each part.
+                            PerItemApprovalCard(
+                                items = d.repair_items,
+                                busy = busy,
+                                onSubmit = { approvedAll, perPart ->
+                                    scope.launch {
+                                        busy = true
+                                        runCatching {
+                                            if (approvedAll) {
+                                                vm.jobCards.recordApprovalDecision(d.name, approved = true)
+                                                vm.jobCards.transitionJobCard(d.name, "Customer Approves")
+                                            } else {
+                                                vm.jobCards.recordApprovalDecision(d.name, approved = false, perPartFeedback = perPart)
+                                                vm.jobCards.transitionJobCard(d.name, "Customer Rejects")
+                                            }
+                                        }.onSuccess { snack = if (approvedAll) "Customer approved" else "Rejection recorded"; load() }
+                                            .onFailure { snack = it.message ?: "Failed" }
+                                        busy = false
+                                    }
+                                },
+                            )
+                        } else if (canRecordApproval) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Button(
                                     enabled = !busy,
@@ -662,10 +684,13 @@ fun JobCardDetailScreen(vm: AppViewModel, jobCard: String, onBack: () -> Unit) {
                 initial = d.breakdown,
                 saving = busy,
                 onDismiss = { showBreakdownEditor = false },
-                onSave = { updates ->
+                onSave = { updates, groups ->
                     scope.launch {
                         busy = true
-                        runCatching { vm.jobCards.updateBreakdownDiagnosis(d.name, updates) }
+                        runCatching {
+                            vm.jobCards.updateBreakdownDiagnosis(d.name, updates)
+                            vm.jobCards.saveGroupsImpacted(d.name, groups)
+                        }
                             .onSuccess { snack = "Diagnosis saved"; showBreakdownEditor = false; load() }
                             .onFailure { snack = it.message ?: "Save failed" }
                         busy = false

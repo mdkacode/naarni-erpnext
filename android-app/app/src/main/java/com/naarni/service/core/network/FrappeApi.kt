@@ -186,6 +186,13 @@ interface FrappeApi {
     @GET("api/method/vehicle_maintenance.api.job_card.list_part_groups")
     suspend fun listPartGroups(): FrappeWrap<Envelope<List<PartGroupItem>>>
 
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.job_card.save_groups_impacted")
+    suspend fun saveGroupsImpacted(
+        @Field("job_card_name") name: String,
+        @Field("part_groups") partGroups: String,
+    ): FrappeWrap<Envelope<JsonObject>>
+
     // ── Software update + Breakdown ──
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.job_card.save_software_components")
@@ -233,6 +240,7 @@ interface FrappeApi {
         @Field("job_card_name") name: String,
         @Field("approved") approved: Int,
         @Field("rejection_feedback") rejectionFeedback: String = "",
+        @Field("per_part_feedback") perPartFeedback: String = "[]",
     ): FrappeWrap<Envelope<JsonObject>>
 
     @FormUrlEncoded

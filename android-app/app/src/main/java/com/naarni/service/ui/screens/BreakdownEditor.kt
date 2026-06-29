@@ -35,8 +35,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.toMutableStateList
 import com.naarni.service.data.dto.BreakdownInfo
+import com.naarni.service.data.dto.SuggestionItem
 import com.naarni.service.ui.AppViewModel
+import com.naarni.service.ui.components.MultiSelectField
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -52,10 +56,11 @@ fun BreakdownEditor(
     vm: AppViewModel,
     initial: BreakdownInfo,
     saving: Boolean,
-    onSave: (Map<String, String>) -> Unit,
+    onSave: (Map<String, String>, List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val groups = remember { initial.groups_impacted.map { SuggestionItem(value = it, label = it) }.toMutableStateList() }
         var incidentPlace by remember { mutableStateOf(initial.incident_place ?: "") }
         var fc1 by remember { mutableStateOf(initial.fault_code_1 ?: "") }
         var fc2 by remember { mutableStateOf(initial.fault_code_2 ?: "") }
@@ -87,6 +92,14 @@ fun BreakdownEditor(
                 OutlinedTextField(fc1, { fc1 = it }, label = { Text("Fault code 1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(fc2, { fc2 = it }, label = { Text("Fault code 2") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(fc3, { fc3 = it }, label = { Text("Fault code 3") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                MultiSelectField(
+                    label = "Groups impacted",
+                    selected = groups,
+                    placeholder = "Add affected part groups",
+                    fetch = { q -> vm.jobCards.partGroupOptions(q) },
+                    onAdd = { groups.add(it) },
+                    onRemove = { groups.remove(it) },
+                )
                 Chips("Remote resolution", vm.opt("remote_status"), remoteStatus) { remoteStatus = it }
 
                 Text("Travel tracking", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
@@ -129,7 +142,7 @@ fun BreakdownEditor(
                             if (occurrence.isNotBlank()) put("occurrence_risk", occurrence)
                             if (rca.isNotBlank()) put("rca_notes", rca)
                         }
-                        scope.launch { onSave(updates) }
+                        scope.launch { onSave(updates, groups.map { it.value }) }
                     },
                 ) { Text(if (saving) "Saving…" else "Save diagnosis") }
             }

@@ -24,6 +24,8 @@ object PhotoStamper {
         val dateTime: String,
         val location: String,
         val by: String,
+        /** Optional photo type/angle (e.g. "Front", "Damage") shown as the top line. */
+        val label: String? = null,
     )
 
     /** Build stamp text from raw inputs at capture time. */
@@ -32,6 +34,7 @@ object PhotoStamper {
         userFullName: String,
         userRole: String,
         whenMillis: Long = System.currentTimeMillis(),
+        label: String? = null,
     ): StampData {
         val ts = SimpleDateFormat("dd MMM yyyy, HH:mm:ss z", Locale.getDefault())
             .format(Date(whenMillis))
@@ -41,7 +44,7 @@ object PhotoStamper {
         } else {
             "Location unavailable"
         }
-        return StampData(dateTime = ts, location = loc, by = "By: $userFullName ($userRole)")
+        return StampData(dateTime = ts, location = loc, by = "By: $userFullName ($userRole)", label = label)
     }
 
     /** Draw the stamp onto a copy of [src] and return it. */
@@ -63,7 +66,7 @@ object PhotoStamper {
         }
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(150, 0, 0, 0) }
 
-        val lines = listOf(data.dateTime, data.location, data.by)
+        val lines = listOfNotNull(data.label?.let { "📷 $it" }, data.dateTime, data.location, data.by)
         val maxLineW = lines.maxOf { text.measureText(it) }
         val blockH = lineH * lines.size
 

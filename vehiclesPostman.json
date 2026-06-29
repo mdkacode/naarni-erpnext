@@ -1,0 +1,140 @@
+{
+  "info": {
+    "name": "Naarni — Vehicle Directory (Admin)",
+    "description": "ADMIN-only vehicle directory + detail API. Run 'Login' first; it auto-saves {{token}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.naarni.com/api" },
+    { "key": "phone", "value": "9936142128" },
+    { "key": "otp", "value": "7543" },
+    { "key": "token", "value": "" },
+    { "key": "serviceToken", "value": "" },
+    { "key": "vehicleId", "value": "21" }
+  ],
+  "item": [
+    {
+      "name": "Login (phone OTP)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var json = pm.response.json();",
+              "if (json.access_token) {",
+              "  pm.collectionVariables.set('token', json.access_token);",
+              "  pm.test('got access_token', function () { pm.expect(json.access_token).to.be.a('string'); });",
+              "} else {",
+              "  pm.test('login failed', function () { pm.expect.fail(JSON.stringify(json)); });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "grant_type", "value": "phone" },
+            { "key": "phone", "value": "{{phone}}" },
+            { "key": "otp", "value": "{{otp}}" },
+            { "key": "device_id", "value": "1" },
+            { "key": "client_id", "value": "naarni-app" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/auth/token",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "auth", "token"]
+        }
+      }
+    },
+    {
+      "name": "List vehicles",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/analytics/vehicles",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "analytics", "vehicles"]
+        }
+      }
+    },
+    {
+      "name": "Vehicle detail",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/analytics/vehicles/{{vehicleId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "analytics", "vehicles", "{{vehicleId}}"]
+        }
+      }
+    },
+    {
+      "name": "Issue service token (admin)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var json = pm.response.json();",
+              "if (json.accessToken) {",
+              "  pm.collectionVariables.set('serviceToken', json.accessToken);",
+              "  pm.test('got service token', function () { pm.expect(json.accessToken).to.be.a('string'); });",
+              "  console.log('expiresAt:', json.expiresAt);",
+              "} else {",
+              "  pm.test('mint failed (is SERVICE_TOKEN_ENABLED=true?)', function () { pm.expect.fail(pm.response.status + ' ' + JSON.stringify(json)); });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"frappe-vehicle-maintenance\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/service-tokens",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "service-tokens"]
+        },
+        "description": "ADMIN-only. Mints a long-lived/non-expiring JWT for M2M (Frappe), signed in-cluster. Requires SERVICE_TOKEN_ENABLED=true on the deployment for the mint window. Omit ttlDays for a non-expiring token; add e.g. {\"ttlDays\": 365} for a bounded one. Auto-saves the result to {{serviceToken}}."
+      }
+    },
+    {
+      "name": "List vehicles (as service token)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{serviceToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/analytics/vehicles",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "analytics", "vehicles"]
+        },
+        "description": "Sanity-check the minted Frappe token: same endpoint, authenticated with {{serviceToken}} instead of the login {{token}}."
+      }
+    }
+  ]
+}

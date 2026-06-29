@@ -1,0 +1,31 @@
+part_code,part_name,part_group,stock_uom,standard_cost,manufacturer,lead_time_days,is_active
+BAT-MOD-001,HV Battery Module 3.5kWh,HV Battery Pack,Nos,95000,CATL,21,1
+BAT-CON-002,HV Battery Contactor 500A,HV Battery Pack,Nos,8500,TE Connectivity,14,1
+BMS-SLAVE-001,BMS Slave Board,Battery Management System,Nos,6200,Inhouse,10,1
+BMS-MAIN-002,BMS Master Controller,Battery Management System,Nos,22000,Inhouse,14,1
+MOT-TRC-001,Traction Motor 150kW PMSM,Traction Motor,Nos,185000,Dana TM4,30,1
+MOT-BRG-002,Motor Bearing Set,Traction Motor,Set,4500,SKF,7,1
+INV-CTRL-001,Motor Controller 150kW,Motor Controller / Inverter,Nos,78000,Bosch,21,1
+INV-IGBT-002,IGBT Module,Motor Controller / Inverter,Nos,14500,Infineon,18,1
+DCDC-24V-001,DC-DC Converter 24V 3kW,DC-DC Converter,Nos,21000,Valeo,14,1
+OBC-22K-001,On-board Charger 22kW,On-board Charger,Nos,64000,BRUSA,21,1
+COOL-PUMP-001,Coolant Pump 12V,Thermal / Cooling System,Nos,5400,Bosch,7,1
+COOL-FLD-002,EV Coolant (Glycol) 5L,Thermal / Cooling System,Litre,850,Shell,3,1
+COOL-RAD-003,Battery Radiator,Thermal / Cooling System,Nos,12500,Valeo,10,1
+BRK-PAD-001,Brake Pad Set (Front),Brake System,Set,3200,Brembo,5,1
+BRK-PAD-002,Brake Pad Set (Rear),Brake System,Set,2950,Brembo,5,1
+BRK-DISC-003,Brake Disc,Brake System,Nos,6800,Brembo,7,1
+BRK-AIR-004,Air Brake Chamber,Brake System,Nos,4100,WABCO,7,1
+SUS-BAG-001,Air Suspension Bellow,Air Suspension,Nos,7600,Continental,10,1
+SUS-COMP-002,Air Compressor,Air Suspension,Nos,18500,WABCO,14,1
+STR-PUMP-001,Electric Power Steering Pump,Steering System,Nos,16400,ZF,14,1
+STR-TIE-002,Tie Rod End,Steering System,Nos,2200,ZF,5,1
+HVAC-COMP-001,Electric AC Compressor,HVAC Unit,Nos,42000,Denso,18,1
+HVAC-FLT-002,Cabin Air Filter,HVAC Unit,Nos,650,Mann,3,1
+DOOR-CYL-001,Door Pneumatic Cylinder,Pneumatic Doors,Nos,5200,Ventura,10,1
+DOOR-VLV-002,Door Control Valve,Pneumatic Doors,Nos,3400,Ventura,10,1
+TYR-295-001,Tyre 295/80 R22.5,Tyres & Wheels,Nos,24500,Apollo,7,1
+TYR-RIM-002,Steel Rim 22.5,Tyres & Wheels,Nos,8900,Wheels India,7,1
+LGT-HEAD-001,LED Headlamp Assembly,Lighting,Nos,7300,Lumax,7,1
+LGT-TAIL-002,LED Tail Lamp,Lighting,Nos,3100,Lumax,7,1
+VCU-ECU-001,Vehicle Control Unit,VCU / Software,Nos,36000,Inhouse,21,1

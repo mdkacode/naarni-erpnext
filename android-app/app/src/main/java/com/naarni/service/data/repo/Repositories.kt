@@ -11,6 +11,10 @@ import com.naarni.service.data.dto.NotificationItem
 import com.naarni.service.data.dto.SuggestionItem
 import com.naarni.service.data.dto.TicketItem
 import com.naarni.service.data.dto.VehicleHit
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -76,13 +80,36 @@ class AuthRepository(
     fun logout() = session.clear()
 }
 
+/** Read a string field from a tolerant JsonObject response (empty if absent). */
+private fun JsonObject.str(key: String): String =
+    this[key]?.jsonPrimitive?.contentOrNull ?: ""
+
 class JobCardRepository(private val api: FrappeApi) {
+
+    private val repoJson = kotlinx.serialization.json.Json {
+        encodeDefaults = false
+        ignoreUnknownKeys = true
+    }
+
+    /** Live dropdown options keyed by option name (admin-editable via Customize Form). */
+    suspend fun appFieldOptions(): Map<String, List<String>> =
+        api.getAppFieldOptions().payload()
 
     suspend fun formContext(vehicle: String, type: String, odometer: Int?): FormContext =
         api.getFormContext(vehicle, type, odometer).payload()
 
     suspend fun searchVehicles(txt: String): List<VehicleHit> =
         api.searchVehicles(txt).payload()
+
+    suspend fun searchDepots(txt: String): List<com.naarni.service.data.dto.DepotHit> =
+        api.searchDepots(txt).payload()
+
+    suspend fun searchCustomers(txt: String): List<com.naarni.service.data.dto.CustomerHit> =
+        api.searchCustomers(txt).payload()
+
+    /** Create a customer on the spot; returns its name (id). */
+    suspend fun createCustomer(name: String, phone: String): com.naarni.service.data.dto.CustomerHit =
+        api.createCustomer(name, phone).payload()
 
     suspend fun complaints(txt: String, subsystem: String = ""): List<SuggestionItem> =
         api.listComplaints(subsystem, txt).payload()
@@ -109,6 +136,76 @@ class JobCardRepository(private val api: FrappeApi) {
             "\"$k\":\"${v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")}\""
         }
         api.updateJobCard(name, json).payload()
+    }
+
+    // ── Repair / Maintenance job lists ──
+    suspend fun partGroups(): List<com.naarni.service.data.dto.PartGroupItem> =
+        api.listPartGroups().payload()
+
+    suspend fun saveRepairItems(name: String, rows: List<com.naarni.service.data.dto.RepairItem>) {
+        api.saveRepairItems(name, repoJson.encodeToString(rows)).payload()
+    }
+
+    suspend fun saveMaintenanceItems(name: String, rows: List<com.naarni.service.data.dto.MaintenanceItem>) {
+        api.saveMaintenanceItems(name, repoJson.encodeToString(rows)).payload()
+    }
+
+    // ── Inventory request flow ──
+    suspend fun parts(txt: String, partGroup: String = ""): List<com.naarni.service.data.dto.PartItem> =
+        api.listParts(partGroup, txt).payload()
+
+    suspend fun createInventoryRequest(jobCard: String, part: String, quantity: Double, urgency: String, notes: String = "") {
+        api.createInventoryRequest(jobCard, part, quantity, urgency, notes).payload()
+    }
+
+    suspend fun advanceInventoryStatus(name: String, nextStatus: String) {
+        api.advanceInventoryStatus(name, nextStatus).payload()
+    }
+
+    // ── Approval / Force close / Reopen ──
+    suspend fun recordApprovalDecision(name: String, approved: Boolean, rejectionFeedback: String = "") {
+        api.recordApprovalDecision(name, if (approved) 1 else 0, rejectionFeedback).payload()
+    }
+
+    suspend fun forceCloseJobCard(name: String, severity: String, reason: String) {
+        api.forceCloseJobCard(name, severity, reason).payload()
+    }
+
+    suspend fun reopenJobCard(name: String, reason: String) {
+        api.reopenJobCard(name, reason).payload()
+    }
+
+    // ── Software update + Breakdown ──
+    suspend fun saveSoftwareComponents(name: String, rows: List<com.naarni.service.data.dto.SoftwareComponent>) {
+        api.saveSoftwareComponents(name, repoJson.encodeToString(rows)).payload()
+    }
+
+    suspend fun updateBreakdownDiagnosis(name: String, updates: Map<String, String>) {
+        val json = updates.entries.joinToString(",", "{", "}") { (k, v) ->
+            "\"$k\":\"${v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")}\""
+        }
+        api.updateBreakdownDiagnosis(name, json).payload()
+    }
+
+    // ── Closure report (PDF proof of service) ──
+    suspend fun shareClosureReport(name: String): com.naarni.service.data.dto.ShareReport =
+        api.shareClosureReport(name).payload()
+
+    suspend fun emailClosureReport(name: String): String =
+        api.emailClosureReport(name).payload().str("sent_to")
+
+    // ── Customer feedback ──
+    suspend fun customerFeedback(name: String): com.naarni.service.data.dto.CustomerFeedbackData? =
+        api.getCustomerFeedback(name).message?.data
+
+    suspend fun submitCustomerFeedback(
+        name: String,
+        rating: Int,
+        comments: String = "",
+        npsScore: Int = 0,
+        wouldRecommend: String = "",
+    ) {
+        api.submitCustomerFeedback(name, rating, comments, npsScore, wouldRecommend).payload()
     }
 
     /** All synced vehicles for the fleet list (optionally filtered). */
@@ -143,13 +240,41 @@ class JobCardRepository(private val api: FrappeApi) {
         serviceType: String,
         jobCardType: String,
         complaint: String,
+        depot: String = "",
+        customer: String = "",
+        inspectionSheetId: String = "",
+        inspectionResults: String = "{}",
+        inspectionPoc: String = "",
+        subsystems: List<String> = emptyList(),
     ): String = api.createJobCard(
         vehicleNumber = vehicleNumber,
         odometer = odometer,
         serviceType = serviceType,
         jobCardType = jobCardType,
         complaint = complaint,
+        inspectionSheetId = inspectionSheetId,
+        inspectionResults = inspectionResults,
+        inspectionPoc = inspectionPoc,
+        subsystems = subsystems.joinToString(",", "[", "]") { "\"${it.replace("\"", "\\\"")}\"" },
+        depot = depot,
+        customer = customer,
     ).payload().name
+
+    /** PMS inspection check sheet (component grid) for the given odometer. */
+    suspend fun inspectionSheet(odometer: Int): com.naarni.service.data.dto.InspectionSheet =
+        api.getInspectionSheet(odometer).payload()
+
+    /** Active users holding [role] (e.g. "Technician") — for the inspection-POC picker. */
+    suspend fun usersByRole(role: String, txt: String = ""): List<SuggestionItem> =
+        api.listUsersByRole(role, txt).payload().map {
+            SuggestionItem(value = it.user, label = it.full_name ?: it.user)
+        }
+
+    /** Subsystem master for the Repair / Software / Breakdown multiselect. */
+    suspend fun subsystems(txt: String = ""): List<SuggestionItem> =
+        api.listSubsystems().payload()
+            .filter { txt.isBlank() || (it.subsystem_name ?: it.name).contains(txt, ignoreCase = true) }
+            .map { SuggestionItem(value = it.name, label = it.subsystem_name ?: it.name, sublabel = it.category) }
 
     /** Attach a (stamped) photo to a Job Card via Frappe's upload_file. */
     suspend fun uploadPhoto(file: File, jobCardName: String) {
@@ -159,6 +284,45 @@ class JobCardRepository(private val api: FrappeApi) {
         fun text(v: String) = v.toRequestBody("text/plain".toMediaType())
         api.uploadFile(part, text("Job Card"), text(jobCardName), text("0"))
     }
+
+    /**
+     * Upload a (stamped) per-item photo and return its File URL so it can be
+     * stored on a repair / maintenance / software row (pre/post photo fields).
+     */
+    suspend fun uploadItemPhoto(file: File, jobCardName: String): String {
+        val part = MultipartBody.Part.createFormData(
+            "file", file.name, file.asRequestBody("image/jpeg".toMediaType()),
+        )
+        fun text(v: String) = v.toRequestBody("text/plain".toMediaType())
+        return api.uploadFile(part, text("Job Card"), text(jobCardName), text("0"))
+            .message?.file_url ?: throw ApiException("Photo upload failed")
+    }
+
+    // ── Bus image gallery (Vehicle + Job Card) ──
+    suspend fun busImages(parentDoctype: String, parentName: String): List<com.naarni.service.data.dto.BusImage> =
+        api.getBusImages(parentDoctype, parentName).payload()
+
+    /**
+     * Upload a stamped photo and map it to [angle] on the parent (Vehicle / Job Card):
+     * uploads the file (public), then records the angle. Returns the refreshed gallery.
+     */
+    suspend fun uploadBusImage(
+        parentDoctype: String,
+        parentName: String,
+        angle: String,
+        file: File,
+    ): List<com.naarni.service.data.dto.BusImage> {
+        val part = MultipartBody.Part.createFormData(
+            "file", file.name, file.asRequestBody("image/jpeg".toMediaType()),
+        )
+        fun text(v: String) = v.toRequestBody("text/plain".toMediaType())
+        val fileUrl = api.uploadFile(part, text(parentDoctype), text(parentName), text("0"))
+            .message?.file_url ?: throw ApiException("Upload failed")
+        return api.uploadBusImage(parentDoctype, parentName, angle, fileUrl).payload()
+    }
+
+    suspend fun deleteBusImage(parentDoctype: String, parentName: String, angle: String): List<com.naarni.service.data.dto.BusImage> =
+        api.deleteBusImage(parentDoctype, parentName, angle).payload()
 
     // ── Tickets + SE-scoped alerts ──
     suspend fun myTickets(status: String = ""): List<TicketItem> =
@@ -172,5 +336,5 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun resolveTicket(name: String, reason: String) { api.resolveTicket(name, reason).payload() }
 
     suspend fun createJobCardFromTicket(name: String): String =
-        api.createJobCardFromTicket(name).payload()["job_card"].orEmpty()
+        api.createJobCardFromTicket(name).payload().str("job_card")
 }

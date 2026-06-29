@@ -175,6 +175,58 @@ def get_customer_name(customer: str) -> dict:
 	return {"success": True, "data": {"customer_name": name or customer}}
 
 
+@frappe.whitelist()
+def search_customers(txt: str = "", limit: int = 20) -> dict:
+	"""Search Customers by name, code or mobile — for the create-job-card picker."""
+	filters = []
+	t = (txt or "").strip()
+	if t:
+		filters = [["customer_name", "like", f"%{t}%"]]
+	rows = frappe.get_all(
+		"Customer",
+		filters=filters or None,
+		or_filters=[["mobile_no", "like", f"%{t}%"], ["customer_code", "like", f"%{t}%"]] if t else None,
+		fields=["name", "customer_name", "mobile_no"],
+		order_by="customer_name asc",
+		limit_page_length=int(limit or 20),
+	)
+	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def create_customer(customer_name: str, mobile_no: str = "") -> dict:
+	"""Create a Customer on the spot (name + optional phone) from the app.
+
+	Used when a vehicle has no customer yet so the SE can add one inline instead
+	of being blocked by 'Customer is mandatory'. Reuses an existing record when
+	the same name already exists.
+	"""
+	frappe.only_for(["Service Engineer", "Depot Manager", "Technician", "Central Ops"])
+	name = (customer_name or "").strip()
+	if not name:
+		frappe.throw(_("Customer name is required."))
+
+	existing = frappe.db.get_value("Customer", {"customer_name": name}, "name")
+	if existing:
+		if mobile_no and not frappe.db.get_value("Customer", existing, "mobile_no"):
+			frappe.db.set_value("Customer", existing, "mobile_no", mobile_no.strip())
+		return {
+			"success": True,
+			"data": {"name": existing, "customer_name": name},
+			"message": _("Existing customer used."),
+		}
+
+	doc = frappe.get_doc(
+		{"doctype": "Customer", "customer_name": name, "mobile_no": (mobile_no or "").strip()}
+	)
+	doc.insert(ignore_permissions=True)
+	return {
+		"success": True,
+		"data": {"name": doc.name, "customer_name": doc.customer_name},
+		"message": _("Customer added."),
+	}
+
+
 def _select_check_sheet(odometer: int | None) -> str:
 	"""Mirror JobCard._auto_select_check_sheet for pre-create display (PRD thresholds)."""
 	odo = int(odometer or 0)
@@ -292,7 +344,7 @@ def get_job_card_form_context(vehicle: str, job_card_type: str, odometer: int | 
 	veh = frappe.db.get_value(
 		"Vehicle",
 		vehicle,
-		["registration_number", "make_model", "oem", "customer"],
+		["registration_number", "make_model", "oem", "customer", "depot"],
 		as_dict=True,
 	)
 	if not veh:
@@ -314,7 +366,9 @@ def get_job_card_form_context(vehicle: str, job_card_type: str, odometer: int | 
 		order_by="creation desc",
 		limit_page_length=1,
 	)
-	default_depot = last_card[0]["depot"] if last_card else None
+	# Prefer the last job card's depot, then fall back to the vehicle's home depot;
+	# if still blank the app shows a Depot picker so the user adds one inline.
+	default_depot = (last_card[0]["depot"] if last_card else None) or veh.get("depot")
 	depot_name = frappe.db.get_value("Depot", default_depot, "depot_name") if default_depot else None
 	odo_estimate = last_card[0]["odometer_reading"] if last_card else None
 
@@ -530,6 +584,22 @@ def get_job_card_summary(job_card_name: str) -> dict:
 			}
 			for row in doc.get("software_components", [])
 		]
+		data["inventory_requests"] = frappe.get_all(
+			"Inventory Request",
+			filters={"job_card_ref": doc.name},
+			fields=[
+				"name",
+				"part",
+				"part_name",
+				"part_group",
+				"quantity",
+				"urgency_level",
+				"status",
+				"requested_by",
+			],
+			order_by="creation asc",
+			limit_page_length=0,
+		)
 
 	return {"success": True, "data": data, "message": ""}
 
@@ -579,8 +649,13 @@ def get_my_job_cards(
 			"name",
 			"vehicle_number",
 			"customer_name",
+			"job_card_type",
 			"service_type",
+			"job_card_date",
+			"odometer_reading",
 			"priority",
+			"force_close_severity",
+			"sla_breached",
 			"workflow_state",
 			"modified",
 		],
@@ -590,6 +665,30 @@ def get_my_job_cards(
 	)
 
 	return {"success": True, "data": job_cards, "message": ""}
+
+
+@frappe.whitelist()
+def get_inspection_sheet(odometer: int | None = None, sheet_id: str | None = None) -> dict:
+	"""Return the PMS inspection check sheet (component grid) for the app/web.
+
+	The sheet is resolved by explicit ``sheet_id`` ("A"/"B"/"C"/"D") when given,
+	otherwise auto-selected from ``odometer`` using the PRD 20K/40K/80K thresholds.
+	This is the shared source of truth the Android inspection UI renders and whose
+	results feed back into ``create_job_card_with_inspection``.
+
+	Args:
+	    odometer: Current odometer reading in km (used when sheet_id is omitted).
+	    sheet_id: Optional explicit sheet id to fetch.
+
+	Returns:
+	    dict envelope with data = {sheet_id, sheet_label, items: [...]}.
+	"""
+	frappe.only_for(["Technician", "Service Engineer", "Depot Manager", "Central Ops"])
+
+	from vehicle_maintenance.fleet_service.inspection_sheets import get_sheet
+
+	odo = int(odometer) if odometer not in (None, "") else None
+	return {"success": True, "data": get_sheet(odo, sheet_id), "message": ""}
 
 
 @frappe.whitelist()
@@ -648,6 +747,8 @@ def update_job_card(job_card_name: str, updates: str | dict) -> dict:
 	ALLOWED_FIELDS = {
 		"priority",
 		"complaint_description",
+		"se_observations",
+		"send_report_to_customer",
 		"assigned_technician",
 		"assigned_service_engineer",
 		"depot",
@@ -1020,6 +1121,55 @@ def list_part_groups() -> dict:
 		"Part Group",
 		fields=["name", "part_group_name", "bus_system"],
 		order_by="part_group_name asc",
+		limit_page_length=0,
+	)
+	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def list_parts(part_group: str = "", txt: str = "", limit: int = 20) -> dict:
+	"""Searchable Part master for the Inventory Request picker.
+
+	Opens with parts (optionally scoped to a `part_group`); narrows by `txt`.
+	Returns rows with name + part_name + part_group + uom for the app dropdown.
+	"""
+	filters: list = []
+	if part_group:
+		filters.append(["part_group", "=", part_group])
+	if (txt or "").strip():
+		filters.append(["part_name", "like", f"%{txt.strip()}%"])
+	rows = frappe.get_all(
+		"Part",
+		filters=filters,
+		fields=["name", "part_name", "part_group", "uom"],
+		order_by="part_name asc",
+		limit_page_length=int(limit or 20),
+	)
+	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def list_inventory_requests(job_card_name: str) -> dict:
+	"""Return the Inventory Requests raised against a Job Card (PRD inventory flow).
+
+	Drives the app's allocation/issue/acknowledge UI: Requested → Parts Allocated
+	→ Parts Issued → Received.
+	"""
+	frappe.has_permission("Job Card", doc=job_card_name, throw=True)
+	rows = frappe.get_all(
+		"Inventory Request",
+		filters={"job_card_ref": job_card_name},
+		fields=[
+			"name",
+			"part",
+			"part_name",
+			"part_group",
+			"quantity",
+			"urgency_level",
+			"status",
+			"requested_by",
+		],
+		order_by="creation asc",
 		limit_page_length=0,
 	)
 	return {"success": True, "data": rows}
@@ -1756,6 +1906,9 @@ def create_job_card_with_inspection(
 	inspection_results: str = "{}",
 	job_card_type: str = "PMS + Repair",
 	depot: str = "",
+	customer: str = "",
+	inspection_poc: str = "",
+	subsystems: str = "[]",
 ) -> dict:
 	"""Create a Job Card with structured inspection data (Technician flow).
 
@@ -1788,8 +1941,15 @@ def create_job_card_with_inspection(
 	if not vehicle_name:
 		frappe.throw(_("Vehicle with registration {0} not found.").format(vehicle_number))
 
-	# Resolve customer from vehicle
-	customer = frappe.db.get_value("Vehicle", vehicle_name, "customer")
+	# Resolve customer: the vehicle's customer, else the one passed by the caller.
+	# When the vehicle had none, persist the chosen customer back onto the vehicle
+	# so future job cards don't prompt again.
+	vehicle_customer = frappe.db.get_value("Vehicle", vehicle_name, "customer")
+	customer = vehicle_customer or (customer or "").strip()
+	if customer and not vehicle_customer:
+		frappe.db.set_value("Vehicle", vehicle_name, "customer", customer)
+	if not customer:
+		frappe.throw(_("This vehicle has no customer. Please select or add one."))
 
 	# Resolve depot: explicit arg, else the vehicle's most recently used depot.
 	# Depot is mandatory for Job Card naming, so fail clearly if none is known.
@@ -1817,6 +1977,23 @@ def create_job_card_with_inspection(
 	# creating from the app must see their own card.
 	creator = frappe.session.user
 	creator_roles = set(frappe.get_roles(creator))
+
+	# Inspection POC (PRD: "Technician Name or Self"). When the SE nominates a
+	# technician, assign them; otherwise the creator inspects ("Self").
+	poc = (inspection_poc or "").strip()
+	if poc and not frappe.db.exists("User", poc):
+		# Tolerate a full-name being passed instead of the user id.
+		poc = frappe.db.get_value("User", {"full_name": poc}, "name") or ""
+	assigned_tech = poc or creator
+
+	# Subsystems multiselect (Only Repair / Software Update / Breakdown).
+	subsystem_list = _json.loads(subsystems) if isinstance(subsystems, str) else (subsystems or [])
+	subsystem_rows = [
+		{"subsystem": (s.get("subsystem") if isinstance(s, dict) else s)}
+		for s in (subsystem_list or [])
+		if (s.get("subsystem") if isinstance(s, dict) else s)
+	]
+
 	job_card_data = {
 		"doctype": "Job Card",
 		"job_card_type": job_card_type,
@@ -1827,15 +2004,22 @@ def create_job_card_with_inspection(
 		"priority": "Medium",
 		"complaint_description": complaint_description,
 		"se_observations": technician_notes,
-		"assigned_technician": creator,
+		"assigned_technician": assigned_tech,
 		"inspection_items": _inspection_rows_from_results(results or {}),
+		"subsystems": subsystem_rows,
 	}
 	if "Service Engineer" in creator_roles:
 		job_card_data["assigned_service_engineer"] = creator
 
 	# Create the Job Card with structured inspection rows so before_save scores them.
+	# NOTE: assigned_service_engineer / assigned_technician are permlevel-1 fields
+	# (only DM/Aftersales/N.Maint can write them). A Service Engineer inserting their
+	# own card would have those assignments SILENTLY STRIPPED by the permlevel
+	# validator — so the card would never appear in their "My Job Cards" list. We've
+	# already gated access via frappe.only_for above, so insert with
+	# ignore_permissions=True to make the self-assignment persist (validations still run).
 	doc = frappe.get_doc(job_card_data)
-	doc.insert()
+	doc.insert(ignore_permissions=True)
 
 	if results:
 		# Build a human-readable summary

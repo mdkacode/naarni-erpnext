@@ -54,6 +54,8 @@ import java.util.concurrent.Executors
 fun StampingCamera(
     onCaptured: (File) -> Unit,
     onClose: () -> Unit,
+    /** Optional photo type/angle burned into the stamp (e.g. "Front", "Damage"). */
+    label: String? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -146,6 +148,7 @@ fun StampingCamera(
                                         location = location,
                                         userFullName = session.fullName ?: (session.user ?: "User"),
                                         userRole = session.primaryRole,
+                                        label = label,
                                     )
                                     val stamped = PhotoStamper.stamp(src, stamp)
                                     FileOutputStream(temp).use { out ->

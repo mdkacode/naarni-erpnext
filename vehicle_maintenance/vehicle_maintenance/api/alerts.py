@@ -575,20 +575,24 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		if ch.get("is_default") and not default_teams_channel:
 			default_teams_channel = ch["name"]
 
-	# device_id -> customer, customer -> [device_ids], device_id -> registration_number
+	# device_id -> customer, customer -> [device_ids], device_id -> registration_number,
+	# plus the muted device_ids (Vehicle "Mute Alerts" — no alerts for those vehicles).
 	vehicle_rows = frappe.get_all(
 		"Vehicle",
 		filters=[["device_id", "is", "set"], ["customer", "is", "set"]],
-		fields=["device_id", "customer", "registration_number"],
+		fields=["device_id", "customer", "registration_number", "mute_alerts"],
 		limit_page_length=0,
 	)
 	devices_by_customer: dict[str, list[str]] = {}
 	registrations: dict[str, str] = {}
+	muted_devices: list[str] = []
 	for v in vehicle_rows:
 		dev = str(v["device_id"])
 		devices_by_customer.setdefault(v["customer"], []).append(dev)
 		if v.get("registration_number"):
 			registrations[dev] = v["registration_number"]
+		if v.get("mute_alerts"):
+			muted_devices.append(dev)
 
 	customers_out = []
 	prefs_names = frappe.get_all("Alert Channel Preference", pluck="customer", limit_page_length=0)
@@ -681,6 +685,7 @@ def get_engine_config(service_key: str | None = None) -> dict:
 			"teams_channels": teams_channels,
 			"default_teams_channel": default_teams_channel,
 			"codes": codes,
+			"muted_devices": muted_devices,
 		}
 	)
 

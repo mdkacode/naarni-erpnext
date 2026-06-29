@@ -230,6 +230,15 @@ def notify_verified_and_closed(doc) -> None:
 		priority="Medium",
 	)
 
+	# Generate the NaArNi-watermarked closure PDF (proof of service) and, if the SE
+	# ticked "Send report to customer", email it to the customer. Best-effort.
+	try:
+		from vehicle_maintenance.api.reports import generate_on_close
+
+		generate_on_close(doc)
+	except Exception:
+		frappe.log_error(title="closure_report_on_close", message=frappe.get_traceback())
+
 
 def notify_reopened(doc) -> None:
 	"""PRD p.2: Job card reopened → Depot Manager, Central Ops."""

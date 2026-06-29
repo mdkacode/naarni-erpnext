@@ -33,6 +33,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var ui by mutableStateOf(AppUiState(loggedIn = session.isLoggedIn))
         private set
 
+    /** Live dropdown options (admin-editable via Customize Form), with offline fallback. */
+    var options by mutableStateOf(AppOptions.DEFAULTS)
+        private set
+
+    /** The option list for [key] — live when fetched, else the bundled default. */
+    fun opt(key: String): List<String> = options[key] ?: AppOptions.DEFAULTS[key] ?: emptyList()
+
+    /** Refresh dropdown options from the backend; keeps defaults for any missing key. */
+    fun loadOptions() {
+        viewModelScope.launch {
+            runCatching { jobCards.appFieldOptions() }
+                .onSuccess { fetched -> options = AppOptions.DEFAULTS + fetched.filterValues { it.isNotEmpty() } }
+        }
+    }
+
+    init {
+        if (session.isLoggedIn) loadOptions()
+    }
+
     /** Step 1: request an OTP for [phone]. On success the screen reveals the code field. */
     fun requestOtp(phone: String) {
         viewModelScope.launch {
@@ -52,6 +71,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(loading = true, error = null)
             val result = auth.verifyOtp(ui.otpPhone, otp)
             ui = if (result.isSuccess) {
+                loadOptions()
                 ui.copy(loading = false, loggedIn = true)
             } else {
                 ui.copy(loading = false, error = result.exceptionOrNull()?.message ?: "Invalid code")

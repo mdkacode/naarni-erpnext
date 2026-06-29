@@ -25,10 +25,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pending
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -55,6 +59,8 @@ import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.JobCardListItem
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.EmptyState
+import com.naarni.service.ui.components.MetaChip
+import com.naarni.service.ui.components.PriorityPill
 import com.naarni.service.ui.components.RefreshableList
 import com.naarni.service.ui.components.SectionHeader
 import com.naarni.service.ui.components.StatTile
@@ -160,19 +166,68 @@ fun JobCardsScreen(vm: AppViewModel, onOpenJobCard: (String) -> Unit = {}) {
     )
 }
 
+/** "2026-06-29" → "29 Jun 2026"; passes through anything unexpected. */
+private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+private fun prettyDate(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    val p = raw.take(10).split("-")
+    if (p.size != 3) return raw
+    val y = p[0]; val m = p[1].toIntOrNull() ?: return raw; val d = p[2].toIntOrNull() ?: return raw
+    if (m !in 1..12) return raw
+    return "$d ${MONTHS[m - 1]} $y"
+}
+
+/** "12345" → "12,345 km". */
+private fun prettyKm(km: Int?): String? {
+    if (km == null || km <= 0) return null
+    return "%,d km".format(km)
+}
+
 @Composable
 private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
+    val criticality = jc.force_close_severity?.takeIf { it.isNotBlank() } ?: jc.priority
     Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(
                 Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
-            Column(Modifier.weight(1f)) {
-                Text(jc.vehicle_number ?: jc.name, style = MaterialTheme.typography.titleMedium)
-                Text(jc.job_card_type ?: "—", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Line 1: registration number + status
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        jc.vehicle_number ?: jc.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    StatusChip(jc.workflow_state)
+                }
+                // Line 2: type + criticality + SLA breach
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        jc.job_card_type ?: jc.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    PriorityPill(criticality)
+                    if (jc.sla_breached == 1) {
+                        MetaChip(Icons.Filled.Warning, "SLA", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+                // Line 3: customer · date · odometer
+                val customer = jc.customer_name?.takeIf { it.isNotBlank() }
+                val date = prettyDate(jc.job_card_date)
+                val km = prettyKm(jc.odometer_reading)
+                if (customer != null || date != null || km != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (customer != null) MetaChip(Icons.Filled.Person, customer, modifier = Modifier.weight(1f, fill = false))
+                        if (date != null) MetaChip(Icons.Filled.Event, date)
+                        if (km != null) MetaChip(Icons.Filled.Speed, km)
+                    }
+                }
             }
-            StatusChip(jc.workflow_state)
         }
     }
 }

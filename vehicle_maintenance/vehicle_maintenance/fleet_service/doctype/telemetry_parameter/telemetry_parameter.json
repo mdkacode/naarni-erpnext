@@ -2,6 +2,7 @@
   "name": "Telemetry Parameter",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "document_type": "Setup",
   "engine": "InnoDB",
   "autoname": "field:parameter_name",

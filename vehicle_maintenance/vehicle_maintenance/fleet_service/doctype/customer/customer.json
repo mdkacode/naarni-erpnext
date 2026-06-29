@@ -2,6 +2,7 @@
   "name": "Customer",
   "module": "Fleet Service",
   "doctype": "DocType",
+  "allow_import": 1,
   "document_type": "Document",
   "engine": "InnoDB",
   "autoname": "field:customer_name",

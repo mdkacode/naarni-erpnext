@@ -1,0 +1,21 @@
+{
+  "name": "Vehicle Image",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "fields": [
+    {"fieldname": "angle", "label": "Angle", "fieldtype": "Select", "options": "Master\nFront\nRear\nLeft\nRight\nEngine\nInterior\nOdometer\nDamage", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "image", "label": "Image", "fieldtype": "Attach Image", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "is_primary", "label": "Primary", "fieldtype": "Check", "default": "0", "in_list_view": 1},
+    {"fieldname": "column_break_vi1", "fieldtype": "Column Break"},
+    {"fieldname": "captured_by", "label": "Captured By", "fieldtype": "Link", "options": "User", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "captured_at", "label": "Captured At", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "section_vi_geo", "label": "", "fieldtype": "Section Break"},
+    {"fieldname": "latitude", "label": "Latitude", "fieldtype": "Float", "precision": "6"},
+    {"fieldname": "longitude", "label": "Longitude", "fieldtype": "Float", "precision": "6"},
+    {"fieldname": "column_break_vi2", "fieldtype": "Column Break"},
+    {"fieldname": "notes", "label": "Notes", "fieldtype": "Data"}
+  ],
+  "permissions": []
+}

@@ -106,6 +106,13 @@ fun VehicleDetailScreen(vm: AppViewModel, vehicle: String, onBack: () -> Unit) {
                 }
             }
 
+            // Multi-angle bus photo gallery (persistent identity images)
+            com.naarni.service.ui.components.BusPhotoGrid(
+                vm = vm,
+                parentDoctype = "Vehicle",
+                parentName = vehicle,
+            )
+
             when {
                 loading -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()

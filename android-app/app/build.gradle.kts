@@ -32,6 +32,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Signed with the debug keystore so the optimized production APK is
+            // directly installable for on-device E2E testing. Replace with a
+            // dedicated release keystore before any Play Store distribution.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

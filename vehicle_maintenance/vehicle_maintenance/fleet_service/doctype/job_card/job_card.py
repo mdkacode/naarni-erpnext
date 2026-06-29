@@ -840,7 +840,10 @@ class JobCard(Document):
 
 		vehicle_score = round(sum(category_percentages.values()) / len(category_percentages), 1)
 
-		is_pre_phase = self.workflow_state in (
+		# A brand-new card (no workflow configured yet, or state not set) is, by
+		# definition, in the Pre-PMS phase — capture the inspection score now rather
+		# than waiting for a workflow to stamp "Open".
+		is_pre_phase = not self.workflow_state or self.workflow_state in (
 			"Open",
 			"WIP",
 			"Awaiting Customer Approval",

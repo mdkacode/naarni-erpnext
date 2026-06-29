@@ -123,6 +123,12 @@ fun MainShell(vm: AppViewModel) {
                             launchSingleTop = true
                         }
                     },
+                    onBack = {
+                        // Return to wherever they came from (Home); fall back to Home tab.
+                        if (!nav.popBackStack()) {
+                            nav.navigate(Tab.Home.route) { launchSingleTop = true }
+                        }
+                    },
                 )
             }
         }

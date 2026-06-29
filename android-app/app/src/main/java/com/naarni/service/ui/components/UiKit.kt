@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -72,6 +73,41 @@ fun statusColor(state: String?): Color = when (state?.lowercase()) {
     "closed" -> Color(0xFF16A34A)
     "reopened" -> Color(0xFFEF4444)
     else -> Color(0xFF64748B)
+}
+
+/** Priority / criticality colour mapping (Low → Urgent, plus force-close severities). */
+fun priorityColor(value: String?): Color = when (value?.lowercase()) {
+    "urgent", "critical" -> Color(0xFFEF4444)
+    "high", "major" -> Color(0xFFF97316)
+    "medium" -> Color(0xFFEAB308)
+    "low", "minor" -> Color(0xFF22C55E)
+    else -> Color(0xFF64748B)
+}
+
+/** A small labelled pill for priority / criticality. */
+@Composable
+fun PriorityPill(value: String?) {
+    if (value.isNullOrBlank()) return
+    val c = priorityColor(value)
+    Surface(color = c.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+        Text(
+            value,
+            color = c,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+    }
+}
+
+/** Icon + text meta line (date, odometer, customer …) used on list rows. */
+@Composable
+fun MetaChip(icon: ImageVector, text: String, modifier: Modifier = Modifier, tint: Color? = null) {
+    val color = tint ?: MaterialTheme.colorScheme.onSurfaceVariant
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+        Text(text, style = MaterialTheme.typography.labelMedium, color = color)
+    }
 }
 
 /** A coloured status pill. */

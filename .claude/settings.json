@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -nA2 \"website_route_rules\" vehicle_maintenance/hooks.py)"
+    ]
+  }
+}

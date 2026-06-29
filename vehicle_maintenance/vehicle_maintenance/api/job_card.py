@@ -649,8 +649,13 @@ def get_my_job_cards(
 			"name",
 			"vehicle_number",
 			"customer_name",
+			"job_card_type",
 			"service_type",
+			"job_card_date",
+			"odometer_reading",
 			"priority",
+			"force_close_severity",
+			"sla_breached",
 			"workflow_state",
 			"modified",
 		],
@@ -660,6 +665,30 @@ def get_my_job_cards(
 	)
 
 	return {"success": True, "data": job_cards, "message": ""}
+
+
+@frappe.whitelist()
+def get_inspection_sheet(odometer: int | None = None, sheet_id: str | None = None) -> dict:
+	"""Return the PMS inspection check sheet (component grid) for the app/web.
+
+	The sheet is resolved by explicit ``sheet_id`` ("A"/"B"/"C"/"D") when given,
+	otherwise auto-selected from ``odometer`` using the PRD 20K/40K/80K thresholds.
+	This is the shared source of truth the Android inspection UI renders and whose
+	results feed back into ``create_job_card_with_inspection``.
+
+	Args:
+	    odometer: Current odometer reading in km (used when sheet_id is omitted).
+	    sheet_id: Optional explicit sheet id to fetch.
+
+	Returns:
+	    dict envelope with data = {sheet_id, sheet_label, items: [...]}.
+	"""
+	frappe.only_for(["Technician", "Service Engineer", "Depot Manager", "Central Ops"])
+
+	from vehicle_maintenance.fleet_service.inspection_sheets import get_sheet
+
+	odo = int(odometer) if odometer not in (None, "") else None
+	return {"success": True, "data": get_sheet(odo, sheet_id), "message": ""}
 
 
 @frappe.whitelist()
@@ -1878,6 +1907,8 @@ def create_job_card_with_inspection(
 	job_card_type: str = "PMS + Repair",
 	depot: str = "",
 	customer: str = "",
+	inspection_poc: str = "",
+	subsystems: str = "[]",
 ) -> dict:
 	"""Create a Job Card with structured inspection data (Technician flow).
 
@@ -1946,6 +1977,23 @@ def create_job_card_with_inspection(
 	# creating from the app must see their own card.
 	creator = frappe.session.user
 	creator_roles = set(frappe.get_roles(creator))
+
+	# Inspection POC (PRD: "Technician Name or Self"). When the SE nominates a
+	# technician, assign them; otherwise the creator inspects ("Self").
+	poc = (inspection_poc or "").strip()
+	if poc and not frappe.db.exists("User", poc):
+		# Tolerate a full-name being passed instead of the user id.
+		poc = frappe.db.get_value("User", {"full_name": poc}, "name") or ""
+	assigned_tech = poc or creator
+
+	# Subsystems multiselect (Only Repair / Software Update / Breakdown).
+	subsystem_list = _json.loads(subsystems) if isinstance(subsystems, str) else (subsystems or [])
+	subsystem_rows = [
+		{"subsystem": (s.get("subsystem") if isinstance(s, dict) else s)}
+		for s in (subsystem_list or [])
+		if (s.get("subsystem") if isinstance(s, dict) else s)
+	]
+
 	job_card_data = {
 		"doctype": "Job Card",
 		"job_card_type": job_card_type,
@@ -1956,8 +2004,9 @@ def create_job_card_with_inspection(
 		"priority": "Medium",
 		"complaint_description": complaint_description,
 		"se_observations": technician_notes,
-		"assigned_technician": creator,
+		"assigned_technician": assigned_tech,
 		"inspection_items": _inspection_rows_from_results(results or {}),
+		"subsystems": subsystem_rows,
 	}
 	if "Service Engineer" in creator_roles:
 		job_card_data["assigned_service_engineer"] = creator

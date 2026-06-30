@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -91,4 +92,8 @@ dependencies {
     // Secure session storage
     implementation(libs.security.crypto)
     implementation(libs.datastore.preferences)
+
+    // Push notifications (FCM)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 }

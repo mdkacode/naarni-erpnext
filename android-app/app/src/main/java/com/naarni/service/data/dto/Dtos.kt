@@ -14,6 +14,13 @@ data class LoginData(
     val roles: List<String> = emptyList(),
 )
 
+/** The depots a Service Engineer is assigned to (from `get_my_depots`). */
+@Serializable
+data class MyDepots(
+    val user: String? = null,
+    val depots: List<DepotHit> = emptyList(),
+)
+
 /** A user holding a given role (from `list_users_by_role`) — for POC pickers. */
 @Serializable
 data class RoleUser(

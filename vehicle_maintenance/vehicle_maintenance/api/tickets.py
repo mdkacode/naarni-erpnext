@@ -37,6 +37,92 @@ def _depot_engineers(depot: str) -> list[str]:
 	]
 
 
+@frappe.whitelist()
+def get_my_depots(user: str | None = None) -> dict:
+	"""Return the depots a user is assigned to as a Service Engineer.
+
+	Defaults to the current user. A Depot Manager / Central Ops may inspect
+	another user's depots by passing ``user``.
+
+	Returns: {success, data: {user, depots: [{name, depot_name, city, state}]}}.
+	"""
+	target = (user or frappe.session.user).strip()
+	if target != frappe.session.user:
+		frappe.only_for(["Depot Manager", "Central Ops", "System Manager"])
+
+	names = _user_depots(target)
+	depots = (
+		frappe.get_all(
+			"Depot",
+			filters={"name": ["in", names]},
+			fields=["name", "depot_name", "city", "state"],
+			order_by="depot_name asc",
+			limit_page_length=0,
+		)
+		if names
+		else []
+	)
+	return {"success": True, "data": {"user": target, "depots": depots}}
+
+
+@frappe.whitelist()
+def set_my_depot(depot: str, user: str | None = None) -> dict:
+	"""Assign a Service Engineer to ``depot`` (their service depot), replacing any
+	prior depot assignment so the Alerts/Tickets feeds re-scope immediately.
+
+	Self-service for the SE/Technician; a Depot Manager / Central Ops may set it
+	for another user via ``user``. Idempotent.
+
+	Returns: {success, data: {user, depot}, message}.
+	"""
+	target = (user or frappe.session.user).strip()
+	if target != frappe.session.user:
+		frappe.only_for(["Depot Manager", "Central Ops", "System Manager"])
+	else:
+		frappe.only_for(["Service Engineer", "Technician", "Depot Manager", "Central Ops"])
+
+	if not depot or not frappe.db.exists("Depot", depot):
+		frappe.throw(_("Depot not found."))
+
+	# Drop any existing Depot Engineer rows for this user (across depots), then add
+	# them to the chosen depot. We operate on the child table directly rather than
+	# re-saving the parent Depot: it is O(rows) (no full-fleet doc loads — scalable)
+	# AND it won't fail if some other depot carries legacy/invalid header data.
+	frappe.db.delete("Depot Engineer", {"user": target, "parenttype": "Depot"})
+
+	if not frappe.db.exists(
+		"Depot Engineer",
+		{"user": target, "parent": depot, "parenttype": "Depot"},
+	):
+		next_idx = (
+			frappe.db.sql(
+				"""SELECT COALESCE(MAX(idx), 0) + 1 FROM `tabDepot Engineer`
+				   WHERE parent = %s AND parenttype = 'Depot'""",
+				depot,
+			)[0][0]
+			or 1
+		)
+		frappe.get_doc(
+			{
+				"doctype": "Depot Engineer",
+				"parent": depot,
+				"parenttype": "Depot",
+				"parentfield": "service_engineers",
+				"user": target,
+				"idx": next_idx,
+			}
+		).insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	return {
+		"success": True,
+		"data": {"user": target, "depot": depot},
+		"message": _("Depot updated to {0}.").format(
+			frappe.db.get_value("Depot", depot, "depot_name") or depot
+		),
+	}
+
+
 def create_ticket_from_alert(alert_event_name: str) -> str | None:
 	"""Create (idempotently) a Service Ticket from an Alert Event + notify the
 	depot's engineers. Returns the ticket name, or None when the bus has no depot.

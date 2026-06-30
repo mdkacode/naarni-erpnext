@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -60,12 +61,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.JobCardListItem
+import com.naarni.service.data.dto.SuggestionItem
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.EmptyState
 import com.naarni.service.ui.components.MetaChip
 import com.naarni.service.ui.components.PriorityPill
 import com.naarni.service.ui.components.RefreshableList
 import com.naarni.service.ui.components.SectionHeader
+import com.naarni.service.ui.components.SmartSelect
 import com.naarni.service.ui.components.StatTile
 import com.naarni.service.ui.components.StatusChip
 import com.naarni.service.ui.components.statusColor
@@ -335,10 +338,71 @@ fun ProfileScreen(vm: AppViewModel) {
                 }
             }
         }
+
+        MyDepotCard(vm)
+
         OutlinedButton(onClick = { vm.logout() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().height(52.dp)) {
             Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
             Spacer(Modifier.height(0.dp))
             Text("  Log out")
+        }
+    }
+}
+
+/**
+ * "My Depot" — shows the Service Engineer's current depot and lets them change it.
+ * Changing the depot re-scopes the Alerts and Tickets tabs to that depot's buses.
+ */
+@Composable
+private fun MyDepotCard(vm: AppViewModel) {
+    val scope = rememberCoroutineScope()
+    val feedback = com.naarni.service.core.feedback.LocalFeedback.current
+    var current by remember { mutableStateOf<String?>(null) }
+    var loaded by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    suspend fun load() {
+        runCatching { vm.jobCards.myDepots() }
+            .onSuccess { current = it.depots.firstOrNull()?.let { d -> d.depot_name ?: d.name }; loaded = true }
+    }
+    LaunchedEffect(Unit) { load() }
+
+    Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Text("My Depot", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                if (saving) androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+            Text(
+                current ?: if (loaded) "Not assigned — pick your depot to see its alerts" else "Loading…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (current != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (current != null) FontWeight.SemiBold else FontWeight.Normal,
+            )
+            SmartSelect(
+                label = "Change depot",
+                value = null,
+                placeholder = "Pick your depot",
+                fetchOnOpen = true,
+                fetch = { q ->
+                    vm.jobCards.searchDepots(q).map {
+                        SuggestionItem(
+                            value = it.name,
+                            label = it.depot_name ?: it.name,
+                            sublabel = listOfNotNull(it.city, it.state).joinToString(", ").ifBlank { null },
+                        )
+                    }
+                },
+                onSelect = { sel ->
+                    scope.launch {
+                        saving = true
+                        runCatching { vm.jobCards.setMyDepot(sel.value) }
+                            .onSuccess { feedback.success(); load() }
+                            .onFailure { feedback.error() }
+                        saving = false
+                    }
+                },
+            )
         }
     }
 }

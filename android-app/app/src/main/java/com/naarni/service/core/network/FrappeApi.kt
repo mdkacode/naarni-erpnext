@@ -93,6 +93,15 @@ interface FrappeApi {
         @Query("limit") limit: Int = 10,
     ): FrappeWrap<Envelope<List<DepotHit>>>
 
+    @GET("api/method/vehicle_maintenance.api.tickets.get_my_depots")
+    suspend fun getMyDepots(): FrappeWrap<Envelope<com.naarni.service.data.dto.MyDepots>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.tickets.set_my_depot")
+    suspend fun setMyDepot(
+        @Field("depot") depot: String,
+    ): FrappeWrap<Envelope<JsonObject>>
+
     @GET("api/method/vehicle_maintenance.api.job_card.search_customers")
     suspend fun searchCustomers(
         @Query("txt") txt: String,

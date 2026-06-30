@@ -104,6 +104,15 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun searchDepots(txt: String): List<com.naarni.service.data.dto.DepotHit> =
         api.searchDepots(txt).payload()
 
+    /** The depots the current Service Engineer is assigned to (scopes Alerts/Tickets). */
+    suspend fun myDepots(): com.naarni.service.data.dto.MyDepots =
+        api.getMyDepots().payload()
+
+    /** Change the current SE's service depot — re-scopes their alerts + tickets. */
+    suspend fun setMyDepot(depot: String) {
+        api.setMyDepot(depot).payload()
+    }
+
     suspend fun searchCustomers(txt: String): List<com.naarni.service.data.dto.CustomerHit> =
         api.searchCustomers(txt).payload()
 

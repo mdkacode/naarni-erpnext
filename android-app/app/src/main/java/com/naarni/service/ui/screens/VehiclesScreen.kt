@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.FleetVehicle
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.Refreshable
+import com.naarni.service.ui.components.VehicleNumber
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -172,11 +173,7 @@ private fun VehicleRow(v: FleetVehicle, onClick: () -> Unit) {
             }
             Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    v.registration_number ?: v.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                VehicleNumber(v.registration_number ?: v.name, style = MaterialTheme.typography.titleMedium)
                 v.make_model?.let {
                     Text(
                         it,

@@ -147,6 +147,7 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit
             value = vehicle,
             placeholder = "Tap to pick a vehicle",
             fetchOnOpen = true,
+            highlightAsVehicle = true,
             fetch = { q ->
                 vm.jobCards.searchVehicles(q).map {
                     SuggestionItem(

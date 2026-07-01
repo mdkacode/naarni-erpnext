@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.VehicleLive
 import com.naarni.service.ui.AppViewModel
+import com.naarni.service.ui.components.VehicleNumber
 
 /**
  * Live detail for one vehicle — opened from the Fleet list. Shows the bus's
@@ -64,7 +65,10 @@ fun VehicleDetailScreen(vm: AppViewModel, vehicle: String, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(live?.registration_number ?: vehicle) },
+                title = {
+                    live?.registration_number?.takeIf { it.isNotBlank() }
+                        ?.let { VehicleNumber(it) } ?: Text(vehicle)
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -94,10 +98,9 @@ fun VehicleDetailScreen(vm: AppViewModel, vehicle: String, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.size(14.dp))
                 Column {
-                    Text(
+                    VehicleNumber(
                         live?.registration_number ?: vehicle,
                         style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
                     )
                     val mm = listOfNotNull(live?.make, live?.model).joinToString(" ")
                     if (mm.isNotBlank()) {
@@ -178,7 +181,8 @@ private fun InfoCard(title: String, rows: List<Pair<String, String?>>) {
             shown.forEach { (k, v) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(k, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(v!!, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    if (k == "Vehicle" || k == "Registration") VehicleNumber(v!!, style = MaterialTheme.typography.bodyMedium)
+                    else Text(v!!, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                 }
             }
         }

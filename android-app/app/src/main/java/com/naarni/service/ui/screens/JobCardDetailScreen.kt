@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.JobCardDetail
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.StatusChip
+import com.naarni.service.ui.components.VehicleNumber
 import kotlinx.coroutines.launch
 
 /**
@@ -101,7 +102,10 @@ fun JobCardDetailScreen(vm: AppViewModel, jobCard: String, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(detail?.vehicle_number ?: jobCard) },
+                title = {
+                    detail?.vehicle_number?.takeIf { it.isNotBlank() }
+                        ?.let { VehicleNumber(it) } ?: Text(jobCard)
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -780,7 +784,8 @@ private fun InfoCard(title: String, rows: List<Pair<String, String?>>) {
             shown.forEach { (k, v) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(k, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(v!!, fontWeight = FontWeight.Medium)
+                    if (k == "Vehicle") VehicleNumber(v!!, style = MaterialTheme.typography.bodyMedium)
+                    else Text(v!!, fontWeight = FontWeight.Medium)
                 }
             }
         }

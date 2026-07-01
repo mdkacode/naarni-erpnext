@@ -54,6 +54,8 @@ fun SmartSelect(
     /** When true, the list is loaded via fetch("") the moment the sheet opens — so
      *  the user sees options (e.g. all vehicles) without typing. */
     fetchOnOpen: Boolean = false,
+    /** When true, labels are rendered as vehicle registrations (last-4 highlighted). */
+    highlightAsVehicle: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
 
@@ -69,7 +71,11 @@ fun SmartSelect(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(value?.label ?: placeholder, fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Normal)
+                if (highlightAsVehicle && value != null) {
+                    VehicleNumber(value.label)
+                } else {
+                    Text(value?.label ?: placeholder, fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Normal)
+                }
                 Icon(Icons.Default.ArrowDropDown, contentDescription = null)
             }
         }
@@ -113,7 +119,10 @@ fun SmartSelect(
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 460.dp)) {
                 items(results, key = { it.value }) { item ->
                     ListItem(
-                        headlineContent = { Text(item.label, fontWeight = FontWeight.Medium) },
+                        headlineContent = {
+                            if (highlightAsVehicle) VehicleNumber(item.label)
+                            else Text(item.label, fontWeight = FontWeight.Medium)
+                        },
                         supportingContent = item.sublabel?.let { { Text(it) } },
                         trailingContent = {
                             when {

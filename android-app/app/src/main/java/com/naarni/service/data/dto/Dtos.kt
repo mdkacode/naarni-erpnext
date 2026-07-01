@@ -400,6 +400,7 @@ data class TicketItem(
     val depot: String? = null,
     val vehicle: String? = null,
     val job_card: String? = null,
+    val creation: String? = null,
     val deeplink: String? = null,
 )
 
@@ -416,4 +417,6 @@ data class AlertEventItem(
     val threshold: Double? = null,
     val message: String? = null,
     val occurred_at: String? = null,
+    val vehicle: String? = null,
+    val job_card: String? = null,
 )

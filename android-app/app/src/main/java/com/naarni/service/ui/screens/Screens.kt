@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -273,46 +274,235 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
     }
 }
 
-@Composable
-fun AlertsScreen(vm: AppViewModel) {
-    RefreshableList(
-        title = "Alerts",
-        load = { vm.jobCards.myAlertEvents() },
-        itemKey = { it.name },
-        empty = { EmptyState(Icons.Filled.NotificationsActive, "No alerts", "Alerts for the buses at your depot show up here. (None yet, or your depot has no assigned buses.)") },
-        row = { a ->
-            Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text(a.title ?: a.parameter ?: a.name, style = MaterialTheme.typography.titleMedium)
-                        Text("${a.registration_number ?: ""}  ·  ${a.message ?: ""}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    StatusChip(a.severity)
-                }
-            }
-        },
-    )
+/** "abs_ebsamberwarningsignal" → "Abs Ebsamberwarningsignal" (readable). */
+private fun humanize(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    return raw.trim().replace('_', ' ').replace('-', ' ')
+        .split(' ').filter { it.isNotBlank() }
+        .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+}
+
+/** "2026-07-01 08:05:00" → "1 Jul, 08:05". */
+private fun prettyDateTime(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    val date = prettyDate(raw) ?: return raw
+    val short = date.split(" ").let { if (it.size >= 2) "${it[0]} ${it[1]}" else date } // "1 Jul"
+    val time = raw.drop(11).take(5).takeIf { it.length == 5 }  // "08:05"
+    return if (time != null) "$short, $time" else short
+}
+
+private fun alertSeverityColor(sev: String?): Color = when (sev?.lowercase()) {
+    "critical" -> Color(0xFFEF4444)
+    "warning" -> Color(0xFFF59E0B)
+    else -> Color(0xFF64748B)
 }
 
 @Composable
-fun TicketsScreen(vm: AppViewModel) {
+fun AlertsScreen(
+    vm: AppViewModel,
+    onOpenJobCard: (String) -> Unit = {},
+    onOpenVehicle: (String) -> Unit = {},
+) {
+    var severity by remember { mutableStateOf("") } // "", "warning", "critical"
+    var items by remember { mutableStateOf<List<com.naarni.service.data.dto.AlertEventItem>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    suspend fun load() {
+        runCatching { vm.jobCards.myAlertEvents(severity) }.onSuccess { items = it; loaded = true }
+    }
+    LaunchedEffect(severity) { load() }
+
+    Refreshable(
+        refreshing = refreshing,
+        onRefresh = { scope.launch { refreshing = true; load(); refreshing = false } },
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Alerts", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    if (loaded) Text("${items.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                // Severity filter
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = severity == "", onClick = { severity = "" }, label = { Text("All") })
+                    FilterChip(selected = severity == "warning", onClick = { severity = "warning" }, label = { Text("Warning") })
+                    FilterChip(selected = severity == "critical", onClick = { severity = "critical" }, label = { Text("Critical") })
+                }
+            }
+            if (loaded && items.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    EmptyState(Icons.Filled.NotificationsActive, "No alerts", "No ${severity.ifBlank { "" }} alerts for your depot's buses right now.")
+                }
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(items, key = { it.name }) { a ->
+                        AlertCard(
+                            a,
+                            onClick = {
+                                val jc = a.job_card?.takeIf { it.isNotBlank() }
+                                val v = a.vehicle?.takeIf { it.isNotBlank() }
+                                when {
+                                    jc != null -> onOpenJobCard(jc)
+                                    v != null -> onOpenVehicle(v)
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlertCard(a: com.naarni.service.data.dto.AlertEventItem, onClick: () -> Unit = {}) {
+    val color = alertSeverityColor(a.severity)
+    val openable = !a.job_card.isNullOrBlank() || !a.vehicle.isNullOrBlank()
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 1.dp,
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth().then(if (openable) Modifier.clickable(onClick = onClick) else Modifier),
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(5.dp).fillMaxHeight().background(color))
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Line 1: highlighted VEHICLE NUMBER + severity
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
+                    Text(
+                        a.registration_number?.takeIf { it.isNotBlank() } ?: "Unknown vehicle",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+                        Text(
+                            (a.severity ?: "—").replaceFirstChar { it.uppercase() },
+                            color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+                // Alert type
+                Text(
+                    humanize(a.title ?: a.parameter) ?: a.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                // Readings / message
+                a.message?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                // Meta: date · status · open hint
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    prettyDateTime(a.occurred_at)?.let { MetaChip(Icons.Filled.Event, it) }
+                    a.status?.takeIf { it.isNotBlank() }?.let {
+                        MetaChip(Icons.Filled.Pending, it)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (openable) {
+                        Text(
+                            if (!a.job_card.isNullOrBlank()) "Open job card ›" else "Open vehicle ›",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TicketsScreen(
+    vm: AppViewModel,
+    onOpenJobCard: (String) -> Unit = {},
+    onOpenVehicle: (String) -> Unit = {},
+) {
     RefreshableList(
         title = "Tickets",
         load = { vm.jobCards.myTickets() },
         itemKey = { it.name },
         empty = { EmptyState(Icons.Filled.ConfirmationNumber, "No tickets", "Tickets auto-raised from alerts for your depot's buses appear here.") },
         row = { t ->
-            Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text(t.title ?: t.name, style = MaterialTheme.typography.titleMedium)
-                        Text(t.registration_number ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TicketCard(
+                t,
+                onClick = {
+                    val jc = t.job_card?.takeIf { it.isNotBlank() }
+                    val v = t.vehicle?.takeIf { it.isNotBlank() }
+                    when {
+                        jc != null -> onOpenJobCard(jc)
+                        v != null -> onOpenVehicle(v)
                     }
-                    StatusChip(t.status)
-                }
-            }
+                },
+            )
         },
     )
+}
+
+@Composable
+private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () -> Unit = {}) {
+    val color = alertSeverityColor(t.severity)
+    val openable = !t.job_card.isNullOrBlank() || !t.vehicle.isNullOrBlank()
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 1.dp,
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth().then(if (openable) Modifier.clickable(onClick = onClick) else Modifier),
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(5.dp).fillMaxHeight().background(color))
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Line 1: highlighted VEHICLE NUMBER + status
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.ConfirmationNumber, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
+                    Text(
+                        t.registration_number?.takeIf { it.isNotBlank() } ?: (t.title ?: t.name),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatusChip(t.status)
+                }
+                // Ticket title
+                Text(
+                    humanize(t.title) ?: t.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                // Meta: date · severity · open hint
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    prettyDateTime(t.creation)?.let { MetaChip(Icons.Filled.Event, it) }
+                    t.severity?.takeIf { it.isNotBlank() }?.let { PriorityPill(it) }
+                    Spacer(Modifier.weight(1f))
+                    if (openable) {
+                        Text(
+                            if (!t.job_card.isNullOrBlank()) "Open job card ›" else "Open vehicle ›",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

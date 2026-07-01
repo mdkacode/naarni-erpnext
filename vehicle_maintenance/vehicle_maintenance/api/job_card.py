@@ -647,7 +647,9 @@ def get_my_job_cards(
 		filters=filters,
 		fields=[
 			"name",
+			"vehicle",
 			"vehicle_number",
+			"vehicle_make_model",
 			"customer_name",
 			"job_card_type",
 			"service_type",
@@ -657,12 +659,27 @@ def get_my_job_cards(
 			"force_close_severity",
 			"sla_breached",
 			"workflow_state",
+			"creation",
 			"modified",
 		],
 		order_by="modified desc",
 		limit_page_length=limit,
 		limit_start=offset,
 	)
+
+	# Enrich each row with the vehicle's fleet operator (Data field on Vehicle) in
+	# a single batched query — used by the app's list card to identify the bus.
+	vehicle_names = list({jc.get("vehicle") for jc in job_cards if jc.get("vehicle")})
+	operators: dict = {}
+	if vehicle_names:
+		for v in frappe.get_all(
+			"Vehicle",
+			filters={"name": ["in", vehicle_names]},
+			fields=["name", "operator"],
+		):
+			operators[v["name"]] = v.get("operator")
+	for jc in job_cards:
+		jc["operator"] = operators.get(jc.get("vehicle"))
 
 	return {"success": True, "data": job_cards, "message": ""}
 

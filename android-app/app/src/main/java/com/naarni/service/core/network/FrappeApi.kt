@@ -93,6 +93,15 @@ interface FrappeApi {
         @Query("limit") limit: Int = 10,
     ): FrappeWrap<Envelope<List<DepotHit>>>
 
+    @GET("api/method/vehicle_maintenance.api.tickets.get_my_depots")
+    suspend fun getMyDepots(): FrappeWrap<Envelope<com.naarni.service.data.dto.MyDepots>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.tickets.set_my_depot")
+    suspend fun setMyDepot(
+        @Field("depot") depot: String,
+    ): FrappeWrap<Envelope<JsonObject>>
+
     @GET("api/method/vehicle_maintenance.api.job_card.search_customers")
     suspend fun searchCustomers(
         @Query("txt") txt: String,
@@ -186,6 +195,13 @@ interface FrappeApi {
     @GET("api/method/vehicle_maintenance.api.job_card.list_part_groups")
     suspend fun listPartGroups(): FrappeWrap<Envelope<List<PartGroupItem>>>
 
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.job_card.save_groups_impacted")
+    suspend fun saveGroupsImpacted(
+        @Field("job_card_name") name: String,
+        @Field("part_groups") partGroups: String,
+    ): FrappeWrap<Envelope<JsonObject>>
+
     // ── Software update + Breakdown ──
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.job_card.save_software_components")
@@ -233,6 +249,7 @@ interface FrappeApi {
         @Field("job_card_name") name: String,
         @Field("approved") approved: Int,
         @Field("rejection_feedback") rejectionFeedback: String = "",
+        @Field("per_part_feedback") perPartFeedback: String = "[]",
     ): FrappeWrap<Envelope<JsonObject>>
 
     @FormUrlEncoded

@@ -141,9 +141,41 @@ def email_closure_report(job_card_name: str, recipient: str | None = None) -> di
 	return {"success": True, "data": {"sent_to": to}, "message": _("Report emailed to {0}.").format(to)}
 
 
+def _email_aftersales(doc) -> None:
+	"""Email the detailed closure report to the Aftersales Engineers (PRD p.2:
+	'Detailed Report goes to the After-sales Engineer'). Best-effort."""
+	recipients = frappe.get_all(
+		"Has Role",
+		filters={"role": "Aftersales Eng", "parenttype": "User"},
+		pluck="parent",
+	)
+	recipients = [
+		r
+		for r in set(recipients)
+		if r not in ("Administrator", "Guest") and frappe.db.get_value("User", r, "enabled")
+	]
+	# Keep to real email addresses (the app's phone-based users may not have one).
+	recipients = [r for r in recipients if "@" in r and not r.endswith("@test.localhost")]
+	if not recipients:
+		return
+	pdf = _pdf_bytes(doc.name)
+	frappe.sendmail(
+		recipients=recipients,
+		subject=_("Job Card closed — {0} ({1})").format(doc.name, doc.vehicle_number or ""),
+		message=_(
+			"<p>Job Card <b>{0}</b> for vehicle <b>{1}</b> has been closed.</p>"
+			"<p>The detailed service report is attached for after-sales review.</p>"
+		).format(doc.name, doc.vehicle_number or ""),
+		attachments=[{"fname": f"{doc.name}-closure-report.pdf", "fcontent": pdf}],
+		reference_doctype="Job Card",
+		reference_name=doc.name,
+	)
+
+
 def generate_on_close(doc) -> None:
 	"""Closure hook: build + attach the proof PDF; auto-email when the SE ticked
-	'Send report to customer'. Best-effort — never blocks closure."""
+	'Send report to customer'; always send the detailed report to Aftersales.
+	Best-effort — never blocks closure."""
 	try:
 		_build_and_attach(doc.name)
 	except Exception:
@@ -154,3 +186,7 @@ def generate_on_close(doc) -> None:
 			email_closure_report(doc.name)
 		except Exception:
 			frappe.log_error(title="closure_report_email", message=frappe.get_traceback())
+	try:
+		_email_aftersales(doc)
+	except Exception:
+		frappe.log_error(title="closure_report_aftersales_email", message=frappe.get_traceback())

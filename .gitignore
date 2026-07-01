@@ -24,3 +24,6 @@ node_modules/
 m365.txt
 deploy/*.log
 
+naarni-care-firebase-adminsdk-*.json
+*firebase-adminsdk*.json
+**/google-services.json

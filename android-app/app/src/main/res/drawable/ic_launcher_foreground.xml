@@ -3,8 +3,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Simple wrench glyph on the brand background. Replace with brand art later. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M68,38 m-6,0 a6,6 0,1 1,12 0 a6,6 0,1 1,-12 0 M64,44 L44,64 L48,68 L68,48 Z M40,60 L36,64 L44,72 L48,68 Z" />
+
+    <!-- Motion lines (speed) -->
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.55"
+        android:pathData="M16,46 h8 v3 h-8 z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.4"
+        android:pathData="M14,53 h11 v3 h-11 z" />
+
+    <!-- Bus body with three see-through windows (evenOdd punches the gradient through) -->
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+        android:pathData="M36,40 H72 A8,8 0 0 1 80,48 V58 A6,6 0 0 1 74,64 H34 A6,6 0 0 1 28,58 V48 A8,8 0 0 1 36,40 Z
+                          M37,46 h9 v8 h-9 z
+                          M49,46 h9 v8 h-9 z
+                          M61,46 h10 v8 h-10 z" />
+
+    <!-- Headlight -->
+    <path android:fillColor="#FFE08A"
+        android:pathData="M77,57 a2,2 0 1 1 0.01,0 z" />
+
+    <!-- Wheels (tyre + hub) -->
+    <path android:fillColor="#FF1E1B4B"
+        android:pathData="M43,64 m-6,0 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0
+                          M67,64 m-6,0 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M43,64 m-2,0 a2,2 0 1 0 4,0 a2,2 0 1 0 -4,0
+                          M67,64 m-2,0 a2,2 0 1 0 4,0 a2,2 0 1 0 -4,0" />
 </vector>

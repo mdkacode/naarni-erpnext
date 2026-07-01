@@ -14,6 +14,13 @@ data class LoginData(
     val roles: List<String> = emptyList(),
 )
 
+/** The depots a Service Engineer is assigned to (from `get_my_depots`). */
+@Serializable
+data class MyDepots(
+    val user: String? = null,
+    val depots: List<DepotHit> = emptyList(),
+)
+
 /** A user holding a given role (from `list_users_by_role`) — for POC pickers. */
 @Serializable
 data class RoleUser(
@@ -154,12 +161,15 @@ data class JobCardListItem(
     val job_card_type: String? = null,
     val workflow_state: String? = null,
     val vehicle_number: String? = null,
+    val vehicle_make_model: String? = null,
+    val operator: String? = null,
     val customer_name: String? = null,
     val job_card_date: String? = null,
     val odometer_reading: Int? = null,
     val priority: String? = null,
     val force_close_severity: String? = null,
     val sla_breached: Int? = null,
+    val creation: String? = null,
 )
 
 /** Full job-card detail for the SE detail/edit screen (from get_job_card_summary). */

@@ -15,8 +15,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // ── Modern indigo/violet brand palette ──
+private val Violet = Color(0xFF6D5AE6)
 private val Indigo = Color(0xFF4F46E5)
-private val IndigoDeep = Color(0xFF3730A3)
+private val IndigoDeep = Color(0xFF312E81)
 private val Sky = Color(0xFF0EA5E9)
 
 private val Light = lightColorScheme(
@@ -59,8 +60,8 @@ private val Dark = darkColorScheme(
     error = Color(0xFFF87171),
 )
 
-// Brand gradient used by the login hero + primary headers.
-val BrandGradient = listOf(Indigo, IndigoDeep)
+// Brand gradient used by the login hero + primary headers (matches the launcher icon).
+val BrandGradient = listOf(Violet, Indigo, IndigoDeep)
 
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "788828059495",
+    "project_id": "naarni-care",
+    "storage_bucket": "naarni-care.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:788828059495:android:a615205c4920c91395a1c2",
+        "android_client_info": {
+          "package_name": "com.naarni.service"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDTW12LXtRMzL6USYGxbC6teWc3jVQUT4E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:788828059495:android:c86e8b9d9403456c95a1c2",
+        "android_client_info": {
+          "package_name": "com.naarni.service.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDTW12LXtRMzL6USYGxbC6teWc3jVQUT4E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

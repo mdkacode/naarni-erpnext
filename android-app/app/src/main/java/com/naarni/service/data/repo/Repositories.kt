@@ -104,6 +104,15 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun searchDepots(txt: String): List<com.naarni.service.data.dto.DepotHit> =
         api.searchDepots(txt).payload()
 
+    /** The depots the current Service Engineer is assigned to (scopes Alerts/Tickets). */
+    suspend fun myDepots(): com.naarni.service.data.dto.MyDepots =
+        api.getMyDepots().payload()
+
+    /** Change the current SE's service depot — re-scopes their alerts + tickets. */
+    suspend fun setMyDepot(depot: String) {
+        api.setMyDepot(depot).payload()
+    }
+
     suspend fun searchCustomers(txt: String): List<com.naarni.service.data.dto.CustomerHit> =
         api.searchCustomers(txt).payload()
 
@@ -142,6 +151,18 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun partGroups(): List<com.naarni.service.data.dto.PartGroupItem> =
         api.listPartGroups().payload()
 
+    /** Part groups as picker options (for the breakdown "groups impacted" multiselect). */
+    suspend fun partGroupOptions(txt: String = ""): List<SuggestionItem> =
+        api.listPartGroups().payload()
+            .map { SuggestionItem(value = it.name, label = it.part_group_name ?: it.name) }
+            .filter { txt.isBlank() || it.label.contains(txt, ignoreCase = true) }
+
+    /** Save the breakdown's impacted part-groups (Table MultiSelect). */
+    suspend fun saveGroupsImpacted(name: String, groups: List<String>) {
+        val json = groups.joinToString(",", "[", "]") { "\"${it.replace("\"", "\\\"")}\"" }
+        api.saveGroupsImpacted(name, json).payload()
+    }
+
     suspend fun saveRepairItems(name: String, rows: List<com.naarni.service.data.dto.RepairItem>) {
         api.saveRepairItems(name, repoJson.encodeToString(rows)).payload()
     }
@@ -163,8 +184,18 @@ class JobCardRepository(private val api: FrappeApi) {
     }
 
     // ── Approval / Force close / Reopen ──
-    suspend fun recordApprovalDecision(name: String, approved: Boolean, rejectionFeedback: String = "") {
-        api.recordApprovalDecision(name, if (approved) 1 else 0, rejectionFeedback).payload()
+    suspend fun recordApprovalDecision(
+        name: String,
+        approved: Boolean,
+        rejectionFeedback: String = "",
+        perPartFeedback: List<Triple<String, String, String>> = emptyList(),
+    ) {
+        // [{part_group, description, feedback}, …]
+        fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
+        val json = perPartFeedback.joinToString(",", "[", "]") { (pg, desc, fb) ->
+            "{\"part_group\":\"${esc(pg)}\",\"description\":\"${esc(desc)}\",\"feedback\":\"${esc(fb)}\"}"
+        }
+        api.recordApprovalDecision(name, if (approved) 1 else 0, rejectionFeedback, json).payload()
     }
 
     suspend fun forceCloseJobCard(name: String, severity: String, reason: String) {

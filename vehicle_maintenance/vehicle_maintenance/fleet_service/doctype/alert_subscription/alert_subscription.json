@@ -28,6 +28,18 @@
       "in_standard_filter": 1
     },
     {
+      "fieldname": "severity",
+      "label": "How serious is it?",
+      "fieldtype": "Select",
+      "options": "warning\ncritical",
+      "fetch_from": "alert_type.severity",
+      "fetch_if_empty": 0,
+      "read_only": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Pulled from the Alert Type. Critical 🔴 = needs action now; Warning 🟠 = keep an eye on it."
+    },
+    {
       "fieldname": "enabled",
       "label": "Enabled",
       "fieldtype": "Check",

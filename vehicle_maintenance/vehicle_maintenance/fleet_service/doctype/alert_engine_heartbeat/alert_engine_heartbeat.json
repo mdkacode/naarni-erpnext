@@ -1,0 +1,31 @@
+{
+  "name": "Alert Engine Heartbeat",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "issingle": 1,
+  "document_type": "System",
+  "engine": "InnoDB",
+  "description": "Liveness beacon written by the alert engine on every ingest cycle. The monitor_alert_engine scheduled task emails ops if last_seen goes stale — the dead-man's-switch that guarantees a dead pipeline is noticed.",
+  "fields": [
+    {"fieldname": "sb_live", "fieldtype": "Section Break", "label": "Liveness"},
+    {"fieldname": "last_seen", "label": "Last Seen", "fieldtype": "Datetime", "read_only": 1, "description": "Server time the last heartbeat arrived. Stale => engine/pipeline is down."},
+    {"fieldname": "engine_version", "label": "Engine Version", "fieldtype": "Data", "read_only": 1},
+    {"fieldname": "rules_loaded", "label": "Rules Loaded", "fieldtype": "Int", "read_only": 1, "description": "0 => the engine has no config (nothing can fire)."},
+    {"fieldname": "teams_enabled", "label": "Teams Enabled", "fieldtype": "Check", "read_only": 1},
+    {"fieldname": "cb_live", "fieldtype": "Column Break"},
+    {"fieldname": "last_rows", "label": "Rows (last cycle)", "fieldtype": "Int", "read_only": 1},
+    {"fieldname": "last_breaches", "label": "Breaches (last cycle)", "fieldtype": "Int", "read_only": 1},
+    {"fieldname": "last_fired", "label": "Fired (last cycle)", "fieldtype": "Int", "read_only": 1},
+    {"fieldname": "last_teamed", "label": "Teams Delivered (last cycle)", "fieldtype": "Int", "read_only": 1},
+    {"fieldname": "last_errors", "label": "Errors (last cycle)", "fieldtype": "Int", "read_only": 1},
+    {"fieldname": "last_alert_at", "label": "Last Alert Fired At", "fieldtype": "Datetime", "read_only": 1, "description": "Last cycle that actually fired an alert (fired > 0)."},
+    {"fieldname": "sb_watch", "fieldtype": "Section Break", "label": "Watchdog State"},
+    {"fieldname": "down_notified", "label": "Down Alert Sent", "fieldtype": "Check", "read_only": 1, "description": "Set when a 'down' email has been sent; cleared on recovery. Prevents email spam."},
+    {"fieldname": "last_notified_at", "label": "Last Notified At", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "last_status", "label": "Last Status", "fieldtype": "Small Text", "read_only": 1}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Central Ops", "read": 1}
+  ]
+}

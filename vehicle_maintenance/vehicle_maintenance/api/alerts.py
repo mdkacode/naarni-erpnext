@@ -21,6 +21,7 @@ from typing import Any
 
 import frappe
 from frappe import _
+from frappe.utils import now_datetime
 
 from vehicle_maintenance.fleet_service.doctype.alert_type.alert_type import op_to_symbol
 
@@ -793,3 +794,183 @@ def ingest_alert_event(service_key: str | None = None, payload: Any = None, **kw
 
 	frappe.db.commit()
 	return _ok({"name": doc.name}, _("Alert event recorded."))
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def ingest_heartbeat(service_key: str | None = None, payload: Any = None, **kwargs) -> dict:
+	"""Liveness beacon from the alert engine, posted on EVERY ingest cycle.
+
+	Service-authenticated (same key as get_engine_config). Updates the single
+	`Alert Engine Heartbeat` doc; the `monitor_alert_engine` scheduled task emails ops
+	if this stops arriving. This is what makes a dead pipeline visible — a quiet
+	period (nothing breaching) still heartbeats, so silence != down.
+	"""
+	expected = frappe.conf.get("alert_engine_service_key")
+	if not expected or not service_key or not hmac.compare_digest(str(service_key), str(expected)):
+		frappe.throw(_("Invalid service key."), frappe.PermissionError)
+
+	data = _request_body(payload, kwargs)
+	data.pop("service_key", None)
+
+	hb = frappe.get_single("Alert Engine Heartbeat")
+	hb.last_seen = now_datetime()
+	hb.engine_version = data.get("engine_version")
+	hb.rules_loaded = int(data.get("rules_loaded") or 0)
+	hb.teams_enabled = 1 if data.get("teams_enabled") else 0
+	hb.last_rows = int(data.get("rows") or 0)
+	hb.last_breaches = int(data.get("breaches") or 0)
+	hb.last_fired = int(data.get("fired") or 0)
+	hb.last_teamed = int(data.get("teamed") or 0)
+	hb.last_errors = int(data.get("errors") or 0)
+	if hb.last_fired:
+		hb.last_alert_at = now_datetime()
+	hb.save(ignore_permissions=True)
+	frappe.db.commit()
+	return _ok({"received": True})
+
+
+@frappe.whitelist()
+def diagnose_subscription(name: str) -> dict:
+	"""Explain, in one call, why an Alert Subscription is or isn't delivering.
+
+	Desk-authenticated (staff). Returns every blocker (why it would NEVER fire) and
+	warning (why it MIGHT not right now), plus the compiled rule, the vehicles in
+	scope, the last Alert Events, the resolved Teams target and engine liveness — so
+	'ALSUB-xxxx isn't triggering' becomes a checklist, not a guess.
+	"""
+	if not frappe.has_permission("Alert Subscription", "read"):
+		frappe.throw(_("Not permitted."), frappe.PermissionError)
+	if not frappe.db.exists("Alert Subscription", name):
+		frappe.throw(_("Alert Subscription {0} not found.").format(name))
+
+	sub = frappe.get_doc("Alert Subscription", name)
+	blockers: list[str] = []
+	warnings: list[str] = []
+
+	# 1) Enabled?
+	if not sub.enabled:
+		blockers.append(
+			"Subscription is DISABLED (enabled is unchecked) — it is excluded from the engine config."
+		)
+
+	# 2) Alert Type exists and is evaluable?
+	at = None
+	if not sub.alert_type or not frappe.db.exists("Alert Type", sub.alert_type):
+		blockers.append(
+			f"Alert Type '{sub.alert_type}' does not exist — the rule is dropped when the config compiles."
+		)
+	else:
+		at = frappe.get_doc("Alert Type", sub.alert_type)
+		has_conditions = bool(
+			frappe.get_all(
+				"Alert Condition", filters={"parenttype": "Alert Type", "parent": sub.alert_type}, limit=1
+			)
+		)
+		if not (at.parameter or has_conditions):
+			blockers.append(
+				"Alert Type has no primary parameter AND no conditions — there is nothing to evaluate."
+			)
+
+	# 3) Customer + routing.
+	if not sub.customer:
+		blockers.append("No customer set.")
+	else:
+		prefs = frappe.db.exists("Alert Channel Preference", {"customer": sub.customer})
+		if not prefs:
+			warnings.append(
+				"Customer has no Alert Channel Preference — Novu/email routing may be unset (Teams still posts to the ops channel)."
+			)
+
+	# 4) Vehicle scope -> device_ids the engine will actually match. The child row
+	# carries `vehicle` (Link) and `device_id` (the telemetry id the engine matches).
+	scope_vehicles: list[dict] = []
+	if sub.vehicle_scope == "Selected":
+		listed = list(sub.vehicles or [])
+		if not listed:
+			blockers.append("Scope is 'Selected' but no vehicles are listed — the rule matches NO device.")
+		device_ok = 0
+		for r in listed:
+			dev = (r.device_id or "").strip() or (
+				frappe.db.get_value("Vehicle", r.vehicle, "device_id") if r.vehicle else None
+			)
+			scope_vehicles.append({"vehicle": r.vehicle, "device_id": dev})
+			if dev:
+				device_ok += 1
+			else:
+				warnings.append(
+					f"Vehicle '{r.vehicle}' has no telemetry device_id — it will never match a silver row."
+				)
+		if listed and device_ok == 0:
+			blockers.append(
+				"None of the scoped vehicles have a telemetry device_id — the rule can never match live data."
+			)
+	else:
+		warnings.append("Scope is 'All' — applies fleet-wide (fires for any device). Fine, just noting.")
+
+	# 5) Teams target resolvable?
+	teams_channel = sub.get("teams_channel")
+	default_ch = frappe.db.get_value(
+		"Notification Channel", {"is_default": 1, "enabled": 1, "channel_type": "Teams"}, "name"
+	)
+	if teams_channel and not frappe.db.get_value(
+		"Notification Channel", {"name": teams_channel, "enabled": 1}, "name"
+	):
+		warnings.append(
+			f"Chosen Teams channel '{teams_channel}' is missing/disabled — delivery falls back to the default channel or the engine's env webhook."
+		)
+	if not teams_channel and not default_ch:
+		warnings.append(
+			"No Teams channel chosen and no default Notification Channel — Teams delivery relies solely on the engine's env webhook (ALERT_TEAMS_WEBHOOK_URL)."
+		)
+
+	# 6) Recent activity for this rule.
+	rule_id = sub.alert_type
+	last_event = frappe.get_all(
+		"Alert Event",
+		filters={"alert_type": rule_id},
+		fields=["name", "triggered_at", "device_id", "registration_number"],
+		order_by="triggered_at desc",
+		limit=1,
+	)
+	events_7d = frappe.db.count(
+		"Alert Event",
+		{"alert_type": rule_id, "triggered_at": [">=", frappe.utils.add_days(now_datetime(), -7)]},
+	)
+
+	# 7) Engine liveness.
+	hb = frappe.get_single("Alert Engine Heartbeat")
+	engine_alive = None
+	if hb.last_seen:
+		age = frappe.utils.time_diff_in_seconds(now_datetime(), hb.last_seen)
+		engine_alive = age < 300
+		if not engine_alive:
+			blockers.append(
+				f"Alert engine heartbeat is STALE ({int(age)}s old) — the engine/pipeline itself appears DOWN, so nothing is firing."
+			)
+	else:
+		warnings.append(
+			"No engine heartbeat ever received — deploy engine >= 0.9.5 and confirm it can reach Frappe, or the heartbeat isn't wired yet."
+		)
+
+	status = "BLOCKED" if blockers else ("WARN" if warnings else "OK")
+	return _ok(
+		{
+			"subscription": name,
+			"status": status,
+			"blockers": blockers,
+			"warnings": warnings,
+			"enabled": bool(sub.enabled),
+			"alert_type": sub.alert_type,
+			"customer": sub.customer,
+			"vehicle_scope": sub.vehicle_scope,
+			"scope_vehicles": scope_vehicles,
+			"teams_channel": teams_channel or default_ch,
+			"last_event": last_event[0] if last_event else None,
+			"events_last_7d": events_7d,
+			"engine_alive": engine_alive,
+			"engine_last_seen": str(hb.last_seen) if hb.last_seen else None,
+			"engine_version": hb.engine_version,
+			"rules_loaded": hb.rules_loaded,
+		},
+		_("Diagnosis complete."),
+	)

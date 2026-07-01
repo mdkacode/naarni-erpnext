@@ -113,6 +113,11 @@ scheduler_events = {
 		"*/5 * * * *": [
 			"vehicle_maintenance.fleet_service.tasks.monitor_critical_followups",
 		],
+		# Alert-engine watchdog: email ops if the engine heartbeat goes stale or it
+		# reports it cannot deliver (dead-man's-switch for the alert pipeline).
+		"*/2 * * * *": [
+			"vehicle_maintenance.fleet_service.tasks.monitor_alert_engine",
+		],
 		"*/15 * * * *": [
 			"vehicle_maintenance.api.crm.dispatch_due_reminders",
 		],

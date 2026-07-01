@@ -109,8 +109,20 @@ fun MainShell(vm: AppViewModel) {
                     onBack = { nav.popBackStack() },
                 )
             }
-            composable(Tab.Alerts.route) { AlertsScreen(vm) }
-            composable(Tab.Tickets.route) { TicketsScreen(vm) }
+            composable(Tab.Alerts.route) {
+                AlertsScreen(
+                    vm,
+                    onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                    onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
+                )
+            }
+            composable(Tab.Tickets.route) {
+                TicketsScreen(
+                    vm,
+                    onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                    onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
+                )
+            }
             composable(Tab.Profile.route) { ProfileScreen(vm) }
             composable("create") {
                 CreateJobCardScreen(

@@ -359,8 +359,8 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun myTickets(status: String = ""): List<TicketItem> =
         api.getMyTickets(status).payload()
 
-    suspend fun myAlertEvents(): List<AlertEventItem> =
-        api.getMyAlertEvents().payload()
+    suspend fun myAlertEvents(severity: String = "", status: String = ""): List<AlertEventItem> =
+        api.getMyAlertEvents(severity, status).payload()
 
     suspend fun acknowledgeTicket(name: String) { api.acknowledgeTicket(name).payload() }
 

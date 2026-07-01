@@ -1,0 +1,29 @@
+{
+  "name": "Alert Ignore List",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "issingle": 1,
+  "document_type": "Setup",
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "description": "Central kill-switch: buses picked here get NO alerts of any kind. Add/remove buses from the multi-select. Takes effect within ~1 minute (no deploy needed).",
+  "fields": [
+    {
+      "fieldname": "intro",
+      "fieldtype": "HTML",
+      "options": "<div class=\"text-muted\" style=\"margin-bottom:8px\">Buses selected here are <b>fully silenced</b> — the alert engine skips them entirely (Teams, app, webhook and Alert Event). Pick buses to mute, remove them to un-mute. Changes apply within about a minute; no deploy required.</div>"
+    },
+    {
+      "fieldname": "vehicles",
+      "label": "Ignored Buses",
+      "fieldtype": "Table MultiSelect",
+      "options": "Alert Ignore Entry",
+      "description": "Type to search and pick buses. Each selected bus is fully muted."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1},
+    {"role": "Depot Manager", "read": 1}
+  ]
+}

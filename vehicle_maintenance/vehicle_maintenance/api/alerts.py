@@ -594,6 +594,16 @@ def get_engine_config(service_key: str | None = None) -> dict:
 		if v.get("mute_alerts"):
 			muted_devices.append(dev)
 
+	# Central "Alert Ignore List" (single doc) — buses muted in one place, unioned
+	# with the per-Vehicle "Mute Alerts" checkbox above.
+	from vehicle_maintenance.fleet_service.doctype.alert_ignore_list.alert_ignore_list import (
+		muted_device_ids,
+	)
+
+	for dev in muted_device_ids():
+		if dev not in muted_devices:
+			muted_devices.append(dev)
+
 	customers_out = []
 	prefs_names = frappe.get_all("Alert Channel Preference", pluck="customer", limit_page_length=0)
 	sub_customers = frappe.get_all(

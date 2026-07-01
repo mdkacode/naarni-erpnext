@@ -578,10 +578,18 @@ def get_engine_config(service_key: str | None = None) -> dict:
 
 	# device_id -> customer, customer -> [device_ids], device_id -> registration_number,
 	# plus the muted device_ids (Vehicle "Mute Alerts" — no alerts for those vehicles).
+	# `mute_alerts` is only selected when the column actually exists: on a site where
+	# the Vehicle schema hasn't been migrated yet, SELECTing a missing column 500s the
+	# whole config pull and takes ALL alerting down — this config endpoint must never
+	# be that fragile. The per-Vehicle mute simply no-ops until the column is migrated
+	# (the central Alert Ignore List still works).
+	vehicle_fields = ["device_id", "customer", "registration_number"]
+	if frappe.db.has_column("Vehicle", "mute_alerts"):
+		vehicle_fields.append("mute_alerts")
 	vehicle_rows = frappe.get_all(
 		"Vehicle",
 		filters=[["device_id", "is", "set"], ["customer", "is", "set"]],
-		fields=["device_id", "customer", "registration_number", "mute_alerts"],
+		fields=vehicle_fields,
 		limit_page_length=0,
 	)
 	devices_by_customer: dict[str, list[str]] = {}

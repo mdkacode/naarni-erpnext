@@ -72,6 +72,7 @@ import com.naarni.service.ui.components.SectionHeader
 import com.naarni.service.ui.components.SmartSelect
 import com.naarni.service.ui.components.StatTile
 import com.naarni.service.ui.components.StatusChip
+import com.naarni.service.ui.components.VehicleNumber
 import com.naarni.service.ui.components.statusColor
 import com.naarni.service.ui.theme.BrandGradient
 
@@ -213,8 +214,6 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
     val accent = statusColor(jc.workflow_state)
     // Lead with the fleet operator (easiest to identify); registration is the sub-line.
     val operator = jc.operator?.takeIf { it.isNotBlank() }
-    val title = operator ?: jc.vehicle_number ?: jc.name
-    val subtitle = if (operator != null) jc.vehicle_number else jc.vehicle_make_model
 
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -233,19 +232,18 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = accent) }
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                        )
-                        if (!subtitle.isNullOrBlank()) {
-                            Text(
-                                subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
+                        val reg = jc.vehicle_number?.takeIf { it.isNotBlank() }
+                        if (operator != null) {
+                            // Operator headline, registration (last-4 highlighted) below.
+                            Text(operator, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            if (reg != null) VehicleNumber(reg, style = MaterialTheme.typography.bodyMedium)
+                        } else if (reg != null) {
+                            VehicleNumber(reg, style = MaterialTheme.typography.titleMedium)
+                            jc.vehicle_make_model?.takeIf { it.isNotBlank() }?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                        } else {
+                            Text(jc.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
                     }
                     StatusChip(jc.workflow_state)
@@ -379,13 +377,11 @@ private fun AlertCard(a: com.naarni.service.data.dto.AlertEventItem, onClick: ()
                         Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
-                    Text(
-                        a.registration_number?.takeIf { it.isNotBlank() } ?: "Unknown vehicle",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (a.registration_number.isNullOrBlank()) {
+                        Text("Unknown vehicle", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    } else {
+                        VehicleNumber(a.registration_number, modifier = Modifier.weight(1f))
+                    }
                     Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
                         Text(
                             (a.severity ?: "—").replaceFirstChar { it.uppercase() },
@@ -471,13 +467,11 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
                         Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.ConfirmationNumber, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
-                    Text(
-                        t.registration_number?.takeIf { it.isNotBlank() } ?: (t.title ?: t.name),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (t.registration_number.isNullOrBlank()) {
+                        Text(t.title ?: t.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                    } else {
+                        VehicleNumber(t.registration_number, modifier = Modifier.weight(1f))
+                    }
                     StatusChip(t.status)
                 }
                 // Ticket title

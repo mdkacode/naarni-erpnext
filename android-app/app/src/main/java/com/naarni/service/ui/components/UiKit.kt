@@ -19,9 +19,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.naarni.service.ui.theme.BrandGradient
 
 /** Rounded brand mark with a gradient fill — used on the login hero. */
@@ -73,6 +79,37 @@ fun statusColor(state: String?): Color = when (state?.lowercase()) {
     "closed" -> Color(0xFF16A34A)
     "reopened" -> Color(0xFFEF4444)
     else -> Color(0xFF64748B)
+}
+
+/**
+ * Renders a vehicle registration with the **last 4 characters emphasised**
+ * (brand colour + heavier weight) and the prefix slightly muted — so the plate
+ * reads at a glance. Falls back gracefully for short/blank values.
+ */
+@Composable
+fun VehicleNumber(
+    reg: String?,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.titleMedium,
+) {
+    val n = (reg ?: "").trim()
+    val splitAt = (n.length - 4).coerceAtLeast(0)
+    val prefix = n.substring(0, splitAt)
+    val last4 = n.substring(splitAt)
+    val primary = MaterialTheme.colorScheme.primary
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val text = buildAnnotatedString {
+        if (prefix.isNotEmpty()) {
+            withStyle(SpanStyle(color = muted, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)) {
+                append(prefix)
+            }
+            append(" ")
+        }
+        withStyle(SpanStyle(color = primary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)) {
+            append(last4)
+        }
+    }
+    Text(text, style = style, modifier = modifier, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** Priority / criticality colour mapping (Low → Urgent, plus force-close severities). */

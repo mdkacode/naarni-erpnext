@@ -24,7 +24,8 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           ssh -i ~/.ssh/id_ed25519 frappe@${{ secrets.VM_HOST }} \
-            SITE="${{ secrets.SITE_NAME }}" BRANCH="$BRANCH" bash <<'EOF'
+            SITE="${{ secrets.SITE_NAME }}" BRANCH="$BRANCH" \
+            FCM_SA_B64="${{ secrets.FCM_SERVICE_ACCOUNT_B64 }}" bash <<'EOF'
             set -e
             export PATH="$HOME/.local/bin:$PATH"
             cd ~/frappe-bench
@@ -53,6 +54,17 @@ jobs:
             rm -rf "$TMP"
 
             bench --site "$SITE" migrate
+
+            # Push credentials — apply the Firebase service-account JSON (base64 in
+            # the FCM_SERVICE_ACCOUNT_B64 CI secret) to site_config so FCM v1 push
+            # delivers. Idempotent; no-op when the secret is unset.
+            if [ -n "$FCM_SA_B64" ]; then
+              echo "$FCM_SA_B64" | base64 -d > /tmp/_fcm_sa.json
+              bench --site "$SITE" set-config notifications_fcm_service_account "$(cat /tmp/_fcm_sa.json)" --parse
+              bench --site "$SITE" set-config notifications_push_enabled 1
+              rm -f /tmp/_fcm_sa.json
+              echo "[deploy] FCM push credentials applied."
+            fi
 
             # Build the Vite/Vue SPA (bench build doesn't touch the frontend dir).
             # Use `npm ci` against the committed package-lock.json for a

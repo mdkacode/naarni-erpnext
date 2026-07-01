@@ -22,10 +22,14 @@ jobs:
       - name: Deploy
         env:
           BRANCH: ${{ github.ref_name }}
+          # Pull the secret via the env block (handles multi-line safely), then
+          # flatten to a single line so it can be passed on the ssh command line.
+          FCM_SA_RAW: ${{ secrets.FCM_SERVICE_ACCOUNT_B64 }}
         run: |
+          FCM_SA_B64=$(printf '%s' "$FCM_SA_RAW" | tr -d '\n\r ')
           ssh -i ~/.ssh/id_ed25519 frappe@${{ secrets.VM_HOST }} \
             SITE="${{ secrets.SITE_NAME }}" BRANCH="$BRANCH" \
-            FCM_SA_B64="${{ secrets.FCM_SERVICE_ACCOUNT_B64 }}" bash <<'EOF'
+            FCM_SA_B64="$FCM_SA_B64" bash <<'EOF'
             set -e
             export PATH="$HOME/.local/bin:$PATH"
             cd ~/frappe-bench

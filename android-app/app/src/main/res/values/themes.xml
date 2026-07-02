@@ -2,4 +2,12 @@
     <!-- Base theme: Compose owns the real theming (ui/theme/Theme.kt). This is the
          launch theme used before the first Compose frame. -->
     <style name="Theme.NaarniService" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Android 12+ splash screen (AndroidX core-splashscreen backports it to API 24).
+         Brand background + the launcher glyph, then hands off to the Compose UI. -->
+    <style name="Theme.NaarniService.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.NaarniService</item>
+    </style>
 </resources>

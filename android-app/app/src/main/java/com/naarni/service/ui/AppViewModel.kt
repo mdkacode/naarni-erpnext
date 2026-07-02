@@ -88,4 +88,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         auth.logout()
         ui = AppUiState(loggedIn = false)
     }
+
+    /**
+     * Request account deletion (Play requirement). On success the backend has
+     * deactivated the account and the local session is cleared — drop to login.
+     * [onResult] reports success/failure so the screen can show a message.
+     */
+    fun deleteAccount(onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            ui = ui.copy(loading = true, error = null)
+            val result = auth.requestAccountDeletion()
+            if (result.isSuccess) {
+                ui = AppUiState(loggedIn = false)
+                onResult(true, null)
+            } else {
+                val msg = result.exceptionOrNull()?.message ?: "Could not delete account"
+                ui = ui.copy(loading = false, error = msg)
+                onResult(false, msg)
+            }
+        }
+    }
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules (Android 11 / API 30 and below).
+  Exclude the encrypted session store: its MasterKey lives in the AndroidKeyStore,
+  which is NOT part of a backup, so a restored copy could never be decrypted — and
+  we don't want auth tokens leaving the device via cloud backup regardless.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="naarni_session.xml" />
+</full-backup-content>

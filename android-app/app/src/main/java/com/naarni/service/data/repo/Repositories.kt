@@ -78,6 +78,16 @@ class AuthRepository(
     }
 
     fun logout() = session.clear()
+
+    /**
+     * Request deletion of the signed-in account. The backend deactivates the user
+     * and ends the session; we clear the local session on success either way.
+     */
+    suspend fun requestAccountDeletion(): Result<Unit> = runCatching {
+        val env = api.requestAccountDeletion("").message
+        if (env?.success == false) throw ApiException(env.message ?: "Could not delete account")
+        session.clear()
+    }
 }
 
 /** Read a string field from a tolerant JsonObject response (empty if absent). */

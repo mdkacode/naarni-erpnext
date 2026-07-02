@@ -11,3 +11,8 @@ local.properties
 **/build/
 *.apk
 *.aab
+
+# Release signing — NEVER commit the upload key or its passwords
+keystore.properties
+*.jks
+*.keystore

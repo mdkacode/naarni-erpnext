@@ -68,6 +68,13 @@ interface FrappeApi {
     @GET("api/method/vehicle_maintenance.fleet_service.doctype.job_card.job_card.get_user_roles")
     suspend fun getUserRoles(): FrappeWrap<List<String>>
 
+    /** Request deletion of the signed-in account (Play account-deletion requirement). */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.auth.request_account_deletion")
+    suspend fun requestAccountDeletion(
+        @Field("reason") reason: String = "",
+    ): FrappeWrap<Envelope<JsonObject>>
+
     // ── Dynamic dropdown options (admin-editable via Customize Form) ──
     @GET("api/method/vehicle_maintenance.api.options.get_app_field_options")
     suspend fun getAppFieldOptions(): FrappeWrap<Envelope<Map<String, List<String>>>>

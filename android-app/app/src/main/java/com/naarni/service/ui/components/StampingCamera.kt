@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,21 +75,48 @@ fun StampingCamera(
     }
     var busy by remember { mutableStateOf(false) }
 
+    fun hasLocationPerm() =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result -> hasCamera = result[Manifest.permission.CAMERA] == true }
 
-    LaunchedEffect(Unit) {
-        if (!hasCamera) {
-            permLauncher.launch(
-                arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
-            )
-        }
-    }
+    // Google Play "prominent disclosure": explain WHY we access camera + location
+    // BEFORE the system permission prompt appears. Shown once per screen entry
+    // while either permission is still missing.
+    var showDisclosure by remember { mutableStateOf(!(hasCamera && hasLocationPerm())) }
 
-    fun hasLocationPerm() =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
+    if (showDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showDisclosure = false },
+            title = { Text("Camera & location") },
+            text = {
+                Text(
+                    "Naarni Service uses your camera to capture job photos and your " +
+                        "location to stamp each photo with the place and time it was taken, " +
+                        "so office staff can verify field work. Location is read only at the " +
+                        "moment you take a photo — never in the background — and is not shared " +
+                        "with third parties."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDisclosure = false
+                    permLauncher.launch(
+                        arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
+                    )
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDisclosure = false
+                    onClose()
+                }) { Text("Not now") }
+            },
+        )
+    }
 
     if (!hasCamera) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

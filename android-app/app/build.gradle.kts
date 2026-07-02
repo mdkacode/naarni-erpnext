@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,20 +8,40 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+// Release signing credentials are read from keystore.properties (git-ignored).
+// Absent on machines that only build debug — the release signingConfig is then
+// left null and `assembleRelease` will fail loudly rather than silently ship an
+// unsigned/debug-signed artifact.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.naarni.service"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.naarni.service"
         minSdk = 24            // Android 7.0 — covers ~99% of field devices (plan §0)
-        targetSdk = 34
+        targetSdk = 35         // Android 15 — Play requires API 35 for new apps
         versionCode = 1
         versionName = "0.1.0"
 
         // Backend base URL — overridable per build type.
         buildConfigField("String", "BASE_URL", "\"https://service.naarni.com/\"")
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -33,10 +55,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Signed with the debug keystore so the optimized production APK is
-            // directly installable for on-device E2E testing. Replace with a
-            // dedicated release keystore before any Play Store distribution.
-            signingConfig = signingConfigs.getByName("debug")
+            // Real upload key (Play App Signing). Falls back to unsigned when
+            // keystore.properties is absent so we never ship a debug-signed AAB.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -56,6 +77,7 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)

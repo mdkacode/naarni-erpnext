@@ -37,15 +37,23 @@ import androidx.compose.material.icons.filled.Pending
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -508,8 +516,24 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
 @Composable
 fun ProfileScreen(vm: AppViewModel) {
     val name = vm.session.fullName ?: vm.session.user ?: "—"
+    val context = LocalContext.current
+    val feedback = com.naarni.service.core.feedback.LocalFeedback.current
+    var showDelete by remember { mutableStateOf(false) }
+
+    fun openPage(path: String) {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(com.naarni.service.BuildConfig.BASE_URL + path),
+                ),
+            )
+        }.onFailure { feedback.error() }
+    }
+
     Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(20.dp),
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Profile", style = MaterialTheme.typography.titleLarge)
@@ -531,11 +555,74 @@ fun ProfileScreen(vm: AppViewModel) {
 
         MyDepotCard(vm)
 
+        // Legal, privacy & account management (Play Store requirements)
+        Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+            Column {
+                ProfileRow(Icons.Filled.PrivacyTip, "Privacy Policy") { openPage("privacy-policy") }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                ProfileRow(Icons.Filled.Description, "Terms & Conditions") { openPage("terms-and-conditions") }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                ProfileRow(Icons.Filled.DeleteForever, "Delete account", destructive = true) { showDelete = true }
+            }
+        }
+
         OutlinedButton(onClick = { vm.logout() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().height(52.dp)) {
             Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
             Spacer(Modifier.height(0.dp))
             Text("  Log out")
         }
+    }
+
+    if (showDelete) {
+        AlertDialog(
+            onDismissRequest = { if (!vm.ui.loading) showDelete = false },
+            icon = { Icon(Icons.Filled.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Delete your account?") },
+            text = {
+                Text(
+                    "This deactivates your account and signs you out immediately. Your " +
+                        "personal data is deleted within 30 days. Job records you created may " +
+                        "be retained for audit. This can't be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !vm.ui.loading,
+                    onClick = {
+                        vm.deleteAccount { ok, msg ->
+                            showDelete = false
+                            if (ok) feedback.success() else feedback.error()
+                            android.widget.Toast.makeText(
+                                context,
+                                if (ok) "Account deleted. You've been signed out." else (msg ?: "Could not delete account"),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(enabled = !vm.ui.loading, onClick = { showDelete = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+/** A tappable row (icon + label) used in the Profile legal/account section. */
+@Composable
+private fun ProfileRow(icon: ImageVector, label: String, destructive: Boolean = false, onClick: () -> Unit) {
+    val tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = tint)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

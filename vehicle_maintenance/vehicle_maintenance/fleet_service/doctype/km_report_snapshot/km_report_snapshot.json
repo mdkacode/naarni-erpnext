@@ -1,0 +1,108 @@
+{
+  "name": "KM Report Snapshot",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "hash",
+  "description": "An immutable, generated monthly KM report for one customer. Holds a frozen PII-safe payload (rendered on the public page) plus a random public token that expires 7 days after generation. The public /km-report/<token> page reads ONLY this doctype.",
+  "fields": [
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "report_month",
+      "label": "Report Month",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "The month covered, as YYYY-MM."
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Draft\nSent\nExpired",
+      "default": "Draft",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_token",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "generated_at",
+      "label": "Generated At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "token_expires_on",
+      "label": "Token Expires On",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "email_message_id",
+      "label": "Email Message ID",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_brand",
+      "label": "Branding",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "display_name",
+      "label": "Display Name",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "logo_url",
+      "label": "Logo URL",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_token",
+      "label": "Public Link",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "public_token",
+      "label": "Public Token",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "section_payload",
+      "label": "Payload",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "payload_json",
+      "label": "Payload (frozen, PII-safe)",
+      "fieldtype": "Long Text",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1}
+  ],
+  "sort_field": "generated_at",
+  "sort_order": "DESC"
+}

@@ -1,0 +1,86 @@
+{
+  "name": "Fleet Report Config",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:customer",
+  "track_changes": 1,
+  "description": "Per-customer configuration for the monthly KM & SLA reports: white-label branding (logo + display name), thresholds (min KM per vehicle, contract uptime target) and the stakeholder recipient list.",
+  "fields": [
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "enabled",
+      "label": "Send monthly report",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_brand",
+      "label": "White-label Branding",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "display_name",
+      "label": "Brand / Display Name",
+      "fieldtype": "Data",
+      "description": "Customer name shown on the report and email (defaults to the Customer name)."
+    },
+    {
+      "fieldname": "logo",
+      "label": "Logo",
+      "fieldtype": "Attach Image",
+      "description": "Customer logo shown on the report header and email. Stored as a public file."
+    },
+    {
+      "fieldname": "section_thresholds",
+      "label": "Thresholds",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "min_km_per_vehicle",
+      "label": "Min KM per Vehicle (month)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "description": "Reference line on the KM chart (a per-vehicle monthly minimum). Not a billing floor."
+    },
+    {
+      "fieldname": "column_break_thresh",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "contract_uptime_target",
+      "label": "Contract Uptime Target (%)",
+      "fieldtype": "Percent",
+      "default": "95",
+      "description": "SLA target. A vehicle whose uptime is below this is flagged as a breach."
+    },
+    {
+      "fieldname": "section_recipients",
+      "label": "Stakeholders",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "stakeholders",
+      "label": "Recipients",
+      "fieldtype": "Table",
+      "options": "Report Stakeholder"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC"
+}

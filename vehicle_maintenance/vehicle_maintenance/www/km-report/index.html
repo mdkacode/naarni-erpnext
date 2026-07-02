@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>{% if report %}Monthly KM Report — {{ report.month_label }}{% else %}KM Report{% endif %}</title>
+  <style>
+    :root {
+      --brand:#6200EE; --grad1:#6D5AE6; --grad2:#4F46E5; --grad3:#312E81;
+      --ink:#1F2937; --muted:#6B7280; --line:#E5E7EB; --soft:#F9FAFB; --bg:#F7F9FC;
+      --good:#10B981; --warn:#F59E0B; --bad:#EF4444;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink);
+           font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+           line-height:1.55; -webkit-font-smoothing:antialiased; }
+    .wrap { max-width:1040px; margin:0 auto; padding:0 20px; }
+
+    /* Header / co-brand */
+    .hero { background:linear-gradient(135deg,var(--grad1),var(--grad2) 55%,var(--grad3)); color:#fff; padding:26px 0 30px; }
+    .brandbar { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand-left { display:flex; align-items:center; gap:12px; }
+    .logo-chip { background:#fff; border-radius:6px; padding:5px 9px; display:inline-flex; }
+    .logo-chip img { max-height:34px; max-width:150px; display:block; }
+    .brand-name { font-size:19px; font-weight:700; letter-spacing:0.2px; }
+    .powered { font-size:11px; opacity:.85; }
+    .powered b { color:#F6A623; font-weight:700; letter-spacing:.4px; }
+    .hero h1 { margin:18px 0 2px; font-size:26px; font-weight:700; }
+    .hero .sub { margin:0; opacity:.9; font-size:13px; }
+
+    /* KPI cards */
+    .kpis { display:flex; flex-wrap:wrap; gap:16px; margin:-22px 0 22px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px;
+            box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .kpi { flex:1 1 200px; padding:18px 20px; }
+    .kpi .label { font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); font-weight:700; }
+    .kpi .value { margin-top:6px; font-size:26px; font-weight:800;
+                  background:linear-gradient(90deg,#893A8D,#213C8D); -webkit-background-clip:text;
+                  -webkit-text-fill-color:transparent; background-clip:text; }
+    .kpi .unit { font-size:13px; color:var(--muted); font-weight:600; margin-left:4px; -webkit-text-fill-color:var(--muted); }
+
+    /* Section */
+    .section { padding:20px 22px; margin-bottom:22px; }
+    .section h2 { margin:0 0 14px; font-size:16px; font-weight:700; }
+
+    /* Trend bars */
+    .trend { display:flex; align-items:flex-end; gap:14px; height:150px; padding-top:6px; }
+    .bar-col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:8px; height:100%; }
+    .bar { width:70%; max-width:46px; border-radius:6px 6px 0 0;
+           background:linear-gradient(180deg,#6D5AE6,#4F46E5); min-height:3px; }
+    .bar-col.current .bar { background:linear-gradient(180deg,#893A8D,#213C8D); }
+    .bar-val { font-size:11px; font-weight:700; color:var(--ink); }
+    .bar-lbl { font-size:11px; color:var(--muted); white-space:nowrap; }
+
+    /* Table */
+    table { width:100%; border-collapse:collapse; }
+    thead th { background:var(--soft); text-align:left; font-size:11px; text-transform:uppercase;
+               letter-spacing:.5px; color:var(--muted); font-weight:700; padding:11px 14px; border-bottom:1px solid var(--line); }
+    thead th.num, tbody td.num { text-align:right; }
+    tbody td { padding:11px 14px; border-bottom:1px solid #F3F4F6; font-size:14px; }
+    tbody tr:hover { background:var(--soft); }
+    .reg { font-weight:700; letter-spacing:.03em; }
+    .pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+    .pill.excl { background:#FEF3C7; color:#92400E; }
+    .pill.zero { background:#ECFDF5; color:#065F46; }
+    .pill.ok { background:#ECFDF5; color:#065F46; }
+    .pill.breach { background:#FEE2E2; color:#991B1B; }
+
+    /* SLA summary chips */
+    .sla-summary { display:flex; flex-wrap:wrap; gap:22px; margin:0 0 16px; }
+    .sla-chip { display:flex; flex-direction:column; gap:3px; }
+    .sla-chip-lbl { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; }
+    .sla-chip-val { font-size:22px; font-weight:800; }
+    tfoot td { padding:12px 14px; font-weight:800; font-size:14px; border-top:2px solid var(--line); background:#FAFAFF; }
+    tfoot td.num { text-align:right; }
+
+    .foot { text-align:center; color:var(--muted); font-size:12px; padding:8px 0 40px; }
+    .foot b { color:var(--brand); }
+
+    /* Expired */
+    .expired { text-align:center; padding:56px 24px; margin:34px 0; }
+    .expired .emoji { font-size:44px; }
+    .expired h2 { margin:14px 0 6px; font-size:20px; }
+    .expired p { margin:0; color:var(--muted); font-size:14px; }
+
+    @media (max-width:640px){
+      .hero h1 { font-size:22px; }
+      .trend { height:120px; }
+      thead th.hide, tbody td.hide { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="wrap">
+      <div class="brandbar">
+        <div class="brand-left">
+          {% if logo_url %}<span class="logo-chip"><img src="{{ logo_url }}" alt="{{ brand or '' }}" /></span>{% endif %}
+          {% if brand %}<span class="brand-name">{{ brand }}</span>{% endif %}
+        </div>
+        <div class="powered">powered by <b>NaArNi</b></div>
+      </div>
+      {% if report %}
+        <h1>Monthly KM Report</h1>
+        <p class="sub">{{ report.month_label }} · Fleet distance summary</p>
+      {% else %}
+        <h1>KM Report</h1>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="wrap">
+    {% if expired or not report %}
+      <div class="card expired">
+        <div class="emoji">🔗</div>
+        <h2>This link has expired</h2>
+        <p>Monthly KM report links stay active for 7 days. Please ask your fleet contact for a fresh link.</p>
+      </div>
+    {% else %}
+      <!-- KPI summary -->
+      <div class="kpis">
+        <div class="card kpi">
+          <div class="label">Total Billable KM</div>
+          <div class="value">{{ "{:,.1f}".format(report.totals.billable_km) }}<span class="unit">km</span></div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Vehicles</div>
+          <div class="value">{{ report.totals.vehicles }}</div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Excluded Days</div>
+          <div class="value">{{ report.totals.excluded_days }}</div>
+        </div>
+      </div>
+
+      <!-- Trend -->
+      {% if report.trend %}
+      {% set maxkm = (report.trend | map(attribute='billable_km') | max) or 0 %}
+      <div class="card section">
+        <h2>Billable KM — last {{ report.trend | length }} months</h2>
+        <div class="trend">
+          {% for t in report.trend %}
+          <div class="bar-col {% if t.month == report.report_month %}current{% endif %}">
+            <div class="bar-val">{{ "{:,.0f}".format(t.billable_km) }}</div>
+            <div class="bar" style="height:{{ ((t.billable_km / maxkm) * 100) if maxkm else 0 }}%"></div>
+            <div class="bar-lbl">{{ t.label }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- SLA / Uptime -->
+      {% if report.sla and report.sla.vehicles %}
+      <div class="card section">
+        <h2>SLA · Uptime ({{ report.month_label }})</h2>
+        <div class="sla-summary">
+          <div class="sla-chip">
+            <span class="sla-chip-lbl">Fleet avg uptime</span>
+            <span class="sla-chip-val" style="color:{{ '#10B981' if (report.sla.summary.avg_uptime is not none and report.sla.summary.avg_uptime >= report.sla.summary.target) else '#EF4444' }}">
+              {{ ("%.1f"|format(report.sla.summary.avg_uptime)) if report.sla.summary.avg_uptime is not none else "—" }}%
+            </span>
+          </div>
+          <div class="sla-chip">
+            <span class="sla-chip-lbl">Contract target</span>
+            <span class="sla-chip-val">{{ "%.0f"|format(report.sla.summary.target) }}%</span>
+          </div>
+          <div class="sla-chip">
+            <span class="sla-chip-lbl">Vehicles in breach</span>
+            <span class="sla-chip-val" style="color:{{ '#EF4444' if report.sla.summary.breaches else '#10B981' }}">{{ report.sla.summary.breaches }}</span>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Vehicle</th>
+                <th class="num">Uptime</th>
+                <th class="num hide">Active Days</th>
+                <th class="num hide">Calendar Days</th>
+                <th class="num">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in report.sla.vehicles %}
+              <tr>
+                <td class="reg">{{ s.registration }}</td>
+                <td class="num" style="font-weight:800;color:{{ s.color }}">
+                  {{ ("%.1f"|format(s.uptime_pct)) if s.uptime_pct is not none else "—" }}%
+                </td>
+                <td class="num hide">{{ s.active_days }}</td>
+                <td class="num hide">{{ s.calendar_days }}</td>
+                <td class="num">
+                  {% if s.breach %}<span class="pill breach">Breach</span>
+                  {% elif s.uptime_pct is none %}<span class="pill zero">No data</span>
+                  {% else %}<span class="pill ok">On target</span>{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Per-vehicle table -->
+      <div class="card section">
+        <h2>Per-vehicle distance breakdown</h2>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Vehicle</th>
+                <th class="num hide">Start Odo</th>
+                <th class="num hide">End Odo</th>
+                <th class="num">Distance</th>
+                <th class="num">Billable KM</th>
+                <th class="num hide">Active Days</th>
+                <th class="num">Excluded</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for v in report.vehicles %}
+              <tr>
+                <td class="reg">{{ v.registration }}</td>
+                <td class="num hide">{{ "{:,.0f}".format(v.start_km) }}</td>
+                <td class="num hide">{{ "{:,.0f}".format(v.end_km) }}</td>
+                <td class="num">{{ "{:,.1f}".format(v.distance_km) }}</td>
+                <td class="num"><b>{{ "{:,.1f}".format(v.billable_km) }}</b></td>
+                <td class="num hide">{{ v.active_days }}</td>
+                <td class="num">
+                  {% if v.excluded_days %}
+                    <span class="pill excl" title="Service {{ v.service_days }} · Breakdown {{ v.breakdown_days }}">{{ v.excluded_days }}</span>
+                  {% else %}
+                    <span class="pill zero">0</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total ({{ report.totals.vehicles }} vehicles)</td>
+                <td class="num hide"></td>
+                <td class="num hide"></td>
+                <td class="num">{{ "{:,.1f}".format(report.totals.distance_km) }}</td>
+                <td class="num">{{ "{:,.1f}".format(report.totals.billable_km) }}</td>
+                <td class="num hide"></td>
+                <td class="num">{{ report.totals.excluded_days }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="foot">
+        Generated by the <b>NaArNi</b> Fleet Service Platform{% if report.generated_at %} · {{ report.generated_at }}{% endif %}.
+        Service &amp; breakdown days are excluded from billable KM.
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

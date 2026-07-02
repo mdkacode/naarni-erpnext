@@ -559,3 +559,54 @@ def monitor_alert_engine() -> None:
 		hb.db_set("last_status", "OK", update_modified=False)
 
 	frappe.db.commit()
+
+
+# ──────────────────────────── monthly KM report ────────────────────────────
+
+
+def send_monthly_km_reports() -> dict:
+	"""Scheduled on the 1st @ 10:00 IST — email each enabled customer LAST month's KM report.
+
+	The cron fires in the site timezone (verify System Settings.time_zone at deploy);
+	the *previous month* is derived from the IST calendar date, and each customer is
+	processed in a background job. Idempotent: a customer whose snapshot for that month
+	is already Sent is skipped, so an odd/duplicate cron firing never double-emails.
+	"""
+	from vehicle_maintenance.fleet_service import km_report
+	from vehicle_maintenance.integrations.naarni_km_daily import _ist_today
+
+	year_month = km_report.prev_month(_ist_today().strftime("%Y-%m"))
+	customers = frappe.get_all("Fleet Report Config", filters={"enabled": 1}, pluck="customer")
+
+	queued = 0
+	for customer in customers:
+		already_sent = frappe.db.get_value(
+			"KM Report Snapshot",
+			{"customer": customer, "report_month": year_month, "status": "Sent"},
+			"name",
+		)
+		if already_sent:
+			continue
+		frappe.enqueue(
+			"vehicle_maintenance.fleet_service.monthly_km_report.run_for_customer",
+			queue="long",
+			customer=customer,
+			year_month=year_month,
+		)
+		queued += 1
+
+	frappe.logger("naarni").info(f"monthly km reports: queued {queued} for {year_month}")
+	return {"month": year_month, "queued": queued}
+
+
+def expire_km_report_snapshots() -> None:
+	"""Hourly sweeper: flip snapshots whose 7-day public token has passed to Expired."""
+	frappe.db.sql(
+		"""
+		UPDATE `tabKM Report Snapshot`
+		SET status = 'Expired'
+		WHERE status != 'Expired' AND token_expires_on IS NOT NULL AND token_expires_on < %(now)s
+		""",
+		{"now": now_datetime()},
+	)
+	frappe.db.commit()

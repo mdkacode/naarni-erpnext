@@ -144,6 +144,74 @@ def verify_otp(phone: str, otp: str, device_uuid: str | None = None, platform: s
 	}
 
 
+@frappe.whitelist()
+def request_account_deletion(reason: str | None = None) -> dict:
+	"""Deactivate the signed-in user's account and record a deletion request.
+
+	Google Play requires an in-app path to request account + data deletion. We
+	disable the User immediately (credentials stop working), end active sessions,
+	leave an audit comment, and notify support so personal data can be purged
+	within 30 days per the published policy. Job-card / inspection records are
+	retained per that policy (business/legal obligation).
+	"""
+	user = frappe.session.user
+	if not user or user == "Guest":
+		frappe.throw(_("You must be signed in to delete your account."), frappe.AuthenticationError)
+	if user == "Administrator":
+		frappe.throw(_("The Administrator account cannot be deleted from the app."))
+
+	# Deactivate immediately so credentials stop working.
+	frappe.db.set_value("User", user, "enabled", 0)
+
+	# Audit trail (no schema change needed).
+	note = _("Account deletion requested by the user via the mobile app.")
+	if reason:
+		note += " " + _("Reason:") + " " + frappe.utils.strip_html(str(reason))[:500]
+	try:
+		frappe.get_doc("User", user).add_comment("Comment", note)
+	except Exception:
+		frappe.log_error(title="account_deletion_comment_failed")
+
+	# Notify support so ops can complete PII deletion.
+	_notify_account_deletion(user, reason)
+
+	# End every active session for this user (sanctioned path clears cookies too).
+	try:
+		if getattr(frappe.local, "login_manager", None):
+			frappe.local.login_manager.logout(user=user)
+		else:
+			frappe.db.delete("Sessions", {"user": user})
+	except Exception:
+		frappe.log_error(title="account_deletion_logout_failed")
+
+	frappe.db.commit()
+	return {
+		"success": True,
+		"data": {"user": user},
+		"message": _("Your account has been deactivated. Your data will be deleted within 30 days."),
+	}
+
+
+def _notify_account_deletion(user: str, reason: str | None) -> None:
+	"""Best-effort email to the support inbox so ops can finish data deletion."""
+	recipient = frappe.conf.get("support_email") or "privacy@naarni.com"
+	try:
+		frappe.sendmail(
+			recipients=[recipient],
+			subject=f"[Account Deletion] {user}",
+			message=(
+				f"<p>User <b>{frappe.utils.escape_html(user)}</b> requested account "
+				f"deletion via the mobile app.</p>"
+				f"<p>Reason: {frappe.utils.escape_html(str(reason)) if reason else '—'}</p>"
+				f"<p>The account has been disabled and sessions cleared. Please complete "
+				f"personal-data deletion within 30 days per policy.</p>"
+			),
+			now=False,
+		)
+	except Exception:
+		frappe.log_error(title="account_deletion_notify_failed")
+
+
 def _is_naarni_admin(authorities: list) -> bool:
 	"""True if the Naarni claims grant an admin role (vehicle endpoints need ADMIN)."""
 	return any("ADMIN" in str(a).upper() for a in (authorities or []))

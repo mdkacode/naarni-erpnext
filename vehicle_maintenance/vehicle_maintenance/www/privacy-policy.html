@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Naarni Service</title>
+  <meta name="robots" content="index,follow" />
+  <style>
+    :root { --brand:#4F46E5; --ink:#1f2430; --muted:#5b6472; --line:#e6e8ef; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+           color:var(--ink); line-height:1.65; background:#f7f8fc; }
+    .hero { background:linear-gradient(135deg,#6D5AE6,#4F46E5 55%,#312E81); color:#fff; padding:40px 20px; }
+    .wrap { max-width:820px; margin:0 auto; padding:0 20px; }
+    .hero h1 { margin:0 0 6px; font-size:26px; }
+    .hero p { margin:0; opacity:.9; font-size:14px; }
+    main { background:#fff; max-width:820px; margin:-24px auto 40px; padding:28px 28px 40px;
+           border:1px solid var(--line); border-radius:14px; }
+    h2 { font-size:18px; margin:28px 0 8px; }
+    p, li { color:var(--ink); font-size:15px; }
+    table { width:100%; border-collapse:collapse; margin:12px 0; font-size:14px; }
+    th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { background:#f2f3fb; }
+    a { color:var(--brand); }
+    .muted { color:var(--muted); font-size:13px; }
+    footer { text-align:center; color:var(--muted); font-size:13px; padding:0 20px 40px; }
+    .nav a { margin-right:16px; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="wrap">
+      <h1>Privacy Policy</h1>
+      <p>Naarni Service — vehicle maintenance field app · Last updated: 1 July 2026</p>
+    </div>
+  </div>
+
+  <main>
+    <p>Naarni Service ("the App") is an internal field-operations tool provided by
+       Naarni Technologies ("we", "us") to its authorised staff — service engineers,
+       technicians, depot managers and operations users — for managing vehicle
+       maintenance job cards. This policy explains what the App collects, why, and
+       how it is handled. The App is intended for <b>authorised business users only</b>
+       and requires an account provisioned by us.</p>
+
+    <h2>Information we collect</h2>
+    <table>
+      <tr><th>Data</th><th>Why</th><th>Shared?</th></tr>
+      <tr><td>Phone number</td><td>Sign-in via one-time password (OTP).</td><td>No</td></tr>
+      <tr><td>Name &amp; job role</td><td>Attribute job-card actions and stamp your name on photos.</td><td>No</td></tr>
+      <tr><td>Precise location</td><td>Read <b>only when you take a photo</b>, to stamp the place a job photo was captured for field-work verification. Never in the background.</td><td>No</td></tr>
+      <tr><td>Photos you capture</td><td>Job-card and vehicle inspection evidence taken inside the App.</td><td>No</td></tr>
+      <tr><td>Device push token</td><td>Deliver job assignment and status notifications.</td><td>Google Firebase Cloud Messaging (routing only)</td></tr>
+      <tr><td>Device identifier</td><td>Random per-install ID that binds your OTP login to this device.</td><td>No</td></tr>
+    </table>
+    <p>We do <b>not</b> collect contacts, browsing history or advertising identifiers,
+       and we do <b>not</b> use your data for advertising.</p>
+
+    <h2>How your data is used</h2>
+    <p>Data is used exclusively to operate the maintenance workflow: signing you in,
+       recording job-card activity, verifying field work through stamped photos, and
+       sending operational notifications. Session credentials are stored <b>encrypted</b>
+       on your device and are excluded from cloud backups.</p>
+
+    <h2>Data sharing</h2>
+    <p>We do not sell your data. We share it only with <b>Google Firebase Cloud
+       Messaging</b> to deliver push notifications, or where required by law.</p>
+
+    <h2>Data retention &amp; deletion</h2>
+    <p>Job-card records and photos are retained for as long as needed for maintenance
+       and audit purposes. You can request deletion of your account and personal data
+       at any time — see our <a href="/delete-account">Account &amp; Data Deletion</a>
+       page. We act on requests within 30 days, subject to legal retention
+       requirements.</p>
+
+    <h2>Security</h2>
+    <p>Data in transit is protected with HTTPS/TLS. Session credentials are stored in
+       Android's encrypted storage (AES-256). Access to backend records is
+       role-restricted.</p>
+
+    <h2>Permissions the App requests</h2>
+    <ul>
+      <li><b>Camera</b> — to capture job and inspection photos.</li>
+      <li><b>Location (precise, foreground only)</b> — to stamp photos with capture location. Optional; if denied, photos are stamped "Location unavailable".</li>
+      <li><b>Notifications</b> — to alert you to job assignments and updates.</li>
+    </ul>
+
+    <h2>Children</h2>
+    <p>The App is not directed to children and is for authorised staff only.</p>
+
+    <h2>Changes</h2>
+    <p>We may update this policy; material changes will be reflected by the "Last
+       updated" date above.</p>
+
+    <h2>Contact</h2>
+    <p><b>Naarni Technologies</b><br/>
+       Email: <a href="mailto:privacy@naarni.com">privacy@naarni.com</a></p>
+
+    <p class="nav muted" style="margin-top:28px;border-top:1px solid var(--line);padding-top:16px">
+      <a href="/privacy-policy">Privacy Policy</a>
+      <a href="/terms-and-conditions">Terms &amp; Conditions</a>
+      <a href="/delete-account">Delete Account</a>
+    </p>
+  </main>
+
+  <footer>© 2026 Naarni Technologies. All rights reserved.</footer>
+</body>
+</html>

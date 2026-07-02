@@ -27,6 +27,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_2.seed_fleet_workspace.execute",
 	"vehicle_maintenance.patches.v1_3.seed_parts_catalog.execute",
 	"vehicle_maintenance.patches.v1_4.backfill_alert_subscription_severity.execute",
+	"vehicle_maintenance.patches.v1_5.seed_km_report_custom_fields.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -127,15 +128,32 @@ scheduler_events = {
 		"0 */2 * * *": [
 			"vehicle_maintenance.integrations.naarni_vehicles.sync_vehicle_directory",
 		],
+		# Pull per-day odometer facts (start/end KM, distance, inactive) for the KM &
+		# SLA reports — a short rolling window that back-fills late telematics rows.
+		# No-op when the integration is disabled.
+		"30 1 * * *": [
+			"vehicle_maintenance.integrations.naarni_km_daily.sync_km_daily",
+		],
+		# Monthly KM Report — 1st of the month at 10:00 IST for the PREVIOUS month.
+		# NOTE: cron fires in the site timezone — verify System Settings.time_zone is
+		# Asia/Kolkata (else adjust, e.g. UTC -> "30 4 1 * *"). The task also derives
+		# the target month from the IST date and is idempotent per (customer, month).
+		"0 10 1 * *": [
+			"vehicle_maintenance.fleet_service.tasks.send_monthly_km_reports",
+		],
 	},
 	# Feedback requests trickle out hourly — a 5-minute cadence is overkill
 	# because the gate is `closed_at + 24h`, but the task is cheap.
 	"hourly": [
 		"vehicle_maintenance.fleet_service.tasks.monitor_feedback_requests",
+		# Expire KM report public tokens once their 7-day window passes.
+		"vehicle_maintenance.fleet_service.tasks.expire_km_report_snapshots",
 	],
 }
 
-# Website route rules — serve the Vue 3 SPA for all /service-portal/* routes
+# Website route rules — serve the Vue 3 SPA for all /service-portal/* routes,
+# and the public token page for /km-report/<token>.
 website_route_rules = [
 	{"from_route": "/service-portal/<path:app_path>", "to_route": "service-portal"},
+	{"from_route": "/km-report/<token>", "to_route": "km-report"},
 ]

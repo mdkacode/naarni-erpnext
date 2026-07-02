@@ -345,6 +345,20 @@ def _get_with_service_token(path: str) -> Any:
 		raise
 
 
+def _post_json_with_service_token(path: str, payload: dict) -> Any:
+	"""POST JSON to `path` with the service token, refreshing once on a 401/403."""
+
+	def _do(tok: str) -> Any:
+		return _post_json(path, payload, headers={"Authorization": f"Bearer {tok}"})
+
+	try:
+		return _do(service_token())
+	except NaarniApiError as exc:
+		if " 401:" in str(exc) or " 403:" in str(exc):
+			return _do(service_token(force_refresh=True))
+		raise
+
+
 # ──────────────────────────── vehicles (analytics) ────────────────────────────
 
 
@@ -373,6 +387,28 @@ def get_vehicle_detail(vehicle_id: int | str) -> dict | None:
 	_require_enabled()
 	body = _get_with_service_token(f"/api/v1/analytics/vehicles/{vehicle_id}")
 	return body if isinstance(body, dict) else None
+
+
+def fetch_km_daily(vehicle_ids: list[int] | None, start: str, end: str) -> dict:
+	"""Per-vehicle per-day odometer facts from the analytics-service (`/v1/analytics/km-daily`).
+
+	`start`/`end` are IST calendar dates (YYYY-MM-DD); we widen them to the full-day
+	window the endpoint expects. `vehicle_ids` narrows to specific vehicles (None =
+	the whole service-account fleet). Returns the raw envelope:
+
+	    {"rows": [{"vehicleId", "date", "startOdo", "endOdo", "distTravelledKm",
+	               "isInactive"}...], "dateBasis": "IST" | "UTC"}
+
+	`dateBasis` tells us how the upstream ETL bucketed the calendar day — the sync
+	records it per row and warns on UTC (day boundary off by 5.5h; upstream fix).
+	"""
+	_require_enabled()
+	payload = {
+		"timeRange": {"start": f"{start}T00:00:00", "end": f"{end}T23:59:59"},
+		"vehicleIds": list(vehicle_ids) if vehicle_ids else None,
+	}
+	body = _post_json_with_service_token("/api/v1/analytics/km-daily", payload)
+	return body if isinstance(body, dict) else {"rows": []}
 
 
 # ──────────────────────────── JWT verification (optional hardening) ────────────────────────────

@@ -1,0 +1,169 @@
+{
+  "name": "Vehicle KM Daily",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:row_key",
+  "track_changes": 1,
+  "description": "One telematics row per vehicle per calendar day: odometer at day start/end, distance travelled and the inactive flag. Raw fields are synced read-only from the Naarni analytics-service; the correction section lets Ops exclude or adjust a day (e.g. vehicle in service/breakdown) so KM billing and SLA stay honest.",
+  "fields": [
+    {
+      "fieldname": "vehicle",
+      "label": "Vehicle",
+      "fieldtype": "Link",
+      "options": "Vehicle",
+      "reqd": 1,
+      "search_index": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "date",
+      "label": "Date",
+      "fieldtype": "Date",
+      "reqd": 1,
+      "search_index": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "row_key",
+      "label": "Row Key",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "hidden": 1,
+      "description": "Deterministic {vehicle}::{date} identity — makes the daily sync idempotent."
+    },
+    {
+      "fieldname": "column_break_ident",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "source",
+      "label": "Source",
+      "fieldtype": "Select",
+      "options": "Telematics\nManual",
+      "default": "Telematics",
+      "read_only": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "date_basis",
+      "label": "Date Basis",
+      "fieldtype": "Select",
+      "options": "IST\nUTC",
+      "default": "IST",
+      "read_only": 1,
+      "description": "How the source ETL bucketed this calendar day. IST is required; a UTC value means the upstream day boundary is off by 5.5h and needs an upstream fix."
+    },
+    {
+      "fieldname": "synced_at",
+      "label": "Synced At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_odometer",
+      "label": "Odometer",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "start_km",
+      "label": "Start KM (12:00 AM IST)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "read_only": 1
+    },
+    {
+      "fieldname": "end_km",
+      "label": "End KM (11:59 PM IST)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_odo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "distance_km",
+      "label": "Distance (km)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "is_inactive",
+      "label": "Inactive Day",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "description": "Telematics reported no meaningful movement on this day."
+    },
+    {
+      "fieldname": "section_correction",
+      "label": "Operator Correction",
+      "fieldtype": "Section Break",
+      "description": "Ops-only. Exclude a day the vehicle was legitimately off the road (service/breakdown) or override the distance. Corrections survive re-sync."
+    },
+    {
+      "fieldname": "is_excluded",
+      "label": "Exclude this day",
+      "fieldtype": "Check",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "exclusion_reason",
+      "label": "Reason",
+      "fieldtype": "Select",
+      "options": "\nService\nBreakdown\nOther",
+      "depends_on": "eval:doc.is_excluded",
+      "mandatory_depends_on": "eval:doc.is_excluded"
+    },
+    {
+      "fieldname": "override_distance",
+      "label": "Override distance",
+      "fieldtype": "Check",
+      "description": "Use the corrected distance below instead of the telematics value."
+    },
+    {
+      "fieldname": "corrected_distance",
+      "label": "Corrected Distance (km)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "depends_on": "eval:doc.override_distance",
+      "description": "Authoritative distance for billing when 'Override distance' is ticked."
+    },
+    {
+      "fieldname": "correction_notes",
+      "label": "Correction Notes",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "column_break_corr",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "corrected_by",
+      "label": "Corrected By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "corrected_on",
+      "label": "Corrected On",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1},
+    {"role": "Service Engineer", "read": 1}
+  ],
+  "sort_field": "date",
+  "sort_order": "DESC"
+}

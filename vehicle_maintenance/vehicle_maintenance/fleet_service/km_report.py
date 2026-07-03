@@ -117,14 +117,20 @@ def _rollup_vehicle_days(rows: list[dict]) -> dict:
 	"""Aggregate one vehicle's ordered daily rows into a single summary dict."""
 	first, last = rows[0], rows[-1]
 	distance = sum(effective_distance(r) for r in rows)
+	raw_distance = sum(max(flt(r.get("distance_km")), 0.0) for r in rows)
 	excluded = [r for r in rows if r.get("is_excluded")]
+	# KM the telematics recorded on excluded days — removed from billable, surfaced so
+	# the drop in Billable KM is transparent to the customer.
+	excluded_km = sum(max(flt(r.get("distance_km")), 0.0) for r in excluded)
 	service_days = sum(1 for r in excluded if r.get("exclusion_reason") == "Service")
 	breakdown_days = sum(1 for r in excluded if r.get("exclusion_reason") == "Breakdown")
 	active_days = sum(1 for r in rows if not r.get("is_inactive") and not r.get("is_excluded"))
 	return {
 		"start_km": flt(first.get("start_km")),
 		"end_km": flt(last.get("end_km")),
+		"raw_distance_km": round(raw_distance, 1),
 		"distance_km": round(distance, 1),
+		"excluded_km": round(excluded_km, 1),
 		"days_with_data": len(rows),
 		"active_days": active_days,
 		"excluded_days": len(excluded),
@@ -157,7 +163,9 @@ def month_vehicle_rollup(customer: str, year_month: str) -> list[dict]:
 			else {
 				"start_km": 0.0,
 				"end_km": 0.0,
+				"raw_distance_km": 0.0,
 				"distance_km": 0.0,
+				"excluded_km": 0.0,
 				"days_with_data": 0,
 				"active_days": 0,
 				"excluded_days": 0,
@@ -281,7 +289,9 @@ def build_report_payload(customer: str, year_month: str, generated_at: str | Non
 				"registration": v["registration"],
 				"start_km": v["start_km"],
 				"end_km": v["end_km"],
+				"total_distance_km": v["raw_distance_km"],
 				"distance_km": v["distance_km"],
+				"excluded_km": v["excluded_km"],
 				"billable_km": v["billable_km"],
 				"active_days": v["active_days"],
 				"excluded_days": v["excluded_days"],
@@ -294,7 +304,9 @@ def build_report_payload(customer: str, year_month: str, generated_at: str | Non
 
 	totals = {
 		"billable_km": round(sum(v["billable_km"] for v in vehicle_rows), 1),
+		"total_distance_km": round(sum(v["total_distance_km"] for v in vehicle_rows), 1),
 		"distance_km": round(sum(v["distance_km"] for v in vehicle_rows), 1),
+		"excluded_km": round(sum(v["excluded_km"] for v in vehicle_rows), 1),
 		"vehicles": len(vehicle_rows),
 		"excluded_days": sum(v["excluded_days"] for v in vehicle_rows),
 	}

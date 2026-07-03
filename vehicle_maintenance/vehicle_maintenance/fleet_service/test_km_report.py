@@ -76,10 +76,23 @@ class TestKmReport(FrappeTestCase):
 		self._day(self.v1, "2026-06-02", 10, 30, 20, excluded=1, reason="Service")
 		self._day(self.v1, "2026-06-03", 30, 60, 30)
 		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
-		self.assertEqual(r["distance_km"], 40)  # 10 + 0 + 30
+		self.assertEqual(r["distance_km"], 40)  # billable: 10 + 0 + 30
+		self.assertEqual(r["raw_distance_km"], 60)  # total distance incl. excluded day
+		self.assertEqual(r["excluded_km"], 20)  # the excluded day's KM, surfaced
 		self.assertEqual(r["excluded_days"], 1)
 		self.assertEqual(r["service_days"], 1)
 		self.assertEqual(r["active_days"], 2)
+
+	def test_payload_surfaces_excluded_km(self):
+		self._day(self.v1, "2026-06-01", 0, 100, 100)
+		self._day(self.v1, "2026-06-02", 100, 300, 200, excluded=1, reason="Breakdown")
+		payload = km_report.build_report_payload(self.customer, "2026-06")
+		self.assertEqual(payload["totals"]["total_distance_km"], 300)
+		self.assertEqual(payload["totals"]["excluded_km"], 200)
+		self.assertEqual(payload["totals"]["billable_km"], 100)
+		veh = {v["registration"]: v for v in payload["vehicles"]}[self.v1]
+		self.assertEqual(veh["excluded_km"], 200)
+		self.assertEqual(veh["billable_km"], 100)
 
 	def test_corrected_distance_overrides(self):
 		self._day(self.v1, "2026-06-01", 0, 100, 100, corrected=25)

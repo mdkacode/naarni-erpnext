@@ -91,6 +91,16 @@ def _setup_links() -> list:
 	return out
 
 
+def _report_links() -> list:
+	# The KM/SLA reports, labelled the way users look for them.
+	reports = [("Monthly KM Report", "KM Billing Report"), ("SLA Management", "SLA Report")]
+	return [
+		{"type": "Link", "label": label, "link_type": "Report", "link_to": rep}
+		for label, rep in reports
+		if frappe.db.exists("Report", rep)
+	]
+
+
 def execute() -> None:
 	_safe(
 		lambda: _ensure_number_card(
@@ -124,11 +134,19 @@ def _build_workspace() -> None:
 		links.append({"type": "Card Break", "label": card_label})
 		links.extend(rows)
 
+	card("Reports", _report_links())
 	card("Masters", _master_links())
 	card("Operations", _ops_links())
 	card("Setup & Mass Import", _setup_links())
 
 	shortcuts = []
+	# KM/SLA reports first — the ones users ask for by name.
+	for label, rep, color in [
+		("Monthly KM Report", "KM Billing Report", "Purple"),
+		("SLA Management", "SLA Report", "Yellow"),
+	]:
+		if frappe.db.exists("Report", rep):
+			shortcuts.append({"type": "Report", "label": label, "link_to": rep, "color": color})
 	for label, dt, color in [
 		("Vehicles", "Vehicle", "Blue"),
 		("Job Cards", "Job Card", "Green"),
@@ -153,7 +171,7 @@ def _build_workspace() -> None:
 		content.append({"type": "number_card", "data": {"number_card_name": "FS " + nc["label"], "col": 3}})
 	for sc in shortcuts:
 		content.append({"type": "shortcut", "data": {"shortcut_name": sc["label"], "col": 3}})
-	for grp in ("Masters", "Operations", "Setup & Mass Import"):
+	for grp in ("Reports", "Masters", "Operations", "Setup & Mass Import"):
 		content.append({"type": "card", "data": {"card_name": grp, "col": 4}})
 
 	# Number-card child rows reference the real card name (FS <label>).

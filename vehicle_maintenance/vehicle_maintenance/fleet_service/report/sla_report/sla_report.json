@@ -19,6 +19,7 @@
  "roles": [
   {"role": "System Manager"},
   {"role": "Central Ops"},
-  {"role": "Depot Manager"}
+  {"role": "Depot Manager"},
+  {"role": "Fleet Reports"}
  ]
 }

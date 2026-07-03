@@ -40,6 +40,8 @@ APP_ROLES = [
 	"N. Maintenance Head",
 	"Customer",
 	"Sales Executive",
+	# View-only access to the KM & SLA reports/dashboards — assign from the User form.
+	"Fleet Reports",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.

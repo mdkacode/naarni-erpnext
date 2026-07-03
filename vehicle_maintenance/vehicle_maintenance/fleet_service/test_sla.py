@@ -112,6 +112,19 @@ class TestSla(FrappeTestCase):
 		self.assertEqual(result["summary"]["breaches"], 1)
 		self.assertEqual(result["summary"]["avg_uptime"], 90.0)
 
+	def test_calendar_days_capped_to_today(self):
+		# A partial/current month must not count not-yet-happened days: the denominator
+		# is capped at today, so uptime reflects the elapsed operational period.
+		from frappe.utils import add_days
+
+		from vehicle_maintenance.fleet_service import sla as slamod
+
+		today = slamod._today_ist()
+		self._fill(self.v1, [str(add_days(today, -i)) for i in range(5)])  # 5 active days ending today
+		m = sla.vehicle_uptime(self.v1, str(add_days(today, -4)), str(add_days(today, 30)))
+		self.assertEqual(m["calendar_days"], 5)  # today-4 .. today, NOT 35
+		self.assertEqual(m["uptime_pct"], 100.0)
+
 	def test_per_vehicle_target_override(self):
 		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 9)])  # 80%
 		# lower this vehicle's target to 75 → no longer a breach

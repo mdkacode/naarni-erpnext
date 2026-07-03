@@ -69,15 +69,16 @@ class TestSla(FrappeTestCase):
 		self.assertEqual(m["denominator_days"], 8)
 		self.assertEqual(m["uptime_pct"], 75.0)
 
-	def test_other_exclusion_counts_against_uptime(self):
-		# 'Other' exclusions are NOT planned downtime → stay in the denominator.
+	def test_all_exclusions_leave_denominator(self):
+		# Uptime is over billable (non-excluded) days: EVERY excluded day — including
+		# 'Other' — is removed from the denominator (not counted as downtime).
 		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 7)])
 		self._fill(self.v1, ["2026-06-07", "2026-06-08"], excluded=1, reason="Other")
 		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-10")
 		self.assertEqual(m["active_days"], 6)
-		self.assertEqual(m["planned_days"], 0)
-		self.assertEqual(m["denominator_days"], 10)
-		self.assertEqual(m["uptime_pct"], 60.0)
+		self.assertEqual(m["excluded_days"], 2)
+		self.assertEqual(m["denominator_days"], 8)  # 10 calendar - 2 excluded
+		self.assertEqual(m["uptime_pct"], 75.0)  # 6 / 8
 
 	def test_inactive_day_not_active(self):
 		self._fill(self.v1, ["2026-06-01", "2026-06-02"])  # active

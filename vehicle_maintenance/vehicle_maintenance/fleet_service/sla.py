@@ -53,12 +53,17 @@ def vehicle_uptime(vehicle: str, start, end) -> dict:
 	planned_days = sum(
 		1 for r in rows if r.get("is_excluded") and r.get("exclusion_reason") in PLANNED_DOWNTIME_REASONS
 	)
+	# Uptime is measured over BILLABLE days only — every excluded day (Service /
+	# Breakdown / Other) is removed from the denominator, so excluded time is neither
+	# uptime nor downtime. Uptime is not computed over overall calendar days.
+	excluded_days = sum(1 for r in rows if r.get("is_excluded"))
 	active_days = sum(1 for r in rows if not r.get("is_inactive") and not r.get("is_excluded"))
-	denom = calendar_days - planned_days
+	denom = calendar_days - excluded_days
 	uptime = round(100.0 * active_days / denom, 1) if denom > 0 else None
 	return {
 		"calendar_days": calendar_days,
 		"active_days": active_days,
+		"excluded_days": excluded_days,
 		"planned_days": planned_days,
 		"service_days": service_days,
 		"breakdown_days": breakdown_days,

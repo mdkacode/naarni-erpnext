@@ -26,7 +26,7 @@ def execute(filters=None):
 			if r["breach"]
 			else (_("No data") if r["uptime_pct"] is None else _("On target")),
 			"active_days": r["active_days"],
-			"calendar_days": r["calendar_days"],
+			"observed_days": r["observed_days"],
 			"service_days": r["service_days"],
 			"breakdown_days": r["breakdown_days"],
 		}
@@ -49,7 +49,7 @@ def _columns():
 		{"label": _("Target %"), "fieldname": "target", "fieldtype": "Percent", "width": 100},
 		{"label": _("Status"), "fieldname": "status", "fieldtype": "Data", "width": 110},
 		{"label": _("Active Days"), "fieldname": "active_days", "fieldtype": "Int", "width": 90},
-		{"label": _("Calendar Days"), "fieldname": "calendar_days", "fieldtype": "Int", "width": 110},
+		{"label": _("Observed Days"), "fieldname": "observed_days", "fieldtype": "Int", "width": 110},
 		{"label": _("Service"), "fieldname": "service_days", "fieldtype": "Int", "width": 80},
 		{"label": _("Breakdown"), "fieldname": "breakdown_days", "fieldtype": "Int", "width": 90},
 	]

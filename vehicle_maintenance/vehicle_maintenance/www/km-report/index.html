@@ -182,7 +182,7 @@
                 <th>Vehicle</th>
                 <th class="num">Uptime</th>
                 <th class="num hide">Active Days</th>
-                <th class="num hide">Calendar Days</th>
+                <th class="num hide">Observed Days</th>
                 <th class="num">Status</th>
               </tr>
             </thead>
@@ -194,7 +194,7 @@
                   {{ ("%.1f"|format(s.uptime_pct)) if s.uptime_pct is not none else "—" }}%
                 </td>
                 <td class="num hide">{{ s.active_days }}</td>
-                <td class="num hide">{{ s.calendar_days }}</td>
+                <td class="num hide">{{ s.observed_days }}</td>
                 <td class="num">
                   {% if s.breach %}<span class="pill breach">Breach</span>
                   {% elif s.uptime_pct is none %}<span class="pill zero">No data</span>

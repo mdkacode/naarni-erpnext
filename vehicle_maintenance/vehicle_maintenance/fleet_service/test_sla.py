@@ -50,86 +50,78 @@ class TestSla(FrappeTestCase):
 		for d in dates:
 			self._day(vehicle, d, **kw)
 
-	def test_uptime_basic_missing_days_count(self):
-		# 10 calendar days, 8 active, 2 missing → 8/10 = 80%.
+	def test_uptime_active_over_observed(self):
+		# 8 active + 2 inactive (reported but idle) → observed 10, uptime 8/10 = 80%.
 		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 9)])
+		self._fill(self.v1, ["2026-06-09", "2026-06-10"], inactive=1)
 		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-10")
-		self.assertEqual(m["calendar_days"], 10)
 		self.assertEqual(m["active_days"], 8)
-		self.assertEqual(m["denominator_days"], 10)
+		self.assertEqual(m["inactive_days"], 2)
+		self.assertEqual(m["observed_days"], 10)
 		self.assertEqual(m["uptime_pct"], 80.0)
 
-	def test_planned_downtime_excluded_from_denominator(self):
-		# 10 days: 6 active, 2 Service-excluded (planned), 2 missing → 6/(10-2)=75%.
-		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 7)])
-		self._fill(self.v1, ["2026-06-07", "2026-06-08"], excluded=1, reason="Service")
-		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-10")
-		self.assertEqual(m["active_days"], 6)
-		self.assertEqual(m["planned_days"], 2)
-		self.assertEqual(m["denominator_days"], 8)
-		self.assertEqual(m["uptime_pct"], 75.0)
+	def test_no_data_days_ignored(self):
+		# 8 active days, remaining days of the month have NO telematics row → ignored,
+		# not counted as downtime → uptime 8/8 = 100%.
+		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 9)])
+		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-30")
+		self.assertEqual(m["observed_days"], 8)
+		self.assertEqual(m["uptime_pct"], 100.0)
 
-	def test_all_exclusions_leave_denominator(self):
-		# Uptime is over billable (non-excluded) days: EVERY excluded day — including
-		# 'Other' — is removed from the denominator (not counted as downtime).
+	def test_excluded_removed_from_observed(self):
+		# 6 active + 2 inactive + 2 excluded (any reason) → observed 8 (excluded gone),
+		# uptime 6/8 = 75%.
 		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 7)])
-		self._fill(self.v1, ["2026-06-07", "2026-06-08"], excluded=1, reason="Other")
+		self._fill(self.v1, ["2026-06-07", "2026-06-08"], inactive=1)
+		self._fill(self.v1, ["2026-06-09", "2026-06-10"], excluded=1, reason="Service")
 		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-10")
 		self.assertEqual(m["active_days"], 6)
+		self.assertEqual(m["inactive_days"], 2)
 		self.assertEqual(m["excluded_days"], 2)
-		self.assertEqual(m["denominator_days"], 8)  # 10 calendar - 2 excluded
-		self.assertEqual(m["uptime_pct"], 75.0)  # 6 / 8
+		self.assertEqual(m["observed_days"], 8)
+		self.assertEqual(m["uptime_pct"], 75.0)
 
 	def test_inactive_day_not_active(self):
 		self._fill(self.v1, ["2026-06-01", "2026-06-02"])  # active
-		self._day(self.v1, "2026-06-03", inactive=1)  # present but inactive
+		self._day(self.v1, "2026-06-03", inactive=1)  # reported but inactive
 		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-03")
 		self.assertEqual(m["active_days"], 2)
+		self.assertEqual(m["observed_days"], 3)
 		self.assertEqual(m["uptime_pct"], round(200 / 3, 1))
 
-	def test_denominator_zero_returns_none(self):
-		# every day planned-excluded → denominator 0 → uptime undefined (None).
+	def test_all_excluded_returns_none(self):
+		# every reported day excluded → 0 observed → uptime undefined (None).
 		self._fill(self.v1, ["2026-06-01", "2026-06-02", "2026-06-03"], excluded=1, reason="Breakdown")
 		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-03")
-		self.assertEqual(m["denominator_days"], 0)
+		self.assertEqual(m["observed_days"], 0)
 		self.assertIsNone(m["uptime_pct"])
 
-	def test_no_rows_is_zero_uptime(self):
+	def test_no_rows_returns_none(self):
+		# no telematics at all → nothing observed → None (not 0%).
 		m = sla.vehicle_uptime(self.v1, "2026-06-01", "2026-06-05")
-		self.assertEqual(m["active_days"], 0)
-		self.assertEqual(m["uptime_pct"], 0.0)
+		self.assertEqual(m["observed_days"], 0)
+		self.assertIsNone(m["uptime_pct"])
 
 	def test_fleet_sla_breach_target_and_color(self):
-		# v1 = 80% (breach vs 95), v2 = 100% (on target)
+		# v1 = 8 active + 4 inactive → 66.7% (breach vs 95); v2 = 10 active → 100%.
 		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 9)])
+		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(9, 13)], inactive=1)
 		self._fill(self.v2, [f"2026-06-{d:02d}" for d in range(1, 11)])
-		result = sla.fleet_sla(self.customer, "2026-06-01", "2026-06-10")
+		result = sla.fleet_sla(self.customer, "2026-06-01", "2026-06-30")
 		by_reg = {r["registration"]: r for r in result["vehicles"]}
 		self.assertTrue(by_reg["SLA-V1"]["breach"])
 		self.assertEqual(by_reg["SLA-V1"]["color"], sla.BAD_COLOR)
+		self.assertEqual(by_reg["SLA-V1"]["uptime_pct"], round(800 / 12, 1))  # 66.7
 		self.assertFalse(by_reg["SLA-V2"]["breach"])
-		self.assertEqual(by_reg["SLA-V2"]["color"], sla.GOOD_COLOR)
+		self.assertEqual(by_reg["SLA-V2"]["uptime_pct"], 100.0)
 		self.assertEqual(result["summary"]["breaches"], 1)
-		self.assertEqual(result["summary"]["avg_uptime"], 90.0)
-
-	def test_calendar_days_capped_to_today(self):
-		# A partial/current month must not count not-yet-happened days: the denominator
-		# is capped at today, so uptime reflects the elapsed operational period.
-		from frappe.utils import add_days
-
-		from vehicle_maintenance.fleet_service import sla as slamod
-
-		today = slamod._today_ist()
-		self._fill(self.v1, [str(add_days(today, -i)) for i in range(5)])  # 5 active days ending today
-		m = sla.vehicle_uptime(self.v1, str(add_days(today, -4)), str(add_days(today, 30)))
-		self.assertEqual(m["calendar_days"], 5)  # today-4 .. today, NOT 35
-		self.assertEqual(m["uptime_pct"], 100.0)
 
 	def test_per_vehicle_target_override(self):
-		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 9)])  # 80%
-		# lower this vehicle's target to 75 → no longer a breach
-		frappe.db.set_value("Vehicle", self.v1, "uptime_target_override", 75)
-		result = sla.fleet_sla(self.customer, "2026-06-01", "2026-06-10")
+		# 8 active + 4 inactive → 66.7%; a 60% override clears the breach.
+		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(1, 9)])
+		self._fill(self.v1, [f"2026-06-{d:02d}" for d in range(9, 13)], inactive=1)
+		frappe.db.set_value("Vehicle", self.v1, "uptime_target_override", 60)
+		result = sla.fleet_sla(self.customer, "2026-06-01", "2026-06-30")
 		v1 = next(r for r in result["vehicles"] if r["registration"] == "SLA-V1")
-		self.assertEqual(v1["target"], 75.0)
+		self.assertEqual(v1["target"], 60.0)
 		self.assertFalse(v1["breach"])

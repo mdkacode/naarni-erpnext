@@ -17,6 +17,8 @@ override → customer config → global default).
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import frappe
 from frappe.utils import flt, getdate
 
@@ -29,10 +31,20 @@ GOOD_COLOR = "#10B981"
 BAD_COLOR = "#EF4444"
 
 _SLA_FIELDS = ["date", "is_inactive", "is_excluded", "exclusion_reason"]
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _today_ist():
+	return datetime.now(_IST).date()
 
 
 def _calendar_days(start, end) -> int:
-	return (getdate(end) - getdate(start)).days + 1
+	# Month-to-date: never count days beyond today, so a partial/current month's
+	# uptime isn't dragged down by not-yet-happened days (that would be measuring
+	# over the overall calendar rather than the elapsed operational period).
+	s = getdate(start)
+	e = min(getdate(end), _today_ist())
+	return (e - s).days + 1 if e >= s else 0
 
 
 def _rows(vehicle: str, start, end) -> list[dict]:
@@ -53,12 +65,17 @@ def vehicle_uptime(vehicle: str, start, end) -> dict:
 	planned_days = sum(
 		1 for r in rows if r.get("is_excluded") and r.get("exclusion_reason") in PLANNED_DOWNTIME_REASONS
 	)
+	# Uptime is measured over BILLABLE days only — every excluded day (Service /
+	# Breakdown / Other) is removed from the denominator, so excluded time is neither
+	# uptime nor downtime. Uptime is not computed over overall calendar days.
+	excluded_days = sum(1 for r in rows if r.get("is_excluded"))
 	active_days = sum(1 for r in rows if not r.get("is_inactive") and not r.get("is_excluded"))
-	denom = calendar_days - planned_days
+	denom = calendar_days - excluded_days
 	uptime = round(100.0 * active_days / denom, 1) if denom > 0 else None
 	return {
 		"calendar_days": calendar_days,
 		"active_days": active_days,
+		"excluded_days": excluded_days,
 		"planned_days": planned_days,
 		"service_days": service_days,
 		"breakdown_days": breakdown_days,

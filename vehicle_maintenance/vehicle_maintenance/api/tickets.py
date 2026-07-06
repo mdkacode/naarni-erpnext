@@ -221,8 +221,13 @@ def _populate_vehicle_snapshot(ticket) -> None:
 
 def _notify_ticket(ticket, engineers: list[str]) -> None:
 	"""Instant realtime + durable in-app/push to the depot's engineers."""
-	subject = _("New ticket: {0}").format(ticket.title or ticket.name)
-	body = ticket.message or ""
+	# Lead with the VEHICLE NUMBER so the engineer knows which bus at a glance.
+	reg = ticket.registration_number or ticket.vehicle or _("Vehicle")
+	subject = _("🚨 {0} — {1}").format(reg, ticket.title or _("Alert"))
+	body = ticket.message or _("Tap to see the alert details.")
+	# Tapping the notification opens the detailed ALERT page (which links through to
+	# this ticket); fall back to the ticket route when there's no source alert.
+	deeplink = f"naarni://alert/{ticket.alert_event}" if ticket.alert_event else ticket.deeplink
 	for user in engineers:
 		try:
 			frappe.publish_realtime(
@@ -231,9 +236,10 @@ def _notify_ticket(ticket, engineers: list[str]) -> None:
 					"subject": subject,
 					"body": body,
 					"priority": ticket.severity,
-					"type": "ticket",
+					"type": "alert",
 					"id": ticket.name,
-					"deeplink": ticket.deeplink,
+					"registration_number": reg,
+					"deeplink": deeplink,
 				},
 				user=user,
 			)
@@ -246,7 +252,7 @@ def _notify_ticket(ticket, engineers: list[str]) -> None:
 		for user in engineers:
 			notif._dispatch_in_app(user, subject, body, ticket.name)
 			if push_on:
-				notif._dispatch_push(user, subject, body, ticket.name, ticket.severity)
+				notif._dispatch_push(user, subject, body, ticket.name, ticket.severity, deeplink=deeplink)
 	except Exception:
 		frappe.log_error(title="Ticket notify failed", message=frappe.get_traceback())
 
@@ -289,6 +295,21 @@ def get_my_tickets(status: str = "", limit: int = 50, offset: int = 0) -> dict:
 def get_ticket(name: str) -> dict:
 	frappe.has_permission("Service Ticket", doc=name, throw=True)
 	return {"success": True, "data": frappe.get_doc("Service Ticket", name).as_dict()}
+
+
+@frappe.whitelist()
+def get_alert_event(name: str) -> dict:
+	"""Full Alert Event detail + the linked Service Ticket name.
+
+	Powers the app's detailed Alert page; the `ticket` field lets it link through
+	to the ticket screen. Login-gated (the feed is already depot-scoped, and the
+	push that carries this id was sent only to the depot's engineers).
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+	data = frappe.get_doc("Alert Event", name).as_dict()
+	data["ticket"] = frappe.db.get_value("Service Ticket", {"alert_event": name}, "name")
+	return {"success": True, "data": data}
 
 
 @frappe.whitelist()

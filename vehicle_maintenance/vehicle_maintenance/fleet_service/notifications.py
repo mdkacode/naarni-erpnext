@@ -482,13 +482,18 @@ def _dispatch_in_app(user: str, subject: str, body: str, doc_name: str | None) -
 		)
 
 
-def _dispatch_push(user: str, subject: str, body: str, doc_name: str | None, priority: str) -> None:
+def _dispatch_push(
+	user: str, subject: str, body: str, doc_name: str | None, priority: str, deeplink: str | None = None
+) -> None:
 	"""Enqueue an FCM push to each of the user's active device tokens.
 
 	Gated on `notifications_push_enabled`. The actual HTTP call to FCM is
 	background-enqueued so a slow provider never blocks the save/transition path —
 	realtime + In-App have already fired. When no FCM server key is configured the
 	job logs and no-ops, so this is safe to enable before credentials are wired.
+
+	`deeplink` overrides the tap target (e.g. `naarni://alert/{id}` for tickets);
+	when omitted it defaults to the job-card route for `doc_name`.
 	"""
 	try:
 		tokens = frappe.get_all(
@@ -511,6 +516,7 @@ def _dispatch_push(user: str, subject: str, body: str, doc_name: str | None, pri
 				body=body,
 				doc_name=doc_name,
 				priority=priority,
+				deeplink=deeplink,
 			)
 	except Exception:
 		frappe.log_error(
@@ -581,7 +587,12 @@ def _fcm_access_token() -> tuple[str, str] | None:
 
 
 def _dispatch_push_job(
-	device_token: str, subject: str, body: str, doc_name: str | None, priority: str
+	device_token: str,
+	subject: str,
+	body: str,
+	doc_name: str | None,
+	priority: str,
+	deeplink: str | None = None,
 ) -> None:
 	"""Background worker — sends one FCM message via **HTTP v1**. Enqueue-only.
 
@@ -593,6 +604,8 @@ def _dispatch_push_job(
 		frappe.logger().info(f"[push] FCM not configured; skipped doc={doc_name} priority={priority}")
 		return
 	access_token, project_id = creds
+	# Tap target: caller-supplied deeplink (e.g. alert page) or the job-card route.
+	link = deeplink or (f"naarni://jobcard/{doc_name}" if doc_name else "")
 	try:
 		import requests
 
@@ -606,10 +619,12 @@ def _dispatch_push_job(
 				"message": {
 					"token": device_token,
 					"notification": {"title": subject, "body": body},
+					# Send the deeplink under both keys the app may read.
 					"data": {
 						"job_card": doc_name or "",
 						"priority": str(priority),
-						"deeplink": f"naarni://jobcard/{doc_name}" if doc_name else "",
+						"deeplink": link,
+						"route": link,
 					},
 					"android": {
 						"priority": "HIGH" if priority in ("High", "Urgent", "Critical") else "NORMAL"

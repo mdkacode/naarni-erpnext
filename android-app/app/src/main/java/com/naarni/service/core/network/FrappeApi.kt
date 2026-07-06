@@ -409,6 +409,14 @@ interface FrappeApi {
         @Query("limit") limit: Int = 50,
     ): FrappeWrap<Envelope<List<AlertEventItem>>>
 
+    /** Full alert detail (+ linked ticket) for the detailed Alert page. */
+    @GET("api/method/vehicle_maintenance.api.tickets.get_alert_event")
+    suspend fun getAlertEvent(@Query("name") name: String): FrappeWrap<Envelope<com.naarni.service.data.dto.AlertDetail>>
+
+    /** Full Service Ticket detail for the ticket page behind an alert. */
+    @GET("api/method/vehicle_maintenance.api.tickets.get_ticket")
+    suspend fun getTicket(@Query("name") name: String): FrappeWrap<Envelope<com.naarni.service.data.dto.TicketDetail>>
+
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.tickets.acknowledge_ticket")
     suspend fun acknowledgeTicket(@Field("name") name: String): FrappeWrap<Envelope<JsonObject>>

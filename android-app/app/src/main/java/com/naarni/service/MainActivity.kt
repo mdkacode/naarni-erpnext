@@ -8,7 +8,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.naarni.service.ui.navigation.DeepLinkBus
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +29,7 @@ class MainActivity : ComponentActivity() {
         // Must run before super.onCreate — swaps the launch/splash theme for the app theme.
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        captureDeepLink(intent)
         enableEdgeToEdge()
         setContent {
             NaarniTheme {
@@ -53,5 +56,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureDeepLink(intent)
+    }
+
+    /** Stash a notification's deep-link route so MainShell can navigate to it. */
+    private fun captureDeepLink(intent: Intent?) {
+        val route = intent?.data?.toString() ?: intent?.getStringExtra("route")
+        if (!route.isNullOrBlank()) DeepLinkBus.pending = route
     }
 }

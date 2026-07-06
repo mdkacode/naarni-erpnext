@@ -39,7 +39,7 @@ class NaarniMessagingService : FirebaseMessagingService() {
         val data = message.data
         val title = message.notification?.title ?: data["title"] ?: "Naarni Fleet Service"
         val body = message.notification?.body ?: data["body"] ?: data["message"] ?: ""
-        val route = data["route"] ?: data["click_action"] ?: data["link"]
+        val route = data["deeplink"] ?: data["route"] ?: data["click_action"] ?: data["link"]
 
         notify(title, body, route)
     }

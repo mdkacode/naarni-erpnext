@@ -14,6 +14,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -22,8 +23,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.naarni.service.ui.AppViewModel
+import com.naarni.service.ui.screens.AlertDetailScreen
 import com.naarni.service.ui.screens.AlertsScreen
 import com.naarni.service.ui.screens.CreateJobCardScreen
+import com.naarni.service.ui.screens.TicketDetailScreen
 import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardDetailScreen
 import com.naarni.service.ui.screens.JobCardsScreen
@@ -46,6 +49,22 @@ enum class Tab(val route: String, val label: String, val icon: ImageVector) {
 fun MainShell(vm: AppViewModel) {
     val nav = rememberNavController()
     val tabs = Tab.entries
+
+    // Consume a deep link from a tapped notification (naarni://alert|ticket|jobcard|vehicle/{id}).
+    LaunchedEffect(DeepLinkBus.pending) {
+        val link = DeepLinkBus.pending ?: return@LaunchedEffect
+        DeepLinkBus.pending = null
+        val uri = runCatching { android.net.Uri.parse(link) }.getOrNull() ?: return@LaunchedEffect
+        val id = uri.pathSegments.firstOrNull()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val route = when (uri.host) {
+            "alert" -> "alert/$id"
+            "ticket" -> "ticket/$id"
+            "jobcard" -> "jobcard/$id"
+            "vehicle" -> "vehicle/$id"
+            else -> return@LaunchedEffect
+        }
+        runCatching { nav.navigate(route) { launchSingleTop = true } }
+    }
 
     Scaffold(
         bottomBar = {
@@ -110,15 +129,26 @@ fun MainShell(vm: AppViewModel) {
                 )
             }
             composable(Tab.Alerts.route) {
-                AlertsScreen(
+                AlertsScreen(vm, onOpenAlert = { name -> nav.navigate("alert/$name") })
+            }
+            composable("alert/{name}") { entry ->
+                AlertDetailScreen(
                     vm,
+                    alertName = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onOpenTicket = { name -> nav.navigate("ticket/$name") },
                     onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
                     onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
                 )
             }
             composable(Tab.Tickets.route) {
-                TicketsScreen(
+                TicketsScreen(vm, onOpenTicket = { name -> nav.navigate("ticket/$name") })
+            }
+            composable("ticket/{name}") { entry ->
+                TicketDetailScreen(
                     vm,
+                    ticketName = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
                     onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
                     onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
                 )

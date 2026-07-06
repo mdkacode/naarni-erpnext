@@ -372,6 +372,12 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun myAlertEvents(severity: String = "", status: String = ""): List<AlertEventItem> =
         api.getMyAlertEvents(severity, status).payload()
 
+    suspend fun alertDetail(name: String): com.naarni.service.data.dto.AlertDetail =
+        api.getAlertEvent(name).payload()
+
+    suspend fun ticketDetail(name: String): com.naarni.service.data.dto.TicketDetail =
+        api.getTicket(name).payload()
+
     suspend fun acknowledgeTicket(name: String) { api.acknowledgeTicket(name).payload() }
 
     suspend fun resolveTicket(name: String, reason: String) { api.resolveTicket(name, reason).payload() }

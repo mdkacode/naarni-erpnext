@@ -283,7 +283,7 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
 }
 
 /** "abs_ebsamberwarningsignal" → "Abs Ebsamberwarningsignal" (readable). */
-private fun humanize(raw: String?): String? {
+internal fun humanize(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
     return raw.trim().replace('_', ' ').replace('-', ' ')
         .split(' ').filter { it.isNotBlank() }
@@ -291,7 +291,7 @@ private fun humanize(raw: String?): String? {
 }
 
 /** "2026-07-01 08:05:00" → "1 Jul, 08:05". */
-private fun prettyDateTime(raw: String?): String? {
+internal fun prettyDateTime(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
     val date = prettyDate(raw) ?: return raw
     val short = date.split(" ").let { if (it.size >= 2) "${it[0]} ${it[1]}" else date } // "1 Jul"
@@ -299,7 +299,7 @@ private fun prettyDateTime(raw: String?): String? {
     return if (time != null) "$short, $time" else short
 }
 
-private fun alertSeverityColor(sev: String?): Color = when (sev?.lowercase()) {
+internal fun alertSeverityColor(sev: String?): Color = when (sev?.lowercase()) {
     "critical" -> Color(0xFFEF4444)
     "warning" -> Color(0xFFF59E0B)
     else -> Color(0xFF64748B)
@@ -308,8 +308,7 @@ private fun alertSeverityColor(sev: String?): Color = when (sev?.lowercase()) {
 @Composable
 fun AlertsScreen(
     vm: AppViewModel,
-    onOpenJobCard: (String) -> Unit = {},
-    onOpenVehicle: (String) -> Unit = {},
+    onOpenAlert: (String) -> Unit = {},
 ) {
     var severity by remember { mutableStateOf("") } // "", "warning", "critical"
     var items by remember { mutableStateOf<List<com.naarni.service.data.dto.AlertEventItem>>(emptyList()) }
@@ -350,17 +349,7 @@ fun AlertsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(items, key = { it.name }) { a ->
-                        AlertCard(
-                            a,
-                            onClick = {
-                                val jc = a.job_card?.takeIf { it.isNotBlank() }
-                                val v = a.vehicle?.takeIf { it.isNotBlank() }
-                                when {
-                                    jc != null -> onOpenJobCard(jc)
-                                    v != null -> onOpenVehicle(v)
-                                }
-                            },
-                        )
+                        AlertCard(a, onClick = { onOpenAlert(a.name) })
                     }
                 }
             }
@@ -371,7 +360,7 @@ fun AlertsScreen(
 @Composable
 private fun AlertCard(a: com.naarni.service.data.dto.AlertEventItem, onClick: () -> Unit = {}) {
     val color = alertSeverityColor(a.severity)
-    val openable = !a.job_card.isNullOrBlank() || !a.vehicle.isNullOrBlank()
+    val openable = true
     Surface(
         shape = MaterialTheme.shapes.large,
         tonalElevation = 1.dp,
@@ -419,14 +408,12 @@ private fun AlertCard(a: com.naarni.service.data.dto.AlertEventItem, onClick: ()
                         MetaChip(Icons.Filled.Pending, it)
                     }
                     Spacer(Modifier.weight(1f))
-                    if (openable) {
-                        Text(
-                            if (!a.job_card.isNullOrBlank()) "Open job card ›" else "Open vehicle ›",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
+                    Text(
+                        "View details ›",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         }
@@ -436,34 +423,21 @@ private fun AlertCard(a: com.naarni.service.data.dto.AlertEventItem, onClick: ()
 @Composable
 fun TicketsScreen(
     vm: AppViewModel,
-    onOpenJobCard: (String) -> Unit = {},
-    onOpenVehicle: (String) -> Unit = {},
+    onOpenTicket: (String) -> Unit = {},
 ) {
     RefreshableList(
         title = "Tickets",
         load = { vm.jobCards.myTickets() },
         itemKey = { it.name },
         empty = { EmptyState(Icons.Filled.ConfirmationNumber, "No tickets", "Tickets auto-raised from alerts for your depot's buses appear here.") },
-        row = { t ->
-            TicketCard(
-                t,
-                onClick = {
-                    val jc = t.job_card?.takeIf { it.isNotBlank() }
-                    val v = t.vehicle?.takeIf { it.isNotBlank() }
-                    when {
-                        jc != null -> onOpenJobCard(jc)
-                        v != null -> onOpenVehicle(v)
-                    }
-                },
-            )
-        },
+        row = { t -> TicketCard(t, onClick = { onOpenTicket(t.name) }) },
     )
 }
 
 @Composable
 private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () -> Unit = {}) {
     val color = alertSeverityColor(t.severity)
-    val openable = !t.job_card.isNullOrBlank() || !t.vehicle.isNullOrBlank()
+    val openable = true
     Surface(
         shape = MaterialTheme.shapes.large,
         tonalElevation = 1.dp,
@@ -499,14 +473,12 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
                     prettyDateTime(t.creation)?.let { MetaChip(Icons.Filled.Event, it) }
                     t.severity?.takeIf { it.isNotBlank() }?.let { PriorityPill(it) }
                     Spacer(Modifier.weight(1f))
-                    if (openable) {
-                        Text(
-                            if (!t.job_card.isNullOrBlank()) "Open job card ›" else "Open vehicle ›",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
+                    Text(
+                        "View details ›",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         }

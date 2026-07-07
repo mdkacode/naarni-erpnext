@@ -90,6 +90,17 @@
       "options": "Job Card Category Score"
     },
     {
+      "fieldname": "section_alerts",
+      "label": "Alerts Resolved",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "resolved_alerts",
+      "label": "Resolved Alerts",
+      "fieldtype": "Table",
+      "options": "Vehicle Health Card Alert"
+    },
+    {
       "fieldname": "section_summary",
       "label": "Summary",
       "fieldtype": "Section Break"

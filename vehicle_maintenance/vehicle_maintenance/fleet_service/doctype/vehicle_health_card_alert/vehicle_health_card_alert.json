@@ -1,0 +1,18 @@
+{
+  "name": "Vehicle Health Card Alert",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "description": "A resolved telemetry alert for the vehicle, shown as a line item on the Vehicle Health Card report.",
+  "fields": [
+    {"fieldname": "alert_name", "label": "Alert", "fieldtype": "Data", "in_list_view": 1, "columns": 3},
+    {"fieldname": "severity", "label": "Severity", "fieldtype": "Data", "in_list_view": 1, "columns": 1},
+    {"fieldname": "resolved_on", "label": "Resolved On", "fieldtype": "Datetime", "in_list_view": 1, "columns": 2},
+    {"fieldname": "resolved_by", "label": "Resolved By", "fieldtype": "Data", "in_list_view": 1, "columns": 2},
+    {"fieldname": "response", "label": "Fix / Response", "fieldtype": "Small Text", "in_list_view": 1, "columns": 2},
+    {"fieldname": "ticket", "label": "Ticket", "fieldtype": "Link", "options": "Service Ticket", "read_only": 1}
+  ],
+  "permissions": []
+}

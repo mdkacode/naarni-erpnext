@@ -1,0 +1,51 @@
+{
+  "name": "App Update Settings",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "issingle": 1,
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "description": "Controls the mobile app's force/optional update prompt. Set the latest published versionCode (optional prompt) and the minimum supported versionCode (hard block) when you publish a new build.",
+  "fields": [
+    {
+      "fieldname": "section_android",
+      "label": "Android",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "android_latest_version_code",
+      "label": "Latest versionCode",
+      "fieldtype": "Int",
+      "default": "0",
+      "description": "The newest published build's versionCode. Installs below this are shown an optional 'Update available' prompt."
+    },
+    {
+      "fieldname": "android_min_version_code",
+      "label": "Minimum supported versionCode",
+      "fieldtype": "Int",
+      "default": "0",
+      "description": "Installs BELOW this are hard-blocked with a 'Update required' screen until they update. Set it equal to the latest versionCode to force everyone onto the new build."
+    },
+    {
+      "fieldname": "column_break_au1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "android_update_url",
+      "label": "Update URL",
+      "fieldtype": "Data",
+      "default": "https://play.google.com/store/apps/details?id=com.naarni.service",
+      "description": "Where 'Update now' sends the user — the Play Store listing, or a direct APK link."
+    },
+    {
+      "fieldname": "update_message",
+      "label": "Update Message",
+      "fieldtype": "Small Text",
+      "default": "A new version of Naarni Service is available. Please update to continue."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Central Ops", "read": 1, "write": 1}
+  ]
+}

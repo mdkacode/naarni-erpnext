@@ -52,12 +52,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.AlertGroupDetail
 import com.naarni.service.data.dto.QuickResponse
 import com.naarni.service.data.dto.TicketDetail
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.StatusChip
+import com.naarni.service.ui.components.VehicleNumber
 import kotlinx.coroutines.launch
 
 // ─────────────────────────── shared bits ───────────────────────────
@@ -103,7 +105,7 @@ private fun VehicleHeader(reg: String?, subtitle: String?, severity: String?, st
             Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(28.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(reg?.takeIf { it.isNotBlank() } ?: fallback, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            VehicleNumber(reg?.takeIf { it.isNotBlank() } ?: fallback, style = MaterialTheme.typography.headlineSmall)
             if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -195,7 +197,18 @@ fun AlertDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Alert details") },
+                // Show the actual alert name + bus number, not a generic "Alert details".
+                title = {
+                    Column {
+                        Text(
+                            d?.let { humanize(it.alert_name) } ?: "Alert",
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        d?.registration_number?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                    }
+                },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
             )
         },
@@ -228,7 +241,7 @@ fun AlertDetailScreen(
                         lr?.value_meaning?.let { KV("Meaning", it) }
                         (fmtNum(lr?.threshold) ?: lr?.match_value)?.let { KV("Threshold", it + (lr?.unit?.let { u -> " $u" } ?: "")) }
                         lr?.message?.let { KV("Message", it) }
-                        relativeTime(lr?.triggered_at ?: lr?.occurred_at)?.let { KV("When", it) }
+                        relExact(lr?.triggered_at ?: lr?.occurred_at)?.let { KV("When", it) }
                         KV("Times fired", "${g.occurrence_count}")
                     }
 
@@ -274,7 +287,7 @@ fun AlertDetailScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text(ep.resolution_response_text ?: ep.resolution_reason ?: "Resolved", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                     Text(
-                                        listOfNotNull(ep.resolved_by_name?.takeIf { it.isNotBlank() }, relativeTime(ep.resolved_at)).joinToString(" · "),
+                                        listOfNotNull(ep.resolved_by_name?.takeIf { it.isNotBlank() }, relExact(ep.resolved_at)).joinToString(" · "),
                                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
@@ -284,7 +297,7 @@ fun AlertDetailScreen(
                         Text("All occurrences (${g.occurrence_count})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         g.occurrences.forEach { occ ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(relativeTime(occ.time) ?: "—", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Text(relExact(occ.time) ?: "—", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                 StatusChip(occ.status)
                             }
                         }

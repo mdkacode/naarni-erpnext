@@ -19,9 +19,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.naarni.service.ui.theme.BrandGradient
 
 /** Rounded brand mark with a gradient fill — used on the login hero. */
@@ -123,6 +129,44 @@ fun StatusChip(state: String?) {
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
         )
     }
+}
+
+/**
+ * A vehicle registration number with the **last 4 characters enlarged + brand-
+ * coloured** so it reads at a glance (the prefix is muted). Reused across cards
+ * and detail headers.
+ */
+@Composable
+fun VehicleNumber(
+    number: String?,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.titleMedium,
+    lastScale: Float = 1.35f,
+    highlightColor: Color = MaterialTheme.colorScheme.primary,
+    prefixColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
+    val clean = number?.trim().orEmpty()
+    if (clean.isBlank()) {
+        Text("Unknown vehicle", style = style, color = prefixColor, modifier = modifier, maxLines = 1)
+        return
+    }
+    val cut = (clean.length - 4).coerceAtLeast(0)
+    val text = buildAnnotatedString {
+        if (cut > 0) {
+            withStyle(SpanStyle(color = prefixColor, fontWeight = FontWeight.SemiBold)) {
+                append(clean.substring(0, cut))
+            }
+        }
+        withStyle(
+            SpanStyle(
+                color = highlightColor,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = style.fontSize * lastScale,
+                letterSpacing = 1.sp,
+            )
+        ) { append(clean.substring(cut)) }
+    }
+    Text(text, style = style, modifier = modifier, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable

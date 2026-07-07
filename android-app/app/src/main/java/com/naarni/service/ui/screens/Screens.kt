@@ -327,6 +327,13 @@ internal fun relativeTime(raw: String?): String? {
     }
 }
 
+/** "2h ago · 7 Jul, 14:30" — relative time with the exact time adjacent. */
+internal fun relExact(raw: String?): String? {
+    val rel = relativeTime(raw) ?: return null
+    val exact = prettyDateTime(raw)
+    return if (exact != null && exact != rel) "$rel · $exact" else rel
+}
+
 @Composable
 fun AlertsScreen(
     vm: AppViewModel,
@@ -437,11 +444,9 @@ private fun AlertGroupCard(g: com.naarni.service.data.dto.AlertGroup, onClick: (
                         Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
-                    Text(
-                        g.registration_number?.takeIf { it.isNotBlank() } ?: "Unknown vehicle",
+                    com.naarni.service.ui.components.VehicleNumber(
+                        g.registration_number,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
                     )
                     Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
@@ -457,10 +462,13 @@ private fun AlertGroupCard(g: com.naarni.service.data.dto.AlertGroup, onClick: (
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
+                // occurrence count · relative + exact time
+                val count = g.occurrence_count
+                MetaChip(
+                    Icons.Filled.NotificationsActive,
+                    (if (count > 1) "$count× · " else "") + (relExact(g.latest_time) ?: "—"),
+                )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // occurrence count + latest time
-                    val count = g.occurrence_count
-                    MetaChip(Icons.Filled.NotificationsActive, if (count > 1) "$count× · ${relativeTime(g.latest_time) ?: ""}" else (relativeTime(g.latest_time) ?: "—"))
                     StatusChip(g.open_ticket_status ?: g.latest_status)
                     Spacer(Modifier.weight(1f))
                     Text(
@@ -508,11 +516,9 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
                         Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.ConfirmationNumber, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
-                    Text(
+                    com.naarni.service.ui.components.VehicleNumber(
                         t.registration_number?.takeIf { it.isNotBlank() } ?: (t.title ?: t.name),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
                     )
                     StatusChip(t.status)

@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -66,24 +67,40 @@ fun MainShell(vm: AppViewModel) {
         runCatching { nav.navigate(route) { launchSingleTop = true } }
     }
 
+    // Top-level tab routes show the bottom nav + status bar; detail/sub pages hide
+    // both for a focused, full-height view (fixes the double-footer + whitespace).
+    val backStack by nav.currentBackStackEntryAsState()
+    val current = backStack?.destination?.route
+    val isTopLevel = current == null || tabs.any { it.route == current }
+
+    val view = LocalView.current
+    LaunchedEffect(isTopLevel) {
+        val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
+        controller.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (isTopLevel) controller.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        else controller.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+    }
+
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                val backStack by nav.currentBackStackEntryAsState()
-                val current = backStack?.destination?.route
-                tabs.forEach { tab ->
-                    NavigationBarItem(
-                        selected = current == tab.route,
-                        onClick = {
-                            nav.navigate(tab.route) {
-                                launchSingleTop = true
-                                popUpTo(Tab.Home.route) { saveState = true }
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                    )
+            if (isTopLevel) {
+                NavigationBar {
+                    tabs.forEach { tab ->
+                        NavigationBarItem(
+                            selected = current == tab.route,
+                            onClick = {
+                                nav.navigate(tab.route) {
+                                    launchSingleTop = true
+                                    popUpTo(Tab.Home.route) { saveState = true }
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = { Text(tab.label) },
+                        )
+                    }
                 }
             }
         },

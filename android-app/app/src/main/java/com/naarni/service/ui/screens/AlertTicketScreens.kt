@@ -1,7 +1,6 @@
 package com.naarni.service.ui.screens
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -128,23 +127,25 @@ private fun CompactHeader(reg: String?, alertName: String?, severity: String?, s
     Surface(shape = MaterialTheme.shapes.large, tonalElevation = 1.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(5.dp).fillMaxHeight().background(color))
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(44.dp).background(color.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                    Box(Modifier.size(40.dp).background(color.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
                     }
                     Column(Modifier.weight(1f)) {
                         VehicleNumber(reg?.takeIf { it.isNotBlank() } ?: fallback, style = MaterialTheme.typography.titleLarge)
                         if (!alertName.isNullOrBlank()) {
-                            Text(alertName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(alertName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SeverityPill(severity)
-                        StatusChip(status)
-                    }
+                    SeverityPill(severity)
                 }
-                if (!meta.isNullOrBlank()) MetaChip(Icons.Filled.NotificationsActive, meta)
+                // chips + meta on one tight line
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusChip(status)
+                    Spacer(Modifier.weight(1f))
+                    if (!meta.isNullOrBlank()) Text(meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
             }
         }
     }
@@ -275,14 +276,7 @@ fun AlertDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text(d?.let { humanize(it.alert_name) } ?: "Alert", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        d?.registration_number?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
-                    }
-                },
+                title = { Text(d?.let { humanize(it.alert_name) } ?: "Alert", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
             )
         },
@@ -331,8 +325,8 @@ fun AlertDetailScreen(
                             (relExact(lr?.triggered_at ?: lr?.occurred_at) ?: "—")
                         Column(
                             Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-                                .verticalScroll(rememberScrollState()).padding(16.dp).animateContentSize(tween(200)),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                                .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             CompactHeader(g.registration_number, humanize(g.alert_name), g.latest_severity, g.latest_status, meta, g.vehicle ?: g.dedup_key)
 
@@ -505,8 +499,8 @@ fun TicketDetailScreen(
                     } else {
                         Column(
                             Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-                                .verticalScroll(rememberScrollState()).padding(16.dp).animateContentSize(tween(200)),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                                .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             CompactHeader(d.registration_number, humanize(d.title), d.severity, d.status, null, d.vehicle ?: d.name)
 

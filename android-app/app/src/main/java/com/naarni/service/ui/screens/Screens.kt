@@ -311,11 +311,17 @@ internal fun alertSeverityColor(sev: String?): Color = when (sev?.lowercase()) {
 }
 
 /** "2026-07-06 10:00:00" → "2m ago" / "3h ago" / "2d ago" (times are IST-naive). */
+// Reused across all calls (main-thread only) — building a SimpleDateFormat per call
+// was a real per-scroll cost in the alert/ticket lists.
+private val IST_DATE_PARSER: java.text.SimpleDateFormat by lazy {
+    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).apply {
+        timeZone = java.util.TimeZone.getTimeZone("Asia/Kolkata")
+    }
+}
+
 internal fun relativeTime(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
-    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-    sdf.timeZone = java.util.TimeZone.getTimeZone("Asia/Kolkata")
-    val t = runCatching { sdf.parse(raw.take(19))?.time }.getOrNull() ?: return prettyDateTime(raw)
+    val t = runCatching { IST_DATE_PARSER.parse(raw.take(19))?.time }.getOrNull() ?: return prettyDateTime(raw)
     val m = (System.currentTimeMillis() - t) / 60000
     return when {
         m < 0 -> prettyDateTime(raw)
@@ -457,17 +463,13 @@ private fun AlertGroupCard(g: com.naarni.service.data.dto.AlertGroup, onClick: (
                         )
                     }
                 }
-                Text(
-                    humanize(g.alert_name) ?: g.dedup_key,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                // occurrence count · relative + exact time
-                val count = g.occurrence_count
-                MetaChip(
-                    Icons.Filled.NotificationsActive,
-                    (if (count > 1) "$count× · " else "") + (relExact(g.latest_time) ?: "—"),
-                )
+                val name = remember(g.alert_name, g.dedup_key) { humanize(g.alert_name) ?: g.dedup_key }
+                Text(name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                // occurrence count · relative + exact time (memoized — no re-parse on scroll)
+                val meta = remember(g.latest_time, g.occurrence_count) {
+                    (if (g.occurrence_count > 1) "${g.occurrence_count}× · " else "") + (relExact(g.latest_time) ?: "—")
+                }
+                MetaChip(Icons.Filled.NotificationsActive, meta)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatusChip(g.open_ticket_status ?: g.latest_status)
                     Spacer(Modifier.weight(1f))

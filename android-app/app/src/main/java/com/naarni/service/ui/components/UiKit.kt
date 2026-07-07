@@ -167,21 +167,23 @@ fun VehicleNumber(
         Text("Unknown vehicle", style = style, color = prefixColor, modifier = modifier, maxLines = 1)
         return
     }
-    val cut = (clean.length - 4).coerceAtLeast(0)
-    val text = buildAnnotatedString {
-        if (cut > 0) {
-            withStyle(SpanStyle(color = prefixColor, fontWeight = FontWeight.SemiBold)) {
-                append(clean.substring(0, cut))
+    val text = remember(clean, style.fontSize, lastScale, highlightColor, prefixColor) {
+        val cut = (clean.length - 4).coerceAtLeast(0)
+        buildAnnotatedString {
+            if (cut > 0) {
+                withStyle(SpanStyle(color = prefixColor, fontWeight = FontWeight.SemiBold)) {
+                    append(clean.substring(0, cut))
+                }
             }
+            withStyle(
+                SpanStyle(
+                    color = highlightColor,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = style.fontSize * lastScale,
+                    letterSpacing = 1.sp,
+                )
+            ) { append(clean.substring(cut)) }
         }
-        withStyle(
-            SpanStyle(
-                color = highlightColor,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = style.fontSize * lastScale,
-                letterSpacing = 1.sp,
-            )
-        ) { append(clean.substring(cut)) }
     }
     Text(text, style = style, modifier = modifier, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

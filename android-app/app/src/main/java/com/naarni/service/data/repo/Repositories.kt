@@ -101,6 +101,10 @@ class JobCardRepository(private val api: FrappeApi) {
         ignoreUnknownKeys = true
     }
 
+    /** App version gate — checked on launch (pre-login). */
+    suspend fun appUpdate(versionCode: Int): com.naarni.service.data.dto.AppUpdateInfo =
+        api.getAppUpdate("ANDROID", versionCode).payload()
+
     /** Live dropdown options keyed by option name (admin-editable via Customize Form). */
     suspend fun appFieldOptions(): Map<String, List<String>> =
         api.getAppFieldOptions().payload()

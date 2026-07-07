@@ -68,6 +68,13 @@ interface FrappeApi {
     @GET("api/method/vehicle_maintenance.fleet_service.doctype.job_card.job_card.get_user_roles")
     suspend fun getUserRoles(): FrappeWrap<List<String>>
 
+    /** App version gate — checked on launch (works pre-login). */
+    @GET("api/method/vehicle_maintenance.api.app.get_app_update")
+    suspend fun getAppUpdate(
+        @Query("platform") platform: String = "ANDROID",
+        @Query("version_code") versionCode: Int = 0,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.AppUpdateInfo>>
+
     /** Request deletion of the signed-in account (Play account-deletion requirement). */
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.auth.request_account_deletion")

@@ -578,3 +578,13 @@ data class QuickResponse(
     val response_text: String,
     val usage_count: Int = 0,
 )
+
+/** App version-gate result (get_app_update). */
+@Serializable
+data class AppUpdateInfo(
+    val update_available: Boolean = false,
+    val force_update: Boolean = false,
+    val latest_version_code: Int = 0,
+    val update_url: String? = null,
+    val message: String? = null,
+)

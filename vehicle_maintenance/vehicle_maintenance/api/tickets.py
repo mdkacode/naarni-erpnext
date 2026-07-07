@@ -659,7 +659,20 @@ def acknowledge_ticket(name: str) -> dict:
 		doc.status = "Acknowledged"
 		doc.acknowledged_at = now_datetime()
 		doc.save(ignore_permissions=True)
+		_sync_alert_events_status(doc.dedup_key, "Acknowledged")
+		frappe.db.commit()
 	return {"success": True, "data": {"status": doc.status}}
+
+
+def _sync_alert_events_status(dedup_key: str | None, status: str) -> None:
+	"""Mirror a ticket's status onto its underlying Alert Events (same dedup_key)
+	so the Alerts list/detail reflect it. Only advances not-yet-Resolved rows."""
+	if not dedup_key:
+		return
+	frappe.db.sql(
+		"UPDATE `tabAlert Event` SET status = %s WHERE dedup_key = %s AND status != 'Resolved'",
+		(status, dedup_key),
+	)
 
 
 def _normalize_response(text: str) -> str:
@@ -739,6 +752,10 @@ def resolve_ticket(name: str, response: str | None = None, reason: str | None = 
 		frappe.db.sql(
 			"UPDATE `tabAlert Response` SET usage_count = usage_count + 1 WHERE name = %s", resp_name
 		)
+	# Reflect the resolution on the underlying Alert Events for this (bus, issue),
+	# so the Alerts list/detail show Resolved instead of still Open.
+	if not already_resolved:
+		_sync_alert_events_status(doc.dedup_key, "Resolved")
 	frappe.db.commit()
 
 	return {

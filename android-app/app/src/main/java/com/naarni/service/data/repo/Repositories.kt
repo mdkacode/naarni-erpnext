@@ -372,6 +372,17 @@ class JobCardRepository(private val api: FrappeApi) {
     suspend fun myAlertEvents(severity: String = "", status: String = ""): List<AlertEventItem> =
         api.getMyAlertEvents(severity, status).payload()
 
+    suspend fun alertGroups(
+        search: String = "", severity: String = "", status: String = "", sort: String = "latest",
+    ): List<com.naarni.service.data.dto.AlertGroup> =
+        api.getMyAlertGroups(search, severity, status, sort).payload()
+
+    suspend fun alertGroup(dedupKey: String? = null, alertEvent: String? = null): com.naarni.service.data.dto.AlertGroupDetail =
+        api.getAlertGroup(dedupKey, alertEvent).payload()
+
+    suspend fun alertResponses(alertType: String = ""): List<com.naarni.service.data.dto.QuickResponse> =
+        api.getAlertResponses(alertType).payload()
+
     suspend fun alertDetail(name: String): com.naarni.service.data.dto.AlertDetail =
         api.getAlertEvent(name).payload()
 
@@ -380,7 +391,9 @@ class JobCardRepository(private val api: FrappeApi) {
 
     suspend fun acknowledgeTicket(name: String) { api.acknowledgeTicket(name).payload() }
 
-    suspend fun resolveTicket(name: String, reason: String) { api.resolveTicket(name, reason).payload() }
+    suspend fun resolveTicket(name: String, response: String = "", reason: String = "") {
+        api.resolveTicket(name, response, reason).payload()
+    }
 
     suspend fun createJobCardFromTicket(name: String): String =
         api.createJobCardFromTicket(name).payload().str("job_card")

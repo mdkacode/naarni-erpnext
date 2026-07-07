@@ -409,6 +409,29 @@ interface FrappeApi {
         @Query("limit") limit: Int = 50,
     ): FrappeWrap<Envelope<List<AlertEventItem>>>
 
+    /** Modernized Alerts feed — grouped by (bus, issue). */
+    @GET("api/method/vehicle_maintenance.api.tickets.get_my_alert_groups")
+    suspend fun getMyAlertGroups(
+        @Query("search") search: String = "",
+        @Query("severity") severity: String = "",
+        @Query("status") status: String = "",
+        @Query("sort") sort: String = "latest",
+        @Query("limit") limit: Int = 50,
+    ): FrappeWrap<Envelope<List<com.naarni.service.data.dto.AlertGroup>>>
+
+    /** Group detail: latest reading + occurrences + ticket episodes. */
+    @GET("api/method/vehicle_maintenance.api.tickets.get_alert_group")
+    suspend fun getAlertGroup(
+        @Query("dedup_key") dedupKey: String? = null,
+        @Query("alert_event") alertEvent: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.AlertGroupDetail>>
+
+    /** Ranked canned resolutions for the quick-response chips. */
+    @GET("api/method/vehicle_maintenance.api.tickets.get_alert_responses")
+    suspend fun getAlertResponses(
+        @Query("alert_type") alertType: String = "",
+    ): FrappeWrap<Envelope<List<com.naarni.service.data.dto.QuickResponse>>>
+
     /** Full alert detail (+ linked ticket) for the detailed Alert page. */
     @GET("api/method/vehicle_maintenance.api.tickets.get_alert_event")
     suspend fun getAlertEvent(@Query("name") name: String): FrappeWrap<Envelope<com.naarni.service.data.dto.AlertDetail>>
@@ -425,6 +448,7 @@ interface FrappeApi {
     @POST("api/method/vehicle_maintenance.api.tickets.resolve_ticket")
     suspend fun resolveTicket(
         @Field("name") name: String,
+        @Field("response") response: String = "",
         @Field("reason") reason: String = "",
     ): FrappeWrap<Envelope<JsonObject>>
 

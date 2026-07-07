@@ -22,11 +22,14 @@ import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,10 +53,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.naarni.service.data.dto.AlertDetail
+import com.naarni.service.data.dto.AlertGroupDetail
+import com.naarni.service.data.dto.QuickResponse
 import com.naarni.service.data.dto.TicketDetail
 import com.naarni.service.ui.AppViewModel
-import com.naarni.service.ui.components.PriorityPill
 import com.naarni.service.ui.components.StatusChip
 import kotlinx.coroutines.launch
 
@@ -73,7 +76,6 @@ private fun openMaps(ctx: android.content.Context, link: String?, lat: Double?, 
     runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)) }
 }
 
-/** A titled card with a coloured left rail. */
 @Composable
 private fun DetailCard(title: String, rail: Color = MaterialTheme.colorScheme.primary, content: @Composable () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, tonalElevation = 1.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
@@ -84,7 +86,6 @@ private fun DetailCard(title: String, rail: Color = MaterialTheme.colorScheme.pr
     }
 }
 
-/** A label → value row; renders nothing when value is blank. */
 @Composable
 private fun KV(label: String, value: String?) {
     if (value.isNullOrBlank()) return
@@ -121,34 +122,75 @@ private fun Loader(pad: androidx.compose.foundation.layout.PaddingValues) {
     Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 }
 
-// ─────────────────────────── Alert detail ───────────────────────────
+/**
+ * Tap-to-pick canned resolutions — no typing. Big full-width buttons (most-used
+ * first) plus an "Other…" escape hatch that promotes a typed answer server-side.
+ */
+@Composable
+private fun QuickResponsePicker(responses: List<QuickResponse>, busy: Boolean, onPick: (QuickResponse) -> Unit, onOther: (String) -> Unit) {
+    var showOther by remember { mutableStateOf(false) }
+    DetailCard("How did you fix it?") {
+        Text("Tap the closest match — no typing needed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        responses.forEach { r ->
+            FilledTonalButton(
+                enabled = !busy,
+                onClick = { onPick(r) },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+            ) { Text(r.response_text, modifier = Modifier.weight(1f)) }
+        }
+        OutlinedButton(enabled = !busy, onClick = { showOther = true }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+            Icon(Icons.Filled.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Other…")
+        }
+    }
+    if (showOther) {
+        var text by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { if (!busy) showOther = false },
+            title = { Text("How did you fix it?") },
+            text = { OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Type your answer") }, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(enabled = !busy && text.isNotBlank(), onClick = { onOther(text.trim()); showOther = false }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { showOther = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+// ─────────────────────────── Alert group detail ───────────────────────────
 
 /**
- * Detailed Alert page — everything about one Alert Event: the vehicle, the exact
- * reading that fired vs its threshold, where/when it happened, and a link through
- * to the ticket raised from it.
+ * Detailed Alert page for one (bus, issue) group: the latest reading, tap-to-pick
+ * Quick Responses to resolve the open ticket, and the full occurrence history
+ * (every time it fired, and who resolved it with what response).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlertDetailScreen(
     vm: AppViewModel,
-    alertName: String,
+    dedupKey: String? = null,
+    alertEvent: String? = null,
     onBack: () -> Unit,
     onOpenTicket: (String) -> Unit = {},
-    onOpenJobCard: (String) -> Unit = {},
     onOpenVehicle: (String) -> Unit = {},
 ) {
     val ctx = LocalContext.current
-    var a by remember { mutableStateOf<AlertDetail?>(null) }
+    val scope = rememberCoroutineScope()
+    val feedback = com.naarni.service.core.feedback.LocalFeedback.current
+    var d by remember { mutableStateOf<AlertGroupDetail?>(null) }
+    var responses by remember { mutableStateOf<List<QuickResponse>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(alertName) {
-        loading = true; error = null
-        runCatching { vm.jobCards.alertDetail(alertName) }
-            .onSuccess { a = it; loading = false }
+    suspend fun reload() {
+        runCatching { vm.jobCards.alertGroup(dedupKey, alertEvent) }
+            .onSuccess {
+                d = it; loading = false
+                responses = if (it.open_ticket != null) {
+                    runCatching { vm.jobCards.alertResponses(it.alert_type ?: "") }.getOrDefault(emptyList())
+                } else emptyList()
+            }
             .onFailure { error = it.message ?: "Could not load alert"; loading = false }
     }
+    LaunchedEffect(dedupKey, alertEvent) { loading = true; error = null; reload() }
 
     Scaffold(
         topBar = {
@@ -160,61 +202,101 @@ fun AlertDetailScreen(
     ) { pad ->
         when {
             loading -> Loader(pad)
-            a == null -> Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {
+            d == null -> Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {
                 Text(error ?: "Alert not found", color = MaterialTheme.colorScheme.error)
             }
             else -> {
-                val d = a!!
+                val g = d!!
+                val lr = g.latest_reading
                 Column(
                     Modifier.fillMaxSize().padding(pad).background(MaterialTheme.colorScheme.background)
                         .verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    VehicleHeader(d.registration_number, humanize(d.alert_type ?: d.title), d.severity, d.status, d.vehicle ?: d.name)
+                    VehicleHeader(g.registration_number, humanize(g.alert_name), g.latest_severity, g.latest_status, g.vehicle ?: g.dedup_key)
 
-                    // What fired
-                    DetailCard("What happened", alertSeverityColor(d.severity)) {
-                        Text(humanize(d.title ?: d.alert_type) ?: d.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        // Reading line: parameter op value unit (vs threshold)
+                    // Latest reading
+                    DetailCard("Latest reading", alertSeverityColor(g.latest_severity)) {
                         val reading = buildString {
-                            humanize(d.parameter)?.let { append(it) }
-                            (d.value_text ?: fmtNum(d.value))?.let { v ->
+                            humanize(lr?.parameter)?.let { append(it) }
+                            (lr?.value_text ?: fmtNum(lr?.value))?.let { v ->
                                 if (isNotEmpty()) append(" = ")
-                                append(v); d.unit?.let { append(" $it") }
+                                append(v); lr?.unit?.let { append(" $it") }
                             }
                         }.trim()
                         if (reading.isNotBlank()) KV("Reading", reading)
-                        d.value_meaning?.let { KV("Meaning", it) }
-                        (fmtNum(d.threshold) ?: d.match_value)?.let { KV("Threshold", it + (d.unit?.let { u -> " $u" } ?: "")) }
-                        d.condition_text?.let { KV("Condition", it) }
-                        d.message?.let { KV("Message", it) }
-                        d.details?.let { KV("Details", it) }
-                        prettyDateTime(d.occurred_at ?: d.triggered_at)?.let { KV("Occurred", it) }
-                        d.channel?.let { KV("Channel", it) }
+                        lr?.value_meaning?.let { KV("Meaning", it) }
+                        (fmtNum(lr?.threshold) ?: lr?.match_value)?.let { KV("Threshold", it + (lr?.unit?.let { u -> " $u" } ?: "")) }
+                        lr?.message?.let { KV("Message", it) }
+                        relativeTime(lr?.triggered_at ?: lr?.occurred_at)?.let { KV("When", it) }
+                        KV("Times fired", "${g.occurrence_count}")
                     }
 
                     // Location
-                    if (!d.maps_link.isNullOrBlank() || (d.latitude != null && d.longitude != null)) {
+                    if (!lr?.maps_link.isNullOrBlank() || (lr?.latitude != null && lr.longitude != null)) {
                         DetailCard("Location") {
-                            d.latitude?.let { lat -> d.longitude?.let { lng -> KV("Coordinates", "%.5f, %.5f".format(lat, lng)) } }
-                            OutlinedButton(onClick = { openMaps(ctx, d.maps_link, d.latitude, d.longitude) }) {
+                            OutlinedButton(onClick = { openMaps(ctx, lr?.maps_link, lr?.latitude, lr?.longitude) }) {
                                 Icon(Icons.Filled.Place, null); Spacer(Modifier.width(8.dp)); Text("Open in Maps")
                             }
                         }
                     }
 
+                    // Quick responses — only when there is an open ticket to resolve.
+                    if (g.open_ticket != null) {
+                        QuickResponsePicker(
+                            responses = responses,
+                            busy = busy,
+                            onPick = { r ->
+                                scope.launch {
+                                    busy = true
+                                    runCatching { vm.jobCards.resolveTicket(g.open_ticket!!, response = r.name) }
+                                        .onSuccess { feedback.success() }.onFailure { feedback.error() }
+                                    reload(); busy = false
+                                }
+                            },
+                            onOther = { text ->
+                                scope.launch {
+                                    busy = true
+                                    runCatching { vm.jobCards.resolveTicket(g.open_ticket!!, reason = text) }
+                                        .onSuccess { feedback.success() }.onFailure { feedback.error() }
+                                    reload(); busy = false
+                                }
+                            },
+                        )
+                    }
+
+                    // History: who resolved (episodes) + every occurrence
+                    DetailCard("History") {
+                        val resolvedEpisodes = g.episodes.filter { it.status == "Resolved" }
+                        resolvedEpisodes.forEach { ep ->
+                            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(ep.resolution_response_text ?: ep.resolution_reason ?: "Resolved", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        listOfNotNull(ep.resolved_by_name?.takeIf { it.isNotBlank() }, relativeTime(ep.resolved_at)).joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        if (resolvedEpisodes.isNotEmpty()) HorizontalDivider()
+                        Text("All occurrences (${g.occurrence_count})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        g.occurrences.forEach { occ ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(relativeTime(occ.time) ?: "—", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                StatusChip(occ.status)
+                            }
+                        }
+                    }
+
                     // Links out
-                    d.ticket?.takeIf { it.isNotBlank() }?.let { t ->
-                        Button(onClick = { onOpenTicket(t) }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                            Icon(Icons.Filled.ConfirmationNumber, null); Spacer(Modifier.width(8.dp)); Text("View linked ticket")
+                    (g.open_ticket ?: g.episodes.firstOrNull()?.ticket)?.let { t ->
+                        OutlinedButton(onClick = { onOpenTicket(t) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                            Icon(Icons.Filled.ConfirmationNumber, null); Spacer(Modifier.width(8.dp)); Text("View ticket")
                         }
                     }
-                    d.job_card?.takeIf { it.isNotBlank() }?.let { jc ->
-                        OutlinedButton(onClick = { onOpenJobCard(jc) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.Assignment, null); Spacer(Modifier.width(8.dp)); Text("Open job card")
-                        }
-                    }
-                    d.vehicle?.takeIf { it.isNotBlank() }?.let { v ->
+                    g.vehicle?.takeIf { it.isNotBlank() }?.let { v ->
                         OutlinedButton(onClick = { onOpenVehicle(v) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
                             Icon(Icons.Filled.DirectionsBus, null); Spacer(Modifier.width(8.dp)); Text("Open vehicle")
                         }
@@ -228,11 +310,8 @@ fun AlertDetailScreen(
 
 // ─────────────────────────── Ticket detail ───────────────────────────
 
-/**
- * Ticket screen behind an alert — the full Service Ticket: status/severity, the
- * captured vehicle telemetry snapshot, location, timeline, and the actions an
- * engineer can take (acknowledge, resolve, raise a job card).
- */
+/** Full Service Ticket — telemetry snapshot, timeline (incl. who resolved), and
+ * the same tap-to-pick quick responses to resolve. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TicketDetailScreen(
@@ -244,15 +323,21 @@ fun TicketDetailScreen(
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val feedback = com.naarni.service.core.feedback.LocalFeedback.current
     var t by remember { mutableStateOf<TicketDetail?>(null) }
+    var responses by remember { mutableStateOf<List<QuickResponse>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var showResolve by remember { mutableStateOf(false) }
 
     suspend fun reload() {
         runCatching { vm.jobCards.ticketDetail(ticketName) }
-            .onSuccess { t = it; loading = false }
+            .onSuccess {
+                t = it; loading = false
+                responses = if (it.status != "Resolved") {
+                    runCatching { vm.jobCards.alertResponses("") }.getOrDefault(emptyList())
+                } else emptyList()
+            }
             .onFailure { error = it.message ?: "Could not load ticket"; loading = false }
     }
     LaunchedEffect(ticketName) { loading = true; error = null; reload() }
@@ -280,14 +365,12 @@ fun TicketDetailScreen(
                     VehicleHeader(d.registration_number, humanize(d.title), d.severity, d.status, d.vehicle ?: d.name)
 
                     DetailCard("Ticket") {
-                        Text(humanize(d.title) ?: d.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         d.message?.let { KV("Message", it) }
                         d.source?.let { KV("Source", it) }
                         d.depot?.let { KV("Depot", it) }
                         d.assigned_to?.let { KV("Assigned to", it) }
                     }
 
-                    // Vehicle telemetry snapshot captured at raise time
                     val hasSnap = listOf(d.operator, d.make_model, d.route_name, d.activity, d.connectivity_status).any { !it.isNullOrBlank() } ||
                         d.odometer != null || d.battery_soc != null
                     if (hasSnap) {
@@ -305,7 +388,6 @@ fun TicketDetailScreen(
 
                     if (!d.maps_link.isNullOrBlank() || (d.latitude != null && d.longitude != null)) {
                         DetailCard("Location") {
-                            d.latitude?.let { lat -> d.longitude?.let { lng -> KV("Coordinates", "%.5f, %.5f".format(lat, lng)) } }
                             OutlinedButton(onClick = { openMaps(ctx, d.maps_link, d.latitude, d.longitude) }) {
                                 Icon(Icons.Filled.Place, null); Spacer(Modifier.width(8.dp)); Text("Open in Maps")
                             }
@@ -316,6 +398,7 @@ fun TicketDetailScreen(
                         prettyDateTime(d.creation)?.let { KV("Raised", it) }
                         prettyDateTime(d.acknowledged_at)?.let { KV("Acknowledged", it) }
                         prettyDateTime(d.resolved_at)?.let { KV("Resolved", it) }
+                        d.resolved_by_name?.let { KV("Resolved by", it) }
                         d.resolution_reason?.let { KV("Resolution", it) }
                     }
 
@@ -329,9 +412,26 @@ fun TicketDetailScreen(
                         ) { Icon(Icons.Filled.CheckCircle, null); Spacer(Modifier.width(8.dp)); Text("Acknowledge") }
                     }
                     if (!status.equals("Resolved", true)) {
-                        OutlinedButton(enabled = !busy, onClick = { showResolve = true }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                            Text("Mark resolved")
-                        }
+                        QuickResponsePicker(
+                            responses = responses,
+                            busy = busy,
+                            onPick = { r ->
+                                scope.launch {
+                                    busy = true
+                                    runCatching { vm.jobCards.resolveTicket(d.name, response = r.name) }
+                                        .onSuccess { feedback.success() }.onFailure { feedback.error() }
+                                    reload(); busy = false
+                                }
+                            },
+                            onOther = { text ->
+                                scope.launch {
+                                    busy = true
+                                    runCatching { vm.jobCards.resolveTicket(d.name, reason = text) }
+                                        .onSuccess { feedback.success() }.onFailure { feedback.error() }
+                                    reload(); busy = false
+                                }
+                            },
+                        )
                     }
                     if (d.job_card.isNullOrBlank()) {
                         Button(
@@ -339,8 +439,7 @@ fun TicketDetailScreen(
                             onClick = {
                                 scope.launch {
                                     busy = true
-                                    runCatching { vm.jobCards.createJobCardFromTicket(d.name) }
-                                        .onSuccess { jc -> onOpenJobCard(jc) }
+                                    runCatching { vm.jobCards.createJobCardFromTicket(d.name) }.onSuccess { jc -> onOpenJobCard(jc) }
                                     reload(); busy = false
                                 }
                             },
@@ -360,22 +459,5 @@ fun TicketDetailScreen(
                 }
             }
         }
-    }
-
-    if (showResolve) {
-        var reason by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { if (!busy) showResolve = false },
-            title = { Text("Mark ticket resolved") },
-            text = {
-                OutlinedTextField(value = reason, onValueChange = { reason = it }, label = { Text("Resolution note (optional)") }, modifier = Modifier.fillMaxWidth())
-            },
-            confirmButton = {
-                TextButton(enabled = !busy, onClick = {
-                    scope.launch { busy = true; runCatching { vm.jobCards.resolveTicket(ticketName, reason) }; showResolve = false; reload(); busy = false }
-                }) { Text("Resolve") }
-            },
-            dismissButton = { TextButton(enabled = !busy, onClick = { showResolve = false }) { Text("Cancel") } },
-        )
     }
 }

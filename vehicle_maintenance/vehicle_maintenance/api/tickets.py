@@ -362,6 +362,295 @@ def get_my_alert_events(severity: str = "", status: str = "", limit: int = 50, o
 	return {"success": True, "data": rows}
 
 
+def _user_vehicle_names(user: str) -> list[str]:
+	"""Vehicle names at the SE's depots (empty list when they have no depot)."""
+	depots = _user_depots(user)
+	if not depots:
+		return []
+	return [
+		v["name"]
+		for v in frappe.get_all(
+			"Vehicle", filters={"depot": ["in", depots]}, fields=["name"], limit_page_length=0
+		)
+	]
+
+
+@frappe.whitelist()
+def get_my_alert_groups(
+	search: str = "",
+	severity: str = "",
+	status: str = "",
+	sort: str = "latest",
+	limit: int = 50,
+	offset: int = 0,
+) -> dict:
+	"""Modernized Alerts feed: one row per (bus, issue) group (dedup_key).
+
+	Returns the LATEST occurrence per group plus an occurrence count and the
+	current open ticket. Latest is computed with a window function keyed on the
+	reliable clock COALESCE(triggered_at, occurred_at, creation) so a stale
+	status/severity can't leak in (greatest-N-per-group). Depot-scoped.
+	"""
+	user = frappe.session.user
+	if user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+	vehicles = _user_vehicle_names(user)
+	if not vehicles:
+		return {"success": True, "data": []}
+
+	veh_ph = ", ".join(["%s"] * len(vehicles))
+	params: list = list(vehicles)
+	extra = ""
+	if severity:
+		extra += " AND ae.severity = %s"
+		params.append(severity)
+	if status:
+		extra += " AND ae.status = %s"
+		params.append(status)
+	if search:
+		extra += " AND (ae.registration_number LIKE %s OR ae.title LIKE %s OR ae.message LIKE %s)"
+		like = f"%{search.strip()}%"
+		params += [like, like, like]
+
+	order = "occurrence_count DESC, latest_time DESC" if sort == "frequent" else "latest_time DESC"
+
+	sql = f"""
+		SELECT dedup_key, vehicle, registration_number, alert_type,
+		       alert_name, latest_severity, latest_status, latest_time,
+		       latest_alert_event, occurrence_count
+		FROM (
+			SELECT
+				ae.dedup_key, ae.vehicle, ae.registration_number, ae.alert_type,
+				ae.title AS alert_name, ae.severity AS latest_severity, ae.status AS latest_status,
+				COALESCE(ae.triggered_at, ae.occurred_at, ae.creation) AS latest_time,
+				ae.name AS latest_alert_event,
+				ROW_NUMBER() OVER (
+					PARTITION BY ae.dedup_key
+					ORDER BY COALESCE(ae.triggered_at, ae.occurred_at, ae.creation) DESC, ae.name DESC
+				) AS rn,
+				COUNT(*) OVER (PARTITION BY ae.dedup_key) AS occurrence_count
+			FROM `tabAlert Event` ae
+			WHERE ae.vehicle IN ({veh_ph})
+			  AND ae.dedup_key IS NOT NULL AND ae.dedup_key != ''
+			  {extra}
+		) g
+		WHERE g.rn = 1
+		ORDER BY {order}
+		LIMIT %s OFFSET %s
+	"""
+	params += [min(int(limit), 100), int(offset or 0)]
+	rows = frappe.db.sql(sql, params, as_dict=True)
+
+	# Attach the current open (non-resolved) ticket per group.
+	keys = [r["dedup_key"] for r in rows]
+	open_by_key: dict = {}
+	if keys:
+		for t in frappe.get_all(
+			"Service Ticket",
+			filters={"dedup_key": ["in", keys], "status": ["!=", "Resolved"]},
+			fields=["name", "dedup_key", "status"],
+		):
+			open_by_key.setdefault(t["dedup_key"], t)
+	for r in rows:
+		ot = open_by_key.get(r["dedup_key"])
+		r["open_ticket"] = ot["name"] if ot else None
+		r["open_ticket_status"] = ot["status"] if ot else None
+		r["latest_time"] = str(r["latest_time"]) if r.get("latest_time") else None
+
+	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def get_alert_group(
+	dedup_key: str | None = None,
+	vehicle: str | None = None,
+	alert_type: str | None = None,
+	alert_event: str | None = None,
+	occurrence_limit: int = 100,
+) -> dict:
+	"""Detail for one (bus, issue) group: latest reading + every occurrence +
+	ticket episodes (who resolved, with what response). Depot-scoped.
+
+	Accepts a `dedup_key` directly, or resolves one from `alert_event` (used by
+	notification deep links) or from `vehicle` (+ optional `alert_type`).
+	"""
+	user = frappe.session.user
+	if user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+
+	key = dedup_key
+	if not key and alert_event:
+		key = frappe.db.get_value("Alert Event", alert_event, "dedup_key")
+	if not key and vehicle:
+		filt = {"vehicle": vehicle}
+		if alert_type:
+			filt["alert_type"] = alert_type
+		latest = frappe.get_all(
+			"Alert Event",
+			filters=filt,
+			fields=["dedup_key"],
+			order_by="triggered_at desc",
+			limit_page_length=1,
+		)
+		key = latest[0]["dedup_key"] if latest else None
+	if not key:
+		frappe.throw(_("Alert group not found."))
+
+	events = frappe.get_all(
+		"Alert Event",
+		filters={"dedup_key": key},
+		fields=[
+			"name",
+			"title",
+			"alert_type",
+			"severity",
+			"status",
+			"registration_number",
+			"vehicle",
+			"parameter",
+			"value",
+			"value_text",
+			"value_meaning",
+			"unit",
+			"threshold",
+			"match_value",
+			"message",
+			"latitude",
+			"longitude",
+			"maps_link",
+			"occurred_at",
+			"triggered_at",
+			"creation",
+		],
+		order_by="triggered_at desc",
+		limit_page_length=min(int(occurrence_limit), 200),
+	)
+	if not events:
+		frappe.throw(_("Alert group not found."))
+
+	# Depot authorization — the group's bus must be at one of the caller's depots.
+	group_vehicle = events[0].get("vehicle")
+	depots = _user_depots(user)
+	if depots and group_vehicle and "System Manager" not in frappe.get_roles(user):
+		veh_depot = frappe.db.get_value("Vehicle", group_vehicle, "depot")
+		if veh_depot and veh_depot not in depots:
+			frappe.throw(_("Not permitted."), frappe.PermissionError)
+
+	latest = events[0]
+	latest_reading = {
+		k: latest.get(k)
+		for k in (
+			"parameter",
+			"value",
+			"value_text",
+			"value_meaning",
+			"unit",
+			"threshold",
+			"match_value",
+			"message",
+			"latitude",
+			"longitude",
+			"maps_link",
+			"occurred_at",
+			"triggered_at",
+		)
+	}
+	occurrences = [
+		{
+			"name": e["name"],
+			"status": e.get("status"),
+			"severity": e.get("severity"),
+			"time": str(e.get("triggered_at") or e.get("occurred_at") or e.get("creation") or ""),
+			"message": e.get("message"),
+			"value": e.get("value"),
+			"value_text": e.get("value_text"),
+			"unit": e.get("unit"),
+		}
+		for e in events
+	]
+
+	# Ticket episodes for this group (the truthful "who resolved + what response").
+	episodes = frappe.get_all(
+		"Service Ticket",
+		filters={"dedup_key": key},
+		fields=[
+			"name",
+			"status",
+			"severity",
+			"creation",
+			"acknowledged_at",
+			"resolved_at",
+			"resolved_by",
+			"resolved_by_name",
+			"resolution_response",
+			"resolution_reason",
+		],
+		order_by="creation desc",
+	)
+	resp_names = [e["resolution_response"] for e in episodes if e.get("resolution_response")]
+	resp_text: dict = {}
+	if resp_names:
+		resp_text = {
+			r["name"]: r["response_text"]
+			for r in frappe.get_all(
+				"Alert Response", filters={"name": ["in", resp_names]}, fields=["name", "response_text"]
+			)
+		}
+	open_ticket = None
+	for e in episodes:
+		e["ticket"] = e["name"]
+		e["resolution_response_text"] = resp_text.get(e.get("resolution_response"))
+		e["creation"] = str(e.get("creation") or "")
+		if e.get("status") != "Resolved" and not open_ticket:
+			open_ticket = e["name"]
+
+	return {
+		"success": True,
+		"data": {
+			"dedup_key": key,
+			"vehicle": group_vehicle,
+			"registration_number": latest.get("registration_number"),
+			"alert_type": latest.get("alert_type"),
+			"alert_name": latest.get("title"),
+			"latest_severity": latest.get("severity"),
+			"latest_status": latest.get("status"),
+			"occurrence_count": len(occurrences),
+			"latest_reading": latest_reading,
+			"occurrences": occurrences,
+			"episodes": episodes,
+			"open_ticket": open_ticket,
+		},
+	}
+
+
+@frappe.whitelist()
+def get_alert_responses(alert_type: str = "", limit: int = 12) -> dict:
+	"""Ranked canned resolutions for the quick-response chips.
+
+	Alert-type-specific responses first, then generic (no alert_type), each block
+	by usage_count desc. Responses tied to a DIFFERENT alert type are excluded.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+	rows = frappe.get_all(
+		"Alert Response",
+		filters={"is_active": 1},
+		fields=["name", "response_text", "alert_type", "usage_count"],
+		order_by="usage_count desc, modified desc",
+		limit_page_length=0,
+	)
+	specific = [r for r in rows if alert_type and r.get("alert_type") == alert_type]
+	generic = [r for r in rows if not r.get("alert_type")]
+	out = (specific + generic)[: int(limit)]
+	return {
+		"success": True,
+		"data": [
+			{"name": r["name"], "response_text": r["response_text"], "usage_count": r["usage_count"]}
+			for r in out
+		],
+	}
+
+
 @frappe.whitelist()
 def acknowledge_ticket(name: str) -> dict:
 	frappe.has_permission("Service Ticket", "write", doc=name, throw=True)
@@ -373,15 +662,98 @@ def acknowledge_ticket(name: str) -> dict:
 	return {"success": True, "data": {"status": doc.status}}
 
 
+def _normalize_response(text: str) -> str:
+	"""Case/space-insensitive key for de-duping canned responses."""
+	return " ".join((text or "").strip().split()).lower()
+
+
+def _promote_response(reason: str, alert_type: str | None) -> str | None:
+	"""Find-or-create an Alert Response for a free-text resolution (source=Learned).
+
+	De-dupes on normalized text against ALL active responses (so a typed answer
+	matching a seeded one reuses+reinforces it, and typos like 'brakes ok' /
+	'Brakes OK' collapse to one row).
+	"""
+	text = (reason or "").strip()
+	if not text:
+		return None
+	norm = _normalize_response(text)
+	for r in frappe.get_all(
+		"Alert Response", filters={"is_active": 1}, fields=["name", "response_text"], limit_page_length=0
+	):
+		if _normalize_response(r["response_text"]) == norm:
+			return r["name"]
+	doc = frappe.get_doc(
+		{
+			"doctype": "Alert Response",
+			"response_text": text[:140],
+			"alert_type": alert_type,
+			"is_active": 1,
+			"usage_count": 0,
+			"source": "Learned",
+		}
+	).insert(ignore_permissions=True)
+	return doc.name
+
+
 @frappe.whitelist()
-def resolve_ticket(name: str, reason: str = "") -> dict:
+def resolve_ticket(name: str, response: str | None = None, reason: str | None = None) -> dict:
+	"""Resolve a ticket via a tapped quick response and/or a free-text reason.
+
+	Captures who resolved it, links the chosen Alert Response, and bumps that
+	response's usage_count atomically — but only on the real Open/Acked→Resolved
+	transition (idempotent re-resolves don't double-count). A free-text reason
+	with no matching response is promoted into the catalog (auto-learning).
+	Back-compatible: legacy callers passing only `reason` still work.
+	"""
 	frappe.has_permission("Service Ticket", "write", doc=name, throw=True)
 	doc = frappe.get_doc("Service Ticket", name)
+	already_resolved = doc.status == "Resolved"
+
 	doc.status = "Resolved"
-	doc.resolved_at = now_datetime()
-	doc.resolution_reason = reason
+	if not doc.resolved_at:
+		doc.resolved_at = now_datetime()
+	if not doc.resolved_by:
+		doc.resolved_by = frappe.session.user
+		doc.resolved_by_name = frappe.utils.get_fullname(frappe.session.user)
+
+	# Alert type of the source alert (scopes a promoted response).
+	alert_type = (
+		frappe.db.get_value("Alert Event", doc.alert_event, "alert_type") if doc.alert_event else None
+	)
+
+	resp_name = None
+	if response and frappe.db.get_value("Alert Response", response, "is_active"):
+		resp_name = response
+		doc.resolution_response = response
+		doc.resolution_reason = reason or frappe.db.get_value("Alert Response", response, "response_text")
+	elif reason and reason.strip():
+		resp_name = _promote_response(reason, alert_type)
+		doc.resolution_response = resp_name
+		doc.resolution_reason = reason
+
 	doc.save(ignore_permissions=True)
-	return {"success": True, "data": {"status": doc.status}}
+
+	# Bump usage atomically, only on a real transition (never a read-modify-write).
+	if resp_name and not already_resolved:
+		frappe.db.sql(
+			"UPDATE `tabAlert Response` SET usage_count = usage_count + 1 WHERE name = %s", resp_name
+		)
+	frappe.db.commit()
+
+	return {
+		"success": True,
+		"data": {
+			"status": doc.status,
+			"resolved_by_name": doc.resolved_by_name,
+			"resolution_response": doc.resolution_response,
+			"resolution_response_text": (
+				frappe.db.get_value("Alert Response", doc.resolution_response, "response_text")
+				if doc.resolution_response
+				else None
+			),
+		},
+	}
 
 
 @frappe.whitelist()

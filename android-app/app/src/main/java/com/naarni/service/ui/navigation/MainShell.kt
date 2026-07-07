@@ -129,15 +129,24 @@ fun MainShell(vm: AppViewModel) {
                 )
             }
             composable(Tab.Alerts.route) {
-                AlertsScreen(vm, onOpenAlert = { name -> nav.navigate("alert/$name") })
+                AlertsScreen(vm, onOpenGroup = { key -> nav.navigate("alertgroup/${android.net.Uri.encode(key)}") })
             }
-            composable("alert/{name}") { entry ->
+            composable("alertgroup/{key}") { entry ->
                 AlertDetailScreen(
                     vm,
-                    alertName = entry.arguments?.getString("name").orEmpty(),
+                    dedupKey = android.net.Uri.decode(entry.arguments?.getString("key").orEmpty()),
                     onBack = { nav.popBackStack() },
                     onOpenTicket = { name -> nav.navigate("ticket/$name") },
-                    onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                    onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
+                )
+            }
+            composable("alert/{name}") { entry ->
+                // Notification deep link (naarni://alert/{alert_event}) → resolve to its group.
+                AlertDetailScreen(
+                    vm,
+                    alertEvent = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onOpenTicket = { name -> nav.navigate("ticket/$name") },
                     onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
                 )
             }

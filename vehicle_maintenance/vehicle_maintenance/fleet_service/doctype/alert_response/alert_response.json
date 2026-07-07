@@ -1,0 +1,66 @@
+{
+  "name": "Alert Response",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "allow_import": 1,
+  "engine": "InnoDB",
+  "autoname": "ARSP-.#####",
+  "naming_rule": "Expression (old style)",
+  "track_changes": 1,
+  "description": "Reusable canned resolutions for alert tickets. Backs the tap-to-pick 'How did you fix it?' quick responses. Seeded, and re-ranked by usage; new free-text answers get promoted here (source=Learned).",
+  "fields": [
+    {
+      "fieldname": "response_text",
+      "label": "Response",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "alert_type",
+      "label": "Alert Type",
+      "fieldtype": "Link",
+      "options": "Alert Type",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Optional. Leave blank for a generic response offered on any alert; set it to offer this response first for a specific alert type."
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "usage_count",
+      "label": "Usage Count",
+      "fieldtype": "Int",
+      "read_only": 1,
+      "default": "0",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "source",
+      "label": "Source",
+      "fieldtype": "Select",
+      "options": "Seeded\nLearned",
+      "default": "Seeded",
+      "read_only": 1,
+      "in_standard_filter": 1,
+      "description": "Seeded = admin catalog. Learned = auto-promoted from an engineer's typed answer."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1, "create": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Customer", "read": 1}
+  ],
+  "sort_field": "usage_count",
+  "sort_order": "DESC",
+  "title_field": "response_text"
+}

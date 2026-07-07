@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Event
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pending
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.DeleteForever
@@ -44,6 +47,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.naarni.service.ui.components.Refreshable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -305,20 +310,46 @@ internal fun alertSeverityColor(sev: String?): Color = when (sev?.lowercase()) {
     else -> Color(0xFF64748B)
 }
 
+/** "2026-07-06 10:00:00" → "2m ago" / "3h ago" / "2d ago" (times are IST-naive). */
+internal fun relativeTime(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+    sdf.timeZone = java.util.TimeZone.getTimeZone("Asia/Kolkata")
+    val t = runCatching { sdf.parse(raw.take(19))?.time }.getOrNull() ?: return prettyDateTime(raw)
+    val m = (System.currentTimeMillis() - t) / 60000
+    return when {
+        m < 0 -> prettyDateTime(raw)
+        m < 1L -> "just now"
+        m < 60L -> "${m}m ago"
+        m < 1440L -> "${m / 60}h ago"
+        m < 10080L -> "${m / 1440}d ago"
+        else -> prettyDateTime(raw)
+    }
+}
+
 @Composable
 fun AlertsScreen(
     vm: AppViewModel,
-    onOpenAlert: (String) -> Unit = {},
+    onOpenGroup: (String) -> Unit = {},
 ) {
+    var search by remember { mutableStateOf("") }
     var severity by remember { mutableStateOf("") } // "", "warning", "critical"
-    var items by remember { mutableStateOf<List<com.naarni.service.data.dto.AlertEventItem>>(emptyList()) }
+    var status by remember { mutableStateOf("") }   // "", "Open", "Resolved"
+    var sort by remember { mutableStateOf("latest") } // "latest", "frequent"
+    var items by remember { mutableStateOf<List<com.naarni.service.data.dto.AlertGroup>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
     suspend fun load() {
-        runCatching { vm.jobCards.myAlertEvents(severity) }.onSuccess { items = it; loaded = true }
+        runCatching { vm.jobCards.alertGroups(search.trim(), severity, status, sort) }
+            .onSuccess { items = it; loaded = true }
     }
-    LaunchedEffect(severity) { load() }
+    // Debounced: filter taps and typed search both re-query (autocomplete-style).
+    LaunchedEffect(search, severity, status, sort) {
+        delay(250)
+        load()
+    }
 
     Refreshable(
         refreshing = refreshing,
@@ -331,16 +362,48 @@ fun AlertsScreen(
                     Text("Alerts", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     if (loaded) Text("${items.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                // Severity filter
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Search (live)
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Search bus number or alert") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (search.isNotEmpty()) {
+                            IconButton(onClick = { search = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear") }
+                        }
+                    },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.large,
+                )
+                // Filters + sort (tap-only, horizontally scrollable)
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     FilterChip(selected = severity == "", onClick = { severity = "" }, label = { Text("All") })
                     FilterChip(selected = severity == "warning", onClick = { severity = "warning" }, label = { Text("Warning") })
                     FilterChip(selected = severity == "critical", onClick = { severity = "critical" }, label = { Text("Critical") })
+                    Text("·", color = MaterialTheme.colorScheme.outline)
+                    FilterChip(selected = status == "Open", onClick = { status = if (status == "Open") "" else "Open" }, label = { Text("Open") })
+                    FilterChip(selected = status == "Resolved", onClick = { status = if (status == "Resolved") "" else "Resolved" }, label = { Text("Resolved") })
+                    Text("·", color = MaterialTheme.colorScheme.outline)
+                    FilterChip(
+                        selected = sort == "frequent",
+                        onClick = { sort = if (sort == "frequent") "latest" else "frequent" },
+                        label = { Text("Most frequent") },
+                    )
                 }
             }
             if (loaded && items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    EmptyState(Icons.Filled.NotificationsActive, "No alerts", "No ${severity.ifBlank { "" }} alerts for your depot's buses right now.")
+                    EmptyState(
+                        Icons.Filled.NotificationsActive,
+                        "No alerts",
+                        if (search.isNotBlank()) "No alerts match \"$search\"." else "No alerts for your depot's buses right now.",
+                    )
                 }
             } else {
                 LazyColumn(
@@ -348,8 +411,8 @@ fun AlertsScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(items, key = { it.name }) { a ->
-                        AlertCard(a, onClick = { onOpenAlert(a.name) })
+                    items(items, key = { it.dedup_key }) { g ->
+                        AlertGroupCard(g, onClick = { onOpenGroup(g.dedup_key) })
                     }
                 }
             }
@@ -358,26 +421,24 @@ fun AlertsScreen(
 }
 
 @Composable
-private fun AlertCard(a: com.naarni.service.data.dto.AlertEventItem, onClick: () -> Unit = {}) {
-    val color = alertSeverityColor(a.severity)
-    val openable = true
+private fun AlertGroupCard(g: com.naarni.service.data.dto.AlertGroup, onClick: () -> Unit = {}) {
+    val color = alertSeverityColor(g.latest_severity)
     Surface(
         shape = MaterialTheme.shapes.large,
         tonalElevation = 1.dp,
         shadowElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth().then(if (openable) Modifier.clickable(onClick = onClick) else Modifier),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(5.dp).fillMaxHeight().background(color))
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Line 1: highlighted VEHICLE NUMBER + severity
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(
                         Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
                     Text(
-                        a.registration_number?.takeIf { it.isNotBlank() } ?: "Unknown vehicle",
+                        g.registration_number?.takeIf { it.isNotBlank() } ?: "Unknown vehicle",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -385,28 +446,22 @@ private fun AlertCard(a: com.naarni.service.data.dto.AlertEventItem, onClick: ()
                     )
                     Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
                         Text(
-                            (a.severity ?: "—").replaceFirstChar { it.uppercase() },
+                            (g.latest_severity ?: "—").replaceFirstChar { it.uppercase() },
                             color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         )
                     }
                 }
-                // Alert type
                 Text(
-                    humanize(a.title ?: a.parameter) ?: a.name,
+                    humanize(g.alert_name) ?: g.dedup_key,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
-                // Readings / message
-                a.message?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                // Meta: date · status · open hint
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    prettyDateTime(a.occurred_at)?.let { MetaChip(Icons.Filled.Event, it) }
-                    a.status?.takeIf { it.isNotBlank() }?.let {
-                        MetaChip(Icons.Filled.Pending, it)
-                    }
+                    // occurrence count + latest time
+                    val count = g.occurrence_count
+                    MetaChip(Icons.Filled.NotificationsActive, if (count > 1) "$count× · ${relativeTime(g.latest_time) ?: ""}" else (relativeTime(g.latest_time) ?: "—"))
+                    StatusChip(g.open_ticket_status ?: g.latest_status)
                     Spacer(Modifier.weight(1f))
                     Text(
                         "View details ›",

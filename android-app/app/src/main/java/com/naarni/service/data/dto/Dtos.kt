@@ -483,6 +483,98 @@ data class TicketDetail(
     val telemetry_at: String? = null,
     val acknowledged_at: String? = null,
     val resolved_at: String? = null,
+    val resolved_by: String? = null,
+    val resolved_by_name: String? = null,
+    val resolution_response: String? = null,
     val resolution_reason: String? = null,
     val creation: String? = null,
+)
+
+// ── Grouped alerts (bus + issue) + quick responses ──
+
+/** One row in the modernized Alerts listing: a (bus, issue) group. */
+@Serializable
+data class AlertGroup(
+    val dedup_key: String,
+    val vehicle: String? = null,
+    val registration_number: String? = null,
+    val alert_type: String? = null,
+    val alert_name: String? = null,
+    val latest_severity: String? = null,
+    val latest_status: String? = null,
+    val latest_time: String? = null,
+    val latest_alert_event: String? = null,
+    val occurrence_count: Int = 0,
+    val open_ticket: String? = null,
+    val open_ticket_status: String? = null,
+)
+
+@Serializable
+data class LatestReading(
+    val parameter: String? = null,
+    val value: Double? = null,
+    val value_text: String? = null,
+    val value_meaning: String? = null,
+    val unit: String? = null,
+    val threshold: Double? = null,
+    val match_value: String? = null,
+    val message: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val maps_link: String? = null,
+    val occurred_at: String? = null,
+    val triggered_at: String? = null,
+)
+
+@Serializable
+data class Occurrence(
+    val name: String,
+    val status: String? = null,
+    val severity: String? = null,
+    val time: String? = null,
+    val message: String? = null,
+    val value: Double? = null,
+    val value_text: String? = null,
+    val unit: String? = null,
+)
+
+/** A ticket episode for a group — the truthful "who resolved + what response". */
+@Serializable
+data class TicketEpisode(
+    val ticket: String,
+    val status: String? = null,
+    val severity: String? = null,
+    val creation: String? = null,
+    val acknowledged_at: String? = null,
+    val resolved_at: String? = null,
+    val resolved_by: String? = null,
+    val resolved_by_name: String? = null,
+    val resolution_response: String? = null,
+    val resolution_response_text: String? = null,
+    val resolution_reason: String? = null,
+)
+
+/** Full group detail: latest reading + occurrence timeline + ticket episodes. */
+@Serializable
+data class AlertGroupDetail(
+    val dedup_key: String,
+    val vehicle: String? = null,
+    val registration_number: String? = null,
+    val alert_type: String? = null,
+    val alert_name: String? = null,
+    val latest_severity: String? = null,
+    val latest_status: String? = null,
+    val occurrence_count: Int = 0,
+    val latest_reading: LatestReading? = null,
+    val occurrences: List<Occurrence> = emptyList(),
+    val episodes: List<TicketEpisode> = emptyList(),
+    val open_ticket: String? = null,
+)
+
+/** A tappable canned resolution for the "How did you fix it?" chips. */
+@Serializable
+data class QuickResponse(
+    val name: String,
+    val response_text: String,
+    val usage_count: Int = 0,
 )

@@ -40,6 +40,9 @@
     {"fieldname": "sec_timeline", "label": "Timeline", "fieldtype": "Section Break"},
     {"fieldname": "acknowledged_at", "label": "Acknowledged At", "fieldtype": "Datetime", "read_only": 1},
     {"fieldname": "resolved_at", "label": "Resolved At", "fieldtype": "Datetime", "read_only": 1},
+    {"fieldname": "resolved_by", "label": "Resolved By", "fieldtype": "Link", "options": "User", "read_only": 1},
+    {"fieldname": "resolved_by_name", "label": "Resolved By (Name)", "fieldtype": "Data", "read_only": 1},
+    {"fieldname": "resolution_response", "label": "Resolution Response", "fieldtype": "Link", "options": "Alert Response", "read_only": 1},
     {"fieldname": "resolution_reason", "label": "Resolution Reason", "fieldtype": "Small Text"}
   ],
   "permissions": [

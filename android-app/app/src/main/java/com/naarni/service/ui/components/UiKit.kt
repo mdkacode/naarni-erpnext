@@ -1,23 +1,40 @@
 package com.naarni.service.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -167,6 +184,65 @@ fun VehicleNumber(
         ) { append(clean.substring(cut)) }
     }
     Text(text, style = style, modifier = modifier, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+/**
+ * A translucent scrim + spinner that sits ON TOP of content (which stays visible)
+ * during an in-place action like resolving. Fades in/out and swallows taps.
+ */
+@Composable
+fun LoadingOverlay(visible: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(tween(150)), exit = fadeOut(tween(150)), modifier = modifier) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.18f))
+                // Swallow all touches while busy (no ripple).
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 4.dp, shadowElevation = 6.dp) {
+                Box(Modifier.padding(22.dp)) { CircularProgressIndicator(strokeWidth = 3.dp) }
+            }
+        }
+    }
+}
+
+/** A subtle pulsing placeholder for skeleton loading states — fills whatever
+ *  size the [modifier] gives it (bar, block, or a circle via [shape]). */
+@Composable
+fun SkeletonBox(modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(8.dp)) {
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(tween(800, easing = LinearEasing), RepeatMode.Reverse),
+        label = "alpha",
+    )
+    Box(modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = alpha * 0.16f), shape))
+}
+
+/** Severity → colour (warning/critical) used for alerts. */
+fun severityColor(sev: String?): Color = when (sev?.lowercase()) {
+    "critical" -> Color(0xFFEF4444)
+    "warning" -> Color(0xFFF59E0B)
+    else -> Color(0xFF64748B)
+}
+
+/** A coloured severity pill (Warning / Critical). */
+@Composable
+fun SeverityPill(severity: String?) {
+    if (severity.isNullOrBlank()) return
+    val c = severityColor(severity)
+    Surface(color = c.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+        Text(
+            severity.replaceFirstChar { it.uppercase() },
+            color = c,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
 }
 
 @Composable

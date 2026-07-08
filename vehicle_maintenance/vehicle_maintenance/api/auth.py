@@ -144,6 +144,84 @@ def verify_otp(phone: str, otp: str, device_uuid: str | None = None, platform: s
 	}
 
 
+@frappe.whitelist(allow_guest=True)
+def login_with_naarni_token(token: str, phone: str | None = None) -> dict:
+	"""Establish a Frappe session from an existing Naarni access token (web SSO).
+
+	The web dashboard already completes its own phone+OTP login against Naarni and
+	holds the resulting access token. Rather than re-consuming the single-use OTP
+	here (which `verify_otp` would need), it presents that token to obtain a Frappe
+	`sid` session cookie.
+
+	Trust boundary: the token is verified via RS256 when `naarni_jwt_public_key` is
+	configured — configure it in production. Without a key, `verify_access_token`
+	only decodes the claims, which is NOT a trust boundary; do not run this endpoint
+	key-less on an internet-facing site.
+
+	Identity mapping: the Naarni JWT's `sub` is an opaque user UUID (not the phone),
+	so we map to the Frappe user by the stored `naarni_user_uuid` first. For a first
+	web login before any OTP login exists, we fall back to `phone` to find-or-create
+	the user (same provisioning path as `verify_otp`).
+	"""
+	if not naarni_client.is_login_enabled():
+		frappe.throw(_("Phone login is temporarily unavailable."), frappe.ValidationError)
+	if not (token or "").strip():
+		frappe.throw(_("Missing token."), frappe.AuthenticationError)
+
+	try:
+		claims = naarni_client.verify_access_token(token.strip())
+	except naarni_client.NaarniApiError:
+		frappe.throw(
+			_("Your session could not be verified. Please sign in again."), frappe.AuthenticationError
+		)
+
+	naarni_uuid = claims.get("sub")
+	authorities = claims.get("authorities") or []
+	if not naarni_uuid:
+		frappe.throw(
+			_("Your session could not be verified. Please sign in again."), frappe.AuthenticationError
+		)
+
+	# Prefer the stable Naarni UUID (set on prior OTP logins); fall back to phone.
+	user = None
+	existing = frappe.db.get_all(
+		"User",
+		filters={"naarni_user_uuid": naarni_uuid},
+		fields=["name", "enabled"],
+		limit=2,
+	)
+	if len(existing) > 1:
+		frappe.throw(_("Multiple accounts share this identity. Contact an administrator."))
+	if existing:
+		if not existing[0].enabled:
+			frappe.throw(_("This account is disabled. Contact an administrator."), frappe.AuthenticationError)
+		user = existing[0].name
+
+	if not user:
+		if not (phone or "").strip():
+			frappe.throw(_("Please sign in with your phone number first."), frappe.AuthenticationError)
+		user = _provision_naarni_user(normalize_phone(phone), naarni_uuid, authorities)
+
+	lm = LoginManager()
+	lm.user = user
+	if getattr(frappe.local, "request", None) is not None:
+		lm.post_login()
+	else:  # non-HTTP callers (tests/console)
+		frappe.set_user(user)
+
+	doc = frappe.get_cached_doc("User", user)
+	return {
+		"success": True,
+		"data": {
+			"user": user,
+			"full_name": doc.full_name,
+			"user_type": doc.user_type,
+			"roles": frappe.get_roles(user),
+		},
+		"message": _("Logged in."),
+	}
+
+
 @frappe.whitelist()
 def request_account_deletion(reason: str | None = None) -> dict:
 	"""Deactivate the signed-in user's account and record a deletion request.

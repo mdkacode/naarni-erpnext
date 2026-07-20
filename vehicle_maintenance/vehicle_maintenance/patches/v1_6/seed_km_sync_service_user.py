@@ -35,6 +35,15 @@ DOCTYPE = "Vehicle KM Daily"
 
 
 def execute() -> None:
+	# Seeding a service account must never take a deploy down: `after_migrate`
+	# failures abort `bench migrate` and fail the pipeline. Log and move on.
+	try:
+		_seed()
+	except Exception:
+		frappe.log_error(title=f"seed_km_sync_service_user: could not seed {EMAIL}")
+
+
+def _seed() -> None:
 	if not frappe.db.table_exists(DOCTYPE):
 		# KM reports not installed on this site yet; the DAG has nothing to write to.
 		return
@@ -61,14 +70,19 @@ def execute() -> None:
 			}
 		)
 		user.append("roles", {"role": ROLE})
-		# See module docstring: this account authenticates by API token, not phone.
+		# `mobile_no` is gated TWICE and both have to be cleared:
+		#   1. overrides.user.validate_user  -> flags.ignore_phone_requirement
+		#   2. a Property Setter reqd=1 from patches.v0_3.make_user_mobile_no_mandatory,
+		#      enforced by the framework's _validate_mandatory() -> ignore_mandatory
+		# Clearing only (1) still raises MandatoryError. See module docstring.
 		user.flags.ignore_phone_requirement = True
-		user.insert(ignore_permissions=True)
+		user.insert(ignore_permissions=True, ignore_mandatory=True)
 	elif not frappe.db.exists("Has Role", {"parent": EMAIL, "role": ROLE}):
 		# User pre-created by hand (e.g. during the initial rollout) — attach the role.
 		user = frappe.get_doc("User", EMAIL)
 		user.append("roles", {"role": ROLE})
 		user.flags.ignore_phone_requirement = True
+		user.flags.ignore_mandatory = True
 		user.save(ignore_permissions=True)
 
 	# add_permission is a no-op when the rule already exists.

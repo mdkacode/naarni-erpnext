@@ -30,6 +30,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_5.seed_km_report_custom_fields.execute",
 	"vehicle_maintenance.patches.v1_6.seed_alert_responses.execute",
 	"vehicle_maintenance.patches.v1_6.add_alert_event_indexes.execute",
+	"vehicle_maintenance.patches.v1_6.seed_km_sync_service_user.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -132,12 +133,19 @@ scheduler_events = {
 		"0 */2 * * *": [
 			"vehicle_maintenance.integrations.naarni_vehicles.sync_vehicle_directory",
 		],
-		# Pull per-day odometer facts (start/end KM, distance, inactive) for the KM &
-		# SLA reports — a short rolling window that back-fills late telematics rows.
-		# No-op when the integration is disabled.
-		"30 1 * * *": [
-			"vehicle_maintenance.integrations.naarni_km_daily.sync_km_daily",
-		],
+		# NOTE: the per-day odometer pull (`naarni_km_daily.sync_km_daily`, formerly
+		# "30 1 * * *") is deliberately NOT scheduled here.
+		#
+		# The `frappe_km_daily_sync` Airflow DAG (dview-naarni-data-platform,
+		# 02:30 IST) now writes the same `Vehicle KM Daily` row keys, sourced from
+		# facts_prod.cpoall_session_aggregates. Running both makes them race: this
+		# cron's 3-day rolling lookback would overwrite the DAG's rows every morning,
+		# so whichever ran last would decide the billing figures.
+		#
+		# `sync_km_daily` / `sync_km_daily_backfill` remain callable by hand (bench
+		# execute, or the whitelisted Ops endpoint) for one-off repair. Re-enabling
+		# this schedule means going back to two writers — don't, unless the DAG is
+		# being retired at the same time.
 		# Monthly KM Report — 1st of the month at 10:00 IST for the PREVIOUS month.
 		# NOTE: cron fires in the site timezone — verify System Settings.time_zone is
 		# Asia/Kolkata (else adjust, e.g. UTC -> "30 4 1 * *"). The task also derives

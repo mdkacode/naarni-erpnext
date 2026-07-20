@@ -30,6 +30,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_5.seed_km_report_custom_fields.execute",
 	"vehicle_maintenance.patches.v1_6.seed_alert_responses.execute",
 	"vehicle_maintenance.patches.v1_6.add_alert_event_indexes.execute",
+	"vehicle_maintenance.patches.v1_6.seed_km_sync_service_user.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

@@ -42,19 +42,15 @@ def _ensure_number_card(name: str, document_type: str, label: str, filters: list
 
 
 def _master_links() -> list:
+	# Lean landing page: daily-use masters only. The deep-config masters (OEM,
+	# Part Group, Subsystem, Complaint Catalog, Fault Code, Observation Template,
+	# Telemetry Parameter/Code) are still fully reachable via global search / their
+	# own list views — just not surfaced on this page.
 	masters = [
 		"Vehicle",
 		"Customer",
 		"Depot",
-		"OEM",
 		"Part",
-		"Part Group",
-		"Subsystem",
-		"Complaint Catalog",
-		"Fault Code",
-		"Observation Template",
-		"Telemetry Parameter",
-		"Telemetry Code",
 		"Service Contract",
 	]
 	return [
@@ -70,9 +66,7 @@ def _ops_links() -> list:
 		"Service Ticket",
 		"Inventory Request",
 		"Service Estimate",
-		"Alert Event",
 		"Vehicle Health Card",
-		"Lead",
 	]
 	return [
 		{"type": "Link", "label": m, "link_type": "DocType", "link_to": m}
@@ -82,13 +76,11 @@ def _ops_links() -> list:
 
 
 def _setup_links() -> list:
-	out = [
+	# Lean page: keep only the bulk-import entry point. Alert Type / Notification
+	# Channel are one-time setup, reachable via search when needed.
+	return [
 		{"type": "Link", "label": "Data Import (CSV/XLSX)", "link_type": "DocType", "link_to": "Data Import"}
 	]
-	for m in ("Alert Type", "Notification Channel"):
-		if frappe.db.exists("DocType", m):
-			out.append({"type": "Link", "label": m, "link_type": "DocType", "link_to": m})
-	return out
 
 
 def _report_links() -> list:
@@ -150,9 +142,7 @@ def _build_workspace() -> None:
 	for label, dt, color in [
 		("Vehicles", "Vehicle", "Blue"),
 		("Job Cards", "Job Card", "Green"),
-		("Parts", "Part", "Orange"),
 		("Customers", "Customer", "Cyan"),
-		("Mass Import", "Data Import", "Grey"),
 	]:
 		if frappe.db.exists("DocType", dt):
 			shortcuts.append(

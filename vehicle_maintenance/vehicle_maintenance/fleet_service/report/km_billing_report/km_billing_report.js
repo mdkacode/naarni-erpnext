@@ -1,8 +1,23 @@
-// KM Billing Report — Desk filters. The report is monthly: the "Billing Month"
-// filter is a calendar date picker, and the WHOLE calendar month of the picked
-// date is billed (the day itself is not significant). The backend slices the
-// value to YYYY-MM, so the aggregation helpers and the public report still
-// receive the same YYYY-MM they always did.
+// KM Billing Report — Desk filters. The report is monthly, so the "Billing Month"
+// filter is a month dropdown (Select of "YYYY-MM" values), not a day picker.
+// The backend slices the value to YYYY-MM, so the aggregation helpers and the
+// public report still receive the same YYYY-MM they always did.
+
+// Recent months as "YYYY-MM", newest first — the Select options. Plain Date math
+// (setMonth handles year rollover), so no moment/timezone dependency.
+function km_billing_month_options(count) {
+	const out = [];
+	const d = new Date();
+	d.setDate(1);
+	for (let i = 0; i < count; i++) {
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, "0");
+		out.push(`${y}-${m}`);
+		d.setMonth(d.getMonth() - 1);
+	}
+	return out.join("\n");
+}
+
 frappe.query_reports["KM Billing Report"] = {
 	filters: [
 		{
@@ -15,12 +30,11 @@ frappe.query_reports["KM Billing Report"] = {
 		{
 			fieldname: "month",
 			label: __("Billing Month"),
-			fieldtype: "Date",
+			fieldtype: "Select",
+			// Last 24 months to pick from; extend if older billing needs re-running.
+			options: km_billing_month_options(24),
 			reqd: 1,
-			// Default to the 1st of the current month so the value reads as a
-			// month at a glance. Any day may be picked — the backend bills the
-			// whole calendar month of the chosen date.
-			default: frappe.datetime.get_today().slice(0, 8) + "01",
+			default: frappe.datetime.get_today().slice(0, 7),
 		},
 	],
 };

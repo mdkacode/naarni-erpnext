@@ -13,10 +13,14 @@ from vehicle_maintenance.fleet_service import km_report
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
 	columns = _columns()
-	if not filters.get("customer") or not filters.get("month"):
+	# The Desk filter is now a Date picker (YYYY-MM-DD); the public report and the
+	# whitelisted APIs still pass YYYY-MM. Slicing to the first 7 chars normalises
+	# both to the month key the rollup expects (`getdate(f"{year_month}-01")`).
+	month = str(filters.get("month") or "")[:7]
+	if not filters.get("customer") or not month:
 		return columns, []
 
-	rows = km_report.month_vehicle_rollup(filters.customer, filters.month)
+	rows = km_report.month_vehicle_rollup(filters.customer, month)
 	data = [
 		{
 			"vehicle": r["vehicle"],

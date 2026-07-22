@@ -21,6 +21,7 @@
     {"fieldname": "last_alert_at", "label": "Last Alert Fired At", "fieldtype": "Datetime", "read_only": 1, "description": "Last cycle that actually fired an alert (fired > 0)."},
     {"fieldname": "sb_watch", "fieldtype": "Section Break", "label": "Watchdog State"},
     {"fieldname": "down_notified", "label": "Down Alert Sent", "fieldtype": "Check", "read_only": 1, "description": "Set when a 'down' email has been sent; cleared on recovery. Prevents email spam."},
+    {"fieldname": "consecutive_bad", "label": "Consecutive Bad Checks", "fieldtype": "Int", "read_only": 1, "description": "How many watchdog runs in a row saw a problem. Debounce: page only after alert_watchdog_confirm_checks consecutive bad runs, so a brief ingest gap / spot reschedule doesn't flap."},
     {"fieldname": "last_notified_at", "label": "Last Notified At", "fieldtype": "Datetime", "read_only": 1},
     {"fieldname": "last_status", "label": "Last Status", "fieldtype": "Small Text", "read_only": 1}
   ],

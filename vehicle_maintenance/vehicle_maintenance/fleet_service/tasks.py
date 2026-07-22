@@ -429,7 +429,14 @@ def _users_with_role(role: str) -> list[str]:
 # recipients` (list or comma string), else the default below.
 # ---------------------------------------------------------------------------
 
-WATCHDOG_STALE_SECS_DEFAULT = 300  # 5 min with no heartbeat => down
+WATCHDOG_STALE_SECS_DEFAULT = 300  # a beat older than this is "stale"
+# Debounce: the heartbeat rides the every-minute telemetry ingest, so a single
+# spot reschedule / slow ingest cycle can leave one check stale even though the
+# pipeline is fine. Require the problem on N consecutive runs (this task fires
+# every 2 min) before paging — ~7-9 min of *continuous* silence — so a brief gap
+# never flaps but a real sustained outage still alerts. Override per site with
+# `alert_watchdog_confirm_checks`.
+WATCHDOG_CONFIRM_CHECKS_DEFAULT = 2
 WATCHDOG_RENOTIFY_MINS_DEFAULT = 30  # re-email at most every 30 min while down
 WATCHDOG_DEFAULT_RECIPIENTS = ["mayank.dwivedi@naarni.com"]
 
@@ -493,6 +500,9 @@ def monitor_alert_engine() -> None:
 	deliver. Runs every 2 minutes (hooks.py). Idempotent + throttled."""
 	hb = frappe.get_single("Alert Engine Heartbeat")
 	stale_secs = int(frappe.conf.get("alert_watchdog_stale_secs") or WATCHDOG_STALE_SECS_DEFAULT)
+	confirm_checks = max(
+		1, int(frappe.conf.get("alert_watchdog_confirm_checks") or WATCHDOG_CONFIRM_CHECKS_DEFAULT)
+	)
 	now = now_datetime()
 
 	# Arm-on-first-beat: until the engine has posted ONE heartbeat, the switch is
@@ -500,6 +510,7 @@ def monitor_alert_engine() -> None:
 	# engine >= 0.9.5 is deployed without spurious "engine down" mails). Once a beat
 	# has ever arrived, a stale beacon is a real outage and does alert.
 	if not hb.last_seen:
+		hb.db_set("consecutive_bad", 0, update_modified=False)
 		hb.db_set(
 			"last_status",
 			"Unarmed — no heartbeat received yet (deploy engine >= 0.9.5).",
@@ -519,12 +530,26 @@ def monitor_alert_engine() -> None:
 	)
 
 	if problems:
+		# Debounce: only page once the problem has persisted across `confirm_checks`
+		# consecutive runs. A one-off blip (a slow ingest cycle, a spot reschedule)
+		# clears the streak on the next healthy run and never pages.
+		streak = (hb.consecutive_bad or 0) + 1
+		hb.db_set("consecutive_bad", streak, update_modified=False)
+		status = "; ".join(problems)
+		if streak < confirm_checks:
+			hb.db_set(
+				"last_status",
+				f"pending {streak}/{confirm_checks} bad checks: {status}",
+				update_modified=False,
+			)
+			frappe.db.commit()
+			return
+
 		renotify = int(frappe.conf.get("alert_watchdog_renotify_mins") or WATCHDOG_RENOTIFY_MINS_DEFAULT)
 		due = True
 		if hb.down_notified and hb.last_notified_at:
 			mins = time_diff_in_seconds(now, get_datetime(hb.last_notified_at)) / 60.0
 			due = mins >= renotify
-		status = "; ".join(problems)
 		if due:
 			body = (
 				"<h3>🚨 Naarni Alert Engine — DELIVERY AT RISK</h3>"
@@ -555,6 +580,7 @@ def monitor_alert_engine() -> None:
 				_send_watchdog_email("✅ Naarni Alert Engine recovered", body)
 			except Exception:
 				frappe.log_error(title="Watchdog recovery email failed", message=frappe.get_traceback())
+		hb.db_set("consecutive_bad", 0, update_modified=False)
 		hb.db_set("down_notified", 0, update_modified=False)
 		hb.db_set("last_status", "OK", update_modified=False)
 

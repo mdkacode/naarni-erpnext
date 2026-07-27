@@ -26,6 +26,7 @@ _CORRECTION_FIELDS = (
 	"exclusion_reason",
 	"override_distance",
 	"corrected_distance",
+	"dead_km",
 	"correction_notes",
 )
 
@@ -65,15 +66,16 @@ class VehicleKMDaily(Document):
 	def effective_distance(self) -> float:
 		"""Billable/counted distance for this day, honouring corrections.
 
-		Precedence: an excluded day always contributes 0; otherwise an explicit
-		distance override wins; otherwise the raw distance, clamped to >= 0 (so an
-		odometer reset can never produce negative billable KM).
+		Precedence: an excluded day always contributes 0; otherwise the base is the
+		override distance if set, else the raw telematics distance; then any manually
+		logged Dead KM is subtracted. Clamped to >= 0 throughout, so neither an
+		odometer reset nor a dead-KM entry larger than the distance can ever produce
+		negative billable KM.
 		"""
 		if self.is_excluded:
 			return 0.0
-		if self.override_distance:
-			return max(flt(self.corrected_distance), 0.0)
-		return max(flt(self.distance_km), 0.0)
+		base = flt(self.corrected_distance) if self.override_distance else flt(self.distance_km)
+		return max(base - flt(self.dead_km), 0.0)
 
 	@property
 	def is_planned_downtime(self) -> bool:

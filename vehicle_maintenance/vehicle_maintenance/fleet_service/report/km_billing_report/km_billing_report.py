@@ -29,6 +29,7 @@ def execute(filters=None):
 			"end_km": r["end_km"],
 			"total_distance_km": r["raw_distance_km"],
 			"excluded_km": r["excluded_km"],
+			"dead_km": r["dead_km"],
 			"billable_km": r["billable_km"],
 			"active_days": r["active_days"],
 			"excluded_days": r["excluded_days"],
@@ -71,6 +72,13 @@ def _columns():
 			"fieldtype": "Float",
 			"precision": 1,
 			"width": 110,
+		},
+		{
+			"label": _("Dead KM"),
+			"fieldname": "dead_km",
+			"fieldtype": "Float",
+			"precision": 1,
+			"width": 100,
 		},
 		{
 			"label": _("Billable KM"),

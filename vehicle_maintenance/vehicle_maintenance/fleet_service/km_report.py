@@ -32,6 +32,7 @@ _DAILY_FIELDS = [
 	"exclusion_reason",
 	"override_distance",
 	"corrected_distance",
+	"dead_km",
 ]
 
 
@@ -69,14 +70,18 @@ def _get(row, field):
 def effective_distance(row) -> float:
 	"""Billable/counted distance for one daily row (dict or Document).
 
-	Precedence mirrors ``VehicleKMDaily.effective_distance``: excluded → 0; else an
-	explicit override wins; else raw distance clamped to >= 0.
+	Precedence mirrors ``VehicleKMDaily.effective_distance``: excluded → 0; else base
+	is the override distance if set, otherwise raw distance; then Dead KM is
+	subtracted. Clamped to >= 0.
 	"""
 	if _get(row, "is_excluded"):
 		return 0.0
-	if _get(row, "override_distance"):
-		return max(flt(_get(row, "corrected_distance")), 0.0)
-	return max(flt(_get(row, "distance_km")), 0.0)
+	base = (
+		flt(_get(row, "corrected_distance"))
+		if _get(row, "override_distance")
+		else flt(_get(row, "distance_km"))
+	)
+	return max(base - flt(_get(row, "dead_km")), 0.0)
 
 
 # ──────────────────────────── customer fleet ────────────────────────────
@@ -122,6 +127,9 @@ def _rollup_vehicle_days(rows: list[dict]) -> dict:
 	# KM the telematics recorded on excluded days — removed from billable, surfaced so
 	# the drop in Billable KM is transparent to the customer.
 	excluded_km = sum(max(flt(r.get("distance_km")), 0.0) for r in excluded)
+	# Manually-logged dead KM on non-excluded days (an excluded day already bills 0, so
+	# its dead_km is moot). Surfaced so the deduction is transparent like excluded_km.
+	dead_km = sum(max(flt(r.get("dead_km")), 0.0) for r in rows if not r.get("is_excluded"))
 	service_days = sum(1 for r in excluded if r.get("exclusion_reason") == "Service")
 	breakdown_days = sum(1 for r in excluded if r.get("exclusion_reason") == "Breakdown")
 	active_days = sum(1 for r in rows if not r.get("is_inactive") and not r.get("is_excluded"))
@@ -131,6 +139,7 @@ def _rollup_vehicle_days(rows: list[dict]) -> dict:
 		"raw_distance_km": round(raw_distance, 1),
 		"distance_km": round(distance, 1),
 		"excluded_km": round(excluded_km, 1),
+		"dead_km": round(dead_km, 1),
 		"days_with_data": len(rows),
 		"active_days": active_days,
 		"excluded_days": len(excluded),
@@ -166,6 +175,7 @@ def month_vehicle_rollup(customer: str, year_month: str) -> list[dict]:
 				"raw_distance_km": 0.0,
 				"distance_km": 0.0,
 				"excluded_km": 0.0,
+				"dead_km": 0.0,
 				"days_with_data": 0,
 				"active_days": 0,
 				"excluded_days": 0,
@@ -191,6 +201,7 @@ def day_breakdown(vehicle: str, year_month: str) -> list[dict]:
 			"end_km": flt(r.get("end_km")),
 			"distance_km": round(effective_distance(r), 1),
 			"raw_distance_km": round(flt(r.get("distance_km")), 1),
+			"dead_km": round(flt(r.get("dead_km")), 1),
 			"is_inactive": bool(r.get("is_inactive")),
 			"is_excluded": bool(r.get("is_excluded")),
 			"exclusion_reason": r.get("exclusion_reason"),
@@ -292,6 +303,7 @@ def build_report_payload(customer: str, year_month: str, generated_at: str | Non
 				"total_distance_km": v["raw_distance_km"],
 				"distance_km": v["distance_km"],
 				"excluded_km": v["excluded_km"],
+				"dead_km": v["dead_km"],
 				"billable_km": v["billable_km"],
 				"active_days": v["active_days"],
 				"excluded_days": v["excluded_days"],
@@ -307,6 +319,7 @@ def build_report_payload(customer: str, year_month: str, generated_at: str | Non
 		"total_distance_km": round(sum(v["total_distance_km"] for v in vehicle_rows), 1),
 		"distance_km": round(sum(v["distance_km"] for v in vehicle_rows), 1),
 		"excluded_km": round(sum(v["excluded_km"] for v in vehicle_rows), 1),
+		"dead_km": round(sum(v["dead_km"] for v in vehicle_rows), 1),
 		"vehicles": len(vehicle_rows),
 		"excluded_days": sum(v["excluded_days"] for v in vehicle_rows),
 	}

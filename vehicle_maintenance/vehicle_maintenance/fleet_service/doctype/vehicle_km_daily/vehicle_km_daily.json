@@ -136,6 +136,14 @@
       "description": "Authoritative distance for billing when 'Override distance' is ticked."
     },
     {
+      "fieldname": "dead_km",
+      "label": "Dead KM (deduct)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "in_list_view": 1,
+      "description": "Manually-logged non-billable (dead-running) KM. Subtracted from this day's billable distance; billable never goes below 0."
+    },
+    {
       "fieldname": "correction_notes",
       "label": "Correction Notes",
       "fieldtype": "Small Text"

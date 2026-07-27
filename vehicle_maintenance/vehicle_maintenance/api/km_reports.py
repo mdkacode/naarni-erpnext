@@ -65,12 +65,14 @@ def correct_km_day(
 	exclusion_reason: str | None = None,
 	override_distance: int | bool = 0,
 	corrected_distance: float | None = None,
+	dead_km: float | None = None,
 	notes: str | None = None,
 ) -> dict:
 	"""Apply an operator correction to one Vehicle KM Daily row.
 
 	Requires WRITE permission on that specific row. Saved through the document so
-	server-side validation runs and the corrector is stamped.
+	server-side validation runs and the corrector is stamped. `dead_km` is a manual
+	non-billable deduction subtracted from the day's distance (clamped to >= 0).
 	"""
 	frappe.has_permission("Vehicle KM Daily", "write", doc=row_name, throw=True)
 	doc = frappe.get_doc("Vehicle KM Daily", row_name)
@@ -78,6 +80,7 @@ def correct_km_day(
 	doc.exclusion_reason = exclusion_reason if doc.is_excluded else None
 	doc.override_distance = 1 if cint(override_distance) else 0
 	doc.corrected_distance = flt(corrected_distance) if doc.override_distance else None
+	doc.dead_km = max(flt(dead_km), 0.0)
 	doc.correction_notes = notes
 	doc.save()
 	return {

@@ -101,18 +101,45 @@ class TestMonthlyKmReport(FrappeTestCase):
 
 	# ── email ──
 
-	def test_run_for_customer_sends_white_label_email(self):
+	def test_run_for_customer_generates_into_review_no_send(self):
+		# The monthly run now freezes the report into the internal review queue and
+		# sends NOTHING — the customer email is gated behind the two checkers.
 		self._config(name="Acme Transit", emails=("ops@acme.test", "cfo@acme.test"))
 		out = monthly_km_report.run_for_customer(self.customer, "2026-06")
+		self.assertEqual(self.sent, [])
+		snap = frappe.get_doc("KM Report Snapshot", out["snapshot"])
+		self.assertEqual(snap.status, "Draft")
+		self.assertEqual(snap.workflow_state, "Pending Check 1")
+
+	def test_no_send_until_l2_approval(self):
+		# L1 done (Pending Check 2) is not enough — no email until Approved.
+		self._config(emails=("ops@acme.test",))
+		name = monthly_km_report.generate_snapshot(self.customer, "2026-06")
+		snap = frappe.get_doc("KM Report Snapshot", name)
+		snap.workflow_state = "Pending Check 2"
+		snap.flags.ignore_permissions = True
+		snap.save(ignore_permissions=True)
+		self.assertEqual(self.sent, [])
+
+	def test_l2_approval_sends_white_label_email_once(self):
+		self._config(name="Acme Transit", emails=("ops@acme.test", "cfo@acme.test"))
+		name = monthly_km_report.generate_snapshot(self.customer, "2026-06")
+		snap = frappe.get_doc("KM Report Snapshot", name)
+		# The L2 checker's approval → on_update fires send_on_approval.
+		snap.workflow_state = "Approved"
+		snap.flags.ignore_permissions = True
+		snap.save(ignore_permissions=True)
 		self.assertEqual(len(self.sent), 1)
 		kw = self.sent[0]
 		self.assertIn("ops@acme.test", list(kw["to"]))
 		self.assertIn("Acme Transit", kw["html_body"])  # co-branded
-		self.assertIn("powered by", kw["html_body"])
-		snap = frappe.get_doc("KM Report Snapshot", out["snapshot"])
 		self.assertIn(f"/km-report/{snap.public_token}", kw["html_body"])  # CTA link
+		snap.reload()
 		self.assertEqual(snap.status, "Sent")
 		self.assertEqual(snap.email_message_id, "brevo-xyz")
+		# idempotent: a later save of the approved+sent report never re-emails.
+		snap.save(ignore_permissions=True)
+		self.assertEqual(len(self.sent), 1)
 
 	def test_run_for_customer_no_recipients_keeps_draft(self):
 		# no Fleet Report Config → snapshot built, no email sent, still Draft

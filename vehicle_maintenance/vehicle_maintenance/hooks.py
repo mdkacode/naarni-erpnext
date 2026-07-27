@@ -12,6 +12,10 @@ doc_events: dict = {
 	"User": {
 		"validate": "vehicle_maintenance.overrides.user.validate_user",
 	},
+	# Release the customer KM email the moment an L2 checker approves the snapshot.
+	"KM Report Snapshot": {
+		"on_update": "vehicle_maintenance.fleet_service.monthly_km_report.send_on_approval",
+	},
 }
 
 # Idempotent seeders run after every migrate. Each function checks existence
@@ -31,6 +35,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_6.seed_alert_responses.execute",
 	"vehicle_maintenance.patches.v1_6.add_alert_event_indexes.execute",
 	"vehicle_maintenance.patches.v1_6.seed_km_sync_service_user.execute",
+	"vehicle_maintenance.patches.v1_6.seed_km_report_workflow.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -45,6 +50,9 @@ APP_ROLES = [
 	"Sales Executive",
 	# View-only access to the KM & SLA reports/dashboards — assign from the User form.
 	"Fleet Reports",
+	# Two-level internal checkers for the Monthly KM Report before it emails the customer.
+	"KM Checker L1",
+	"KM Checker L2",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.
@@ -67,7 +75,7 @@ CUSTOMIZED_DOCTYPES = [
 fixtures = [
 	{
 		"dt": "Workflow",
-		"filters": [["document_type", "in", ["Job Card", "Inventory Request", "Lead"]]],
+		"filters": [["document_type", "in", ["Job Card", "Inventory Request", "Lead", "KM Report Snapshot"]]],
 	},
 	{
 		"dt": "Lead Source",

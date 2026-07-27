@@ -52,6 +52,9 @@ def generate_snapshot(customer: str, year_month: str) -> str:
 	snap.logo_url = _public_logo_url(cfg.get("logo"))
 	snap.display_name = payload["customer_display"]
 	snap.status = "Draft"
+	# A (re)generated report must clear both internal checks again before it can be
+	# sent — regenerating after an approval must never silently re-release the email.
+	snap.workflow_state = "Pending Check 1"
 	snap.flags.ignore_permissions = True
 	snap.save(ignore_permissions=True)
 	return snap.name
@@ -116,12 +119,24 @@ def send_report_email(snapshot_name: str) -> dict:
 
 
 def run_for_customer(customer: str, year_month: str) -> dict:
-	"""Generate the snapshot and email it — best-effort (email failure never loses the snapshot)."""
+	"""Generate the snapshot into the internal review queue — does NOT email.
+
+	The customer email is released only when a KM Checker L2 approves the report
+	(see `send_on_approval`), so this just freezes the snapshot in `Pending Check 1`.
+	"""
 	name = generate_snapshot(customer, year_month)
-	sent = None
-	try:
-		sent = send_report_email(name)
-	except Exception:
-		frappe.log_error(title="KM report email failed", message=frappe.get_traceback())
 	frappe.db.commit()
-	return {"snapshot": name, "email": sent}
+	return {"snapshot": name, "review_state": "Pending Check 1"}
+
+
+def send_on_approval(doc, method=None) -> None:
+	"""doc_event (KM Report Snapshot on_update): email the customer once, the moment
+	the report reaches `Approved` (the L2 checker's action). The status guard makes
+	this idempotent — a later save of an already-Sent report never re-emails, and a
+	non-Approved state never emails."""
+	if doc.workflow_state != "Approved" or doc.status == "Sent":
+		return
+	try:
+		send_report_email(doc.name)
+	except Exception:
+		frappe.log_error(title="KM report auto-send on approval failed", message=frappe.get_traceback())

@@ -31,7 +31,19 @@
       "options": "Draft\nSent\nExpired",
       "default": "Draft",
       "in_list_view": 1,
-      "in_standard_filter": 1
+      "in_standard_filter": 1,
+      "description": "Delivery state. Set to Sent only after L2 approval emails the customer."
+    },
+    {
+      "fieldname": "workflow_state",
+      "label": "Review State",
+      "fieldtype": "Select",
+      "options": "Pending Check 1\nPending Check 2\nApproved\nRejected",
+      "default": "Pending Check 1",
+      "read_only": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Two-level internal review. Only an L2 approval releases the customer email."
     },
     {
       "fieldname": "column_break_token",

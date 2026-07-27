@@ -21,7 +21,7 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
+from frappe.utils import get_datetime, now_datetime
 
 from vehicle_maintenance.fleet_service.doctype.alert_type.alert_type import op_to_symbol
 
@@ -804,14 +804,25 @@ def ingest_alert_event(service_key: str | None = None, payload: Any = None, **kw
 	return _ok({"name": doc.name}, _("Alert event recorded."))
 
 
+HEARTBEAT_TRACE_CAP = 8000  # chars of engine traceback we keep (email-sized, not a log store)
+
+
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def ingest_heartbeat(service_key: str | None = None, payload: Any = None, **kwargs) -> dict:
-	"""Liveness beacon from the alert engine, posted on EVERY ingest cycle.
+	"""Liveness beacon from the alert engine.
 
-	Service-authenticated (same key as get_engine_config). Updates the single
-	`Alert Engine Heartbeat` doc; the `monitor_alert_engine` scheduled task emails ops
-	if this stops arriving. This is what makes a dead pipeline visible — a quiet
-	period (nothing breaching) still heartbeats, so silence != down.
+	Service-authenticated (same key as get_engine_config). Two kinds of beat, told
+	apart by `source`:
+
+	- `ingest` — posted at the end of every /ingest cycle, carries that cycle's
+	  counters. Proves telemetry is still flowing from Airflow.
+	- `timer`  — posted by the engine's own timer (engine >= 0.9.6) regardless of
+	  ingest, carrying no cycle counters. Proves the *process* is alive.
+
+	Keeping the two clocks apart is what lets `monitor_alert_engine` say "the engine
+	is down" versus "the engine is up but telemetry stopped" — one is a pod problem,
+	the other an Airflow problem. A beat with no `source` is treated as `ingest`, so
+	an older engine keeps the pre-0.9.6 behaviour exactly.
 	"""
 	expected = frappe.conf.get("alert_engine_service_key")
 	if not expected or not service_key or not hmac.compare_digest(str(service_key), str(expected)):
@@ -820,21 +831,60 @@ def ingest_heartbeat(service_key: str | None = None, payload: Any = None, **kwar
 	data = _request_body(payload, kwargs)
 	data.pop("service_key", None)
 
+	source = str(data.get("source") or "ingest").strip().lower()
+	if source not in ("ingest", "timer"):
+		source = "ingest"
+	now = now_datetime()
+
 	hb = frappe.get_single("Alert Engine Heartbeat")
-	hb.last_seen = now_datetime()
+	hb.last_seen = now
+	hb.last_beat_source = source
 	hb.engine_version = data.get("engine_version")
 	hb.rules_loaded = int(data.get("rules_loaded") or 0)
 	hb.teams_enabled = 1 if data.get("teams_enabled") else 0
-	hb.last_rows = int(data.get("rows") or 0)
-	hb.last_breaches = int(data.get("breaches") or 0)
-	hb.last_fired = int(data.get("fired") or 0)
-	hb.last_teamed = int(data.get("teamed") or 0)
-	hb.last_errors = int(data.get("errors") or 0)
-	if hb.last_fired:
-		hb.last_alert_at = now_datetime()
+
+	if source == "timer":
+		hb.last_timer_at = now
+	else:
+		# Cycle counters describe an ingest cycle. A self-timed beat carries none, so
+		# it must never zero them — that would erase the last cycle's diagnostics and
+		# silently clear an errors>0 condition the watchdog exists to catch.
+		hb.last_ingest_at = now
+		hb.last_rows = int(data.get("rows") or 0)
+		hb.last_breaches = int(data.get("breaches") or 0)
+		hb.last_fired = int(data.get("fired") or 0)
+		hb.last_teamed = int(data.get("teamed") or 0)
+		hb.last_errors = int(data.get("errors") or 0)
+		if hb.last_fired:
+			hb.last_alert_at = now
+
+	_apply_engine_error(hb, _as_dict(data.get("last_error")), source=source, now=now)
+
 	hb.save(ignore_permissions=True)
 	frappe.db.commit()
 	return _ok({"received": True})
+
+
+def _apply_engine_error(hb, err: dict, *, source: str, now) -> None:
+	"""Store the engine's own last failure (context + traceback) on the heartbeat so
+	the watchdog email can carry a real stack trace instead of just a symptom.
+
+	Kept newest-wins, and cleared by a clean ingest cycle (errors == 0) so a page
+	never shows a traceback that has already been fixed."""
+	trace = (err.get("trace") or "").strip()
+	context = (err.get("context") or "").strip()
+	if trace or context:
+		at = err.get("at")
+		try:
+			hb.last_error_at = get_datetime(at) if at else now
+		except Exception:
+			hb.last_error_at = now
+		hb.last_error_context = context[:140] or None
+		hb.last_error_trace = trace[:HEARTBEAT_TRACE_CAP] or None
+	elif source == "ingest" and not (hb.last_errors or 0):
+		hb.last_error_at = None
+		hb.last_error_context = None
+		hb.last_error_trace = None
 
 
 @frappe.whitelist()

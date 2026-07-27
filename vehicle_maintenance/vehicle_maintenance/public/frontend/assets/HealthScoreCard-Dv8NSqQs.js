@@ -1,0 +1,143 @@
+import { o as a, a as l, b as t, t as s, F as u, r as m, n as g, j as x } from "./main-C3kezhEI.js";
+const p = { class: "bg-white border border-gray-200 rounded-xl p-4" },
+	b = { class: "grid grid-cols-3 gap-2" },
+	f = { class: "text-center p-3 rounded-lg bg-amber-50" },
+	y = { class: "text-xl font-bold text-amber-800" },
+	_ = { class: "text-center p-3 rounded-lg bg-green-50" },
+	S = { class: "text-xl font-bold text-green-800" },
+	N = { class: "text-center p-3 rounded-lg bg-blue-50" },
+	v = { class: "text-xl font-bold text-blue-800" },
+	h = { key: 0, class: "mt-3" },
+	k = { class: "cursor-pointer text-xs text-gray-500 select-none" },
+	P = { class: "mt-2 space-y-1" },
+	C = { class: "font-medium text-gray-700" },
+	F = { class: "flex items-center gap-2 text-gray-600" },
+	V = {
+		__name: "HealthScoreCard",
+		props: {
+			preScore: { type: [Number, String, null], default: null },
+			postScore: { type: [Number, String, null], default: null },
+			improvement: { type: [Number, String, null], default: null },
+			categoryScores: { type: Array, default: () => [] },
+		},
+		setup(o) {
+			function i(r) {
+				if (r == null || r === "") return "—";
+				const e = Number(r);
+				return Number.isNaN(e) ? "—" : `${e.toFixed(1)}%`;
+			}
+			function d(r) {
+				if (r == null || r === "") return "—";
+				const e = Number(r);
+				return Number.isNaN(e) ? "—" : `${e > 0 ? "+" : ""}${e.toFixed(1)}%`;
+			}
+			function c(r) {
+				if (r == null || r === "") return "text-gray-500";
+				const e = Number(r);
+				return e > 0 ? "text-green-700" : e < 0 ? "text-red-700" : "text-gray-500";
+			}
+			return (r, e) => (
+				a(),
+				l("div", p, [
+					e[4] ||
+						(e[4] = t(
+							"h3",
+							{ class: "text-sm font-semibold text-gray-800 mb-3" },
+							"Vehicle Health Score",
+							-1
+						)),
+					t("div", b, [
+						t("div", f, [
+							t("div", y, s(i(o.preScore)), 1),
+							e[0] ||
+								(e[0] = t(
+									"div",
+									{ class: "text-xs text-amber-700 uppercase tracking-wide mt-1" },
+									"Pre-PMS",
+									-1
+								)),
+						]),
+						t("div", _, [
+							t("div", S, s(i(o.postScore)), 1),
+							e[1] ||
+								(e[1] = t(
+									"div",
+									{ class: "text-xs text-green-700 uppercase tracking-wide mt-1" },
+									"Post-PMS",
+									-1
+								)),
+						]),
+						t("div", N, [
+							t("div", v, s(d(o.improvement)), 1),
+							e[2] ||
+								(e[2] = t(
+									"div",
+									{ class: "text-xs text-blue-700 uppercase tracking-wide mt-1" },
+									"Improvement",
+									-1
+								)),
+						]),
+					]),
+					o.categoryScores.length
+						? (a(),
+						  l("details", h, [
+								t(
+									"summary",
+									k,
+									" Per-category breakdown (" + s(o.categoryScores.length) + ") ",
+									1
+								),
+								t("div", P, [
+									(a(!0),
+									l(
+										u,
+										null,
+										m(
+											o.categoryScores,
+											(n) => (
+												a(),
+												l(
+													"div",
+													{
+														key: n.category,
+														class: "flex items-center justify-between text-xs border-b border-gray-100 py-1.5",
+													},
+													[
+														t("span", C, s(n.category), 1),
+														t("div", F, [
+															t("span", null, s(i(n.pre_pms_score)), 1),
+															e[3] ||
+																(e[3] = t(
+																	"span",
+																	{ class: "text-gray-300" },
+																	"→",
+																	-1
+																)),
+															t("span", null, s(i(n.post_pms_score)), 1),
+															t(
+																"span",
+																{
+																	class: g([
+																		"w-16 text-right font-medium",
+																		c(n.improvement),
+																	]),
+																},
+																s(d(n.improvement)),
+																3
+															),
+														]),
+													]
+												)
+											)
+										),
+										128
+									)),
+								]),
+						  ]))
+						: x("", !0),
+				])
+			);
+		},
+	};
+export { V as _ };
+//# sourceMappingURL=HealthScoreCard-Dv8NSqQs.js.map

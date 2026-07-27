@@ -148,16 +148,32 @@ def _rollup_vehicle_days(rows: list[dict]) -> dict:
 	}
 
 
+def _monthly_dead_map(vehicle_names: list[str], year_month: str) -> dict[str, float]:
+	"""{vehicle: month-level dead_km} from KM Monthly Adjustment for the given month."""
+	if not vehicle_names:
+		return {}
+	rows = frappe.get_all(
+		"KM Monthly Adjustment",
+		filters={"vehicle": ["in", vehicle_names], "year_month": year_month},
+		fields=["vehicle", "dead_km"],
+	)
+	return {r["vehicle"]: max(flt(r["dead_km"]), 0.0) for r in rows}
+
+
 def month_vehicle_rollup(customer: str, year_month: str) -> list[dict]:
 	"""Per-vehicle KM summary for a customer for one month.
 
 	Returns one dict per vehicle that has data (plus zero-rows for vehicles with none),
-	each with start/end odometer, billable distance and exclusion counts.
+	each with start/end odometer, billable distance and exclusion counts. Billable is
+	the summed daily distance (already net of per-day Dead KM) minus the vehicle's
+	month-level Dead KM lump (KM Monthly Adjustment). `dead_km` on each row is the
+	TOTAL dead deducted (per-day + monthly), so Total - Excluded - Dead = Billable.
 	"""
 	start, end = month_bounds(year_month)
 	vehicles = customer_vehicles(customer)
 	by_name = {v["name"]: v for v in vehicles}
 	rows = _daily_rows(list(by_name), start, end)
+	monthly_dead = _monthly_dead_map(list(by_name), year_month)
 
 	grouped: dict[str, list[dict]] = {}
 	for r in rows:
@@ -183,9 +199,14 @@ def month_vehicle_rollup(customer: str, year_month: str) -> list[dict]:
 				"breakdown_days": 0,
 			}
 		)
+		m_dead = monthly_dead.get(v["name"], 0.0)
 		summary["vehicle"] = v["name"]
 		summary["registration"] = v.get("registration_number") or v["name"]
-		summary["billable_km"] = summary["distance_km"]
+		# Split so the operator UI can show each lever; `dead_km` is their sum.
+		summary["per_day_dead_km"] = summary["dead_km"]
+		summary["monthly_dead_km"] = round(m_dead, 1)
+		summary["dead_km"] = round(summary["dead_km"] + m_dead, 1)
+		summary["billable_km"] = max(round(summary["distance_km"] - m_dead, 1), 0.0)
 		out.append(summary)
 	return out
 

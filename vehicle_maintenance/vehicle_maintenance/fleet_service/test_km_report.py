@@ -125,6 +125,39 @@ class TestKmReport(FrappeTestCase):
 		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
 		self.assertEqual(r["distance_km"], 150)  # 200 override - 50 dead
 
+	def _monthly(self, vehicle, ym, dead):
+		doc = frappe.new_doc("KM Monthly Adjustment")
+		doc.vehicle = vehicle
+		doc.year_month = ym
+		doc.dead_km = dead
+		doc.flags.ignore_permissions = True
+		doc.insert(ignore_permissions=True)
+
+	def test_monthly_dead_km_subtracts_from_total(self):
+		# Month-level lump subtracts from the vehicle's monthly billable, on top of raw.
+		self._day(self.v1, "2026-06-01", 0, 100, 100)
+		self._monthly(self.v1, "2026-06", 30)
+		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
+		self.assertEqual(r["billable_km"], 70)  # 100 - 30 monthly
+		self.assertEqual(r["monthly_dead_km"], 30)
+		self.assertEqual(r["dead_km"], 30)  # total dead (no per-day here)
+
+	def test_monthly_and_per_day_dead_combine(self):
+		# Per-day dead and the monthly lump both deduct; dead_km reports their sum.
+		self._day(self.v1, "2026-06-01", 0, 100, 100, dead=20)  # daily billable 80
+		self._monthly(self.v1, "2026-06", 30)
+		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
+		self.assertEqual(r["per_day_dead_km"], 20)
+		self.assertEqual(r["monthly_dead_km"], 30)
+		self.assertEqual(r["dead_km"], 50)  # 20 + 30
+		self.assertEqual(r["billable_km"], 50)  # 80 - 30
+
+	def test_monthly_dead_km_clamps_non_negative(self):
+		self._day(self.v1, "2026-06-01", 0, 40, 40)
+		self._monthly(self.v1, "2026-06", 100)
+		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
+		self.assertEqual(r["billable_km"], 0)
+
 	def test_payload_surfaces_dead_km(self):
 		self._day(self.v1, "2026-06-01", 0, 100, 100, dead=40)
 		payload = km_report.build_report_payload(self.customer, "2026-06")

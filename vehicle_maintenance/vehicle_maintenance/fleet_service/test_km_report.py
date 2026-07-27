@@ -40,7 +40,9 @@ class TestKmReport(FrappeTestCase):
 		v.insert(ignore_permissions=True)
 		return v.name
 
-	def _day(self, vehicle, date, start, end, dist, inactive=0, excluded=0, reason=None, corrected=None):
+	def _day(
+		self, vehicle, date, start, end, dist, inactive=0, excluded=0, reason=None, corrected=None, dead=None
+	):
 		doc = frappe.new_doc("Vehicle KM Daily")
 		doc.vehicle = vehicle
 		doc.date = date
@@ -54,6 +56,8 @@ class TestKmReport(FrappeTestCase):
 		if corrected is not None:
 			doc.override_distance = 1
 			doc.corrected_distance = corrected
+		if dead is not None:
+			doc.dead_km = dead
 		doc.flags.ignore_permissions = True
 		doc.insert(ignore_permissions=True)
 		return doc.name
@@ -98,6 +102,37 @@ class TestKmReport(FrappeTestCase):
 		self._day(self.v1, "2026-06-01", 0, 100, 100, corrected=25)
 		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
 		self.assertEqual(r["distance_km"], 25)
+
+	def test_dead_km_subtracts(self):
+		# Manual dead KM is deducted from that day's billable and surfaced as a total.
+		self._day(self.v1, "2026-06-01", 0, 100, 100, dead=30)
+		self._day(self.v1, "2026-06-02", 100, 250, 150)
+		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
+		self.assertEqual(r["distance_km"], 220)  # (100-30) + 150
+		self.assertEqual(r["raw_distance_km"], 250)  # unchanged raw total
+		self.assertEqual(r["dead_km"], 30)
+
+	def test_dead_km_clamps_non_negative(self):
+		# Dead KM larger than the day's distance can never push billable below 0.
+		self._day(self.v1, "2026-06-01", 0, 40, 40, dead=100)
+		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
+		self.assertEqual(r["distance_km"], 0)
+		self.assertEqual(r["dead_km"], 100)
+
+	def test_dead_km_on_override(self):
+		# Dead KM subtracts from the override distance, not the raw telematics value.
+		self._day(self.v1, "2026-06-01", 0, 500, 500, corrected=200, dead=50)
+		r = {x["vehicle"]: x for x in km_report.month_vehicle_rollup(self.customer, "2026-06")}[self.v1]
+		self.assertEqual(r["distance_km"], 150)  # 200 override - 50 dead
+
+	def test_payload_surfaces_dead_km(self):
+		self._day(self.v1, "2026-06-01", 0, 100, 100, dead=40)
+		payload = km_report.build_report_payload(self.customer, "2026-06")
+		self.assertEqual(payload["totals"]["dead_km"], 40)
+		self.assertEqual(payload["totals"]["billable_km"], 60)
+		veh = {v["registration"]: v for v in payload["vehicles"]}[self.v1]
+		self.assertEqual(veh["dead_km"], 40)
+		self.assertEqual(veh["billable_km"], 60)
 
 	def test_odometer_reset_non_negative(self):
 		# Device swap → raw distance negative; billable must clamp to 0, never negative.

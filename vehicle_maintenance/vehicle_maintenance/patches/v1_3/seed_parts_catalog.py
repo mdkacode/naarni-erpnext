@@ -62,20 +62,34 @@ PARTS = [
 ]
 
 
-# (customer_name, mobile_no, city, state) — demo B2B bus operators for testing.
+# (customer_name, customer_code, mobile_no, city, state) — demo B2B bus operators.
+# customer_code is reqd + unique and feeds the Job Card naming series, so it has to be
+# supplied here: Customer.validate() rejects anything that is not 2-10 uppercase
+# alphanumerics, and omitting it made every row in this list fail on insert.
 CUSTOMERS = [
-	("Zingbus", "9000000001", "Gurugram", "Haryana"),
-	("IntrCity SmartBus", "9000000002", "Bengaluru", "Karnataka"),
-	("Chartered Bus", "9000000003", "Hyderabad", "Telangana"),
-	("NueGo EV Travels", "9000000004", "New Delhi", "Delhi"),
+	("Zingbus", "ZINGBUS", "9000000001", "Gurugram", "Haryana"),
+	("IntrCity SmartBus", "INTRCITY", "9000000002", "Bengaluru", "Karnataka"),
+	("Chartered Bus", "CHARTERED", "9000000003", "Hyderabad", "Telangana"),
+	("NueGo EV Travels", "NUEGO", "9000000004", "New Delhi", "Delhi"),
 ]
 
 
-def _ensure_customer(name: str, mobile: str, city: str, state: str) -> None:
-	if frappe.db.exists("Customer", {"customer_name": name}):
+def _ensure_customer(name: str, code: str, mobile: str, city: str, state: str) -> None:
+	# customer_name and customer_code are both unique, so check both: ignore_if_duplicate
+	# only swallows a clash on the document name, not on another unique column.
+	if frappe.db.exists("Customer", {"customer_name": name}) or frappe.db.exists(
+		"Customer", {"customer_code": code}
+	):
 		return
 	frappe.get_doc(
-		{"doctype": "Customer", "customer_name": name, "mobile_no": mobile, "city": city, "state": state}
+		{
+			"doctype": "Customer",
+			"customer_name": name,
+			"customer_code": code,
+			"mobile_no": mobile,
+			"city": city,
+			"state": state,
+		}
 	).insert(ignore_permissions=True, ignore_if_duplicate=True)
 
 
@@ -110,9 +124,9 @@ def _ensure_part(code, name, group, uom, cost, mfr, lead) -> None:
 def execute() -> None:
 	if not frappe.db.exists("DocType", "Part"):
 		return
-	for cname, mobile, city, state in CUSTOMERS:
+	for cname, ccode, mobile, city, state in CUSTOMERS:
 		try:
-			_ensure_customer(cname, mobile, city, state)
+			_ensure_customer(cname, ccode, mobile, city, state)
 		except Exception:
 			frappe.log_error(title="seed_parts_catalog:customer", message=frappe.get_traceback())
 	for name, system in PART_GROUPS:

@@ -45,6 +45,15 @@
 						</router-link>
 					</RoleBoundary>
 
+					<RoleBoundary :roles="['Central Ops', 'Depot Manager']">
+						<router-link
+							to="/service-portal/km-corrections"
+							class="text-sm text-gray-600 hover:text-brand-600 font-medium px-2 py-1 rounded-lg hover:bg-brand-50"
+						>
+							KM Corrections
+						</router-link>
+					</RoleBoundary>
+
 					<!-- Customer -->
 					<RoleBoundary :roles="['Customer']">
 						<router-link

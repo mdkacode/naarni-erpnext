@@ -1,0 +1,309 @@
+var M = Object.defineProperty;
+var L = Object.getOwnPropertySymbols;
+var T = Object.prototype.hasOwnProperty,
+	q = Object.prototype.propertyIsEnumerable;
+var z = (t, a, s) =>
+		a in t ? M(t, a, { enumerable: !0, configurable: !0, writable: !0, value: s }) : (t[a] = s),
+	w = (t, a) => {
+		for (var s in a || (a = {})) T.call(a, s) && z(t, s, a[s]);
+		if (L) for (var s of L(a)) q.call(a, s) && z(t, s, a[s]);
+		return t;
+	};
+var x = (t, a, s) =>
+	new Promise((g, c) => {
+		var e = (l) => {
+				try {
+					u(s.next(l));
+				} catch (v) {
+					c(v);
+				}
+			},
+			p = (l) => {
+				try {
+					u(s.throw(l));
+				} catch (v) {
+					c(v);
+				}
+			},
+			u = (l) => (l.done ? g(l.value) : Promise.resolve(l.value).then(e, p));
+		u((s = s.apply(t, a)).next());
+	});
+import {
+	h as m,
+	w as A,
+	o,
+	a as r,
+	b as i,
+	F as C,
+	r as E,
+	n as S,
+	p as O,
+	t as b,
+	j as V,
+	E as P,
+	k as W,
+} from "./main-C3kezhEI.js";
+const G = { class: "w-full max-w-2xl mx-auto" },
+	H = { class: "mb-8", "aria-label": "Progress" },
+	I = { class: "flex items-center" },
+	J = ["disabled", "onClick", "aria-current"],
+	K = { key: 0, class: "w-5 h-5", fill: "currentColor", viewBox: "0 0 20 20" },
+	Q = { class: "mb-6" },
+	R = { class: "text-xl font-semibold text-gray-900" },
+	U = { key: 0, class: "mt-1 text-sm text-gray-500" },
+	X = { class: "min-h-[200px]" },
+	Y = { key: 0, class: "mt-4 p-3 bg-red-50 border border-red-200 rounded-lg" },
+	Z = { class: "list-disc list-inside text-sm text-red-700" },
+	ee = { class: "mt-8 flex items-center justify-between border-t border-gray-200 pt-6" },
+	te = { key: 1 },
+	ae = { class: "flex items-center gap-3" },
+	se = { class: "text-xs text-gray-400" },
+	le = ["disabled"],
+	ne = ["disabled"],
+	ue = {
+		__name: "Wizard",
+		props: {
+			steps: {
+				type: Array,
+				required: !0,
+				validator: (t) => t.length > 0 && t.every((a) => a.id && a.title),
+			},
+			modelValue: { type: Object, default: () => ({}) },
+			submitLabel: { type: String, default: "Submit" },
+		},
+		emits: ["update:modelValue", "complete", "step-change"],
+		setup(t, { expose: a, emit: s }) {
+			const g = t,
+				c = s,
+				e = m(0),
+				p = m(0),
+				u = m(w({}, g.modelValue)),
+				l = m([]),
+				v = m(!1),
+				_ = m(!1),
+				h = W(() => g.steps[e.value]);
+			A(u, (n) => c("update:modelValue", n), { deep: !0 });
+			function N(n, f) {
+				u.value[n] = f;
+			}
+			function k() {
+				return x(this, null, function* () {
+					l.value = [];
+					const n = h.value;
+					if (!n.validate) return !0;
+					v.value = !0;
+					try {
+						const f = yield n.validate(u.value);
+						return (l.value = f || []), l.value.length === 0;
+					} finally {
+						v.value = !1;
+					}
+				});
+			}
+			function B() {
+				return x(this, null, function* () {
+					(yield k()) &&
+						e.value < g.steps.length - 1 &&
+						(e.value++, (p.value = Math.max(p.value, e.value)), c("step-change", e.value));
+				});
+			}
+			function j() {
+				(l.value = []), e.value > 0 && (e.value--, c("step-change", e.value));
+			}
+			function F(n) {
+				n <= p.value && ((l.value = []), (e.value = n), c("step-change", e.value));
+			}
+			function $() {
+				return x(this, null, function* () {
+					if (yield k()) {
+						_.value = !0;
+						try {
+							c("complete", w({}, u.value));
+						} finally {
+							_.value = !1;
+						}
+					}
+				});
+			}
+			function D(n) {
+				return n < e.value
+					? "border-brand-600 bg-brand-600 text-white"
+					: n === e.value
+					? "border-brand-600 bg-white text-brand-600"
+					: "border-gray-300 bg-white text-gray-400";
+			}
+			return (
+				a({
+					currentStep: e,
+					formData: u,
+					nextStep: B,
+					prevStep: j,
+					goToStep: F,
+					validateCurrentStep: k,
+				}),
+				(n, f) => (
+					o(),
+					r("div", G, [
+						i("nav", H, [
+							i("ol", I, [
+								(o(!0),
+								r(
+									C,
+									null,
+									E(
+										t.steps,
+										(y, d) => (
+											o(),
+											r(
+												"li",
+												{
+													key: y.id,
+													class: S([
+														"flex items-center",
+														{ "flex-1": d < t.steps.length - 1 },
+													]),
+												},
+												[
+													i(
+														"button",
+														{
+															type: "button",
+															class: S([
+																"flex items-center justify-center w-10 h-10 rounded-full border-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+																D(d),
+															]),
+															disabled: d > p.value,
+															onClick: (oe) => F(d),
+															"aria-current": d === e.value ? "step" : void 0,
+														},
+														[
+															d < e.value
+																? (o(),
+																  r("svg", K, [
+																		...(f[0] ||
+																			(f[0] = [
+																				i(
+																					"path",
+																					{
+																						"fill-rule":
+																							"evenodd",
+																						d: "M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z",
+																						"clip-rule":
+																							"evenodd",
+																					},
+																					null,
+																					-1
+																				),
+																			])),
+																  ]))
+																: (o(),
+																  r(C, { key: 1 }, [O(b(d + 1), 1)], 64)),
+														],
+														10,
+														J
+													),
+													d < t.steps.length - 1
+														? (o(),
+														  r(
+																"div",
+																{
+																	key: 0,
+																	class: S([
+																		"flex-1 h-0.5 mx-3 transition-colors",
+																		d < e.value
+																			? "bg-brand-500"
+																			: "bg-gray-200",
+																	]),
+																},
+																null,
+																2
+														  ))
+														: V("", !0),
+												],
+												2
+											)
+										)
+									),
+									128
+								)),
+							]),
+						]),
+						i("div", Q, [
+							i("h2", R, b(h.value.title), 1),
+							h.value.description ? (o(), r("p", U, b(h.value.description), 1)) : V("", !0),
+						]),
+						i("div", X, [
+							P(n.$slots, `step-${h.value.id}`, {
+								data: u.value,
+								updateField: N,
+								errors: l.value,
+							}),
+						]),
+						l.value.length
+							? (o(),
+							  r("div", Y, [
+									i("ul", Z, [
+										(o(!0),
+										r(
+											C,
+											null,
+											E(l.value, (y) => (o(), r("li", { key: y }, b(y), 1))),
+											128
+										)),
+									]),
+							  ]))
+							: V("", !0),
+						i("div", ee, [
+							e.value > 0
+								? (o(),
+								  r(
+										"button",
+										{
+											key: 0,
+											type: "button",
+											class: "px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+											onClick: j,
+										},
+										" Back "
+								  ))
+								: (o(), r("div", te)),
+							i("div", ae, [
+								i("span", se, " Step " + b(e.value + 1) + " of " + b(t.steps.length), 1),
+								e.value < t.steps.length - 1
+									? (o(),
+									  r(
+											"button",
+											{
+												key: 0,
+												type: "button",
+												class: "px-6 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+												disabled: v.value,
+												onClick: B,
+											},
+											" Continue ",
+											8,
+											le
+									  ))
+									: (o(),
+									  r(
+											"button",
+											{
+												key: 1,
+												type: "button",
+												class: "px-6 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+												disabled: _.value,
+												onClick: $,
+											},
+											b(t.submitLabel),
+											9,
+											ne
+									  )),
+							]),
+						]),
+					])
+				)
+			);
+		},
+	};
+export { ue as _ };
+//# sourceMappingURL=Wizard-BzvB1Oht.js.map

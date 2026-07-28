@@ -22,6 +22,12 @@ const routes = [
 		meta: { requiresAuth: true },
 	},
 	{
+		path: "/service-portal/km-corrections",
+		name: "KmCorrections",
+		component: () => import("./pages/KmCorrections.vue"),
+		meta: { requiresAuth: true },
+	},
+	{
 		path: "/service-portal/my-fleet",
 		name: "CustomerDashboard",
 		component: () => import("./pages/CustomerDashboard.vue"),

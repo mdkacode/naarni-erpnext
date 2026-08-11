@@ -1,0 +1,20 @@
+{
+  "name": "Process Allowed Role",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "A role granted access to a Process Definition. Used twice on the parent: `allowed_roles` (who may run it) and `author_roles` (who may edit and publish it).",
+  "fields": [
+    {
+      "fieldname": "role",
+      "label": "Role",
+      "fieldtype": "Link",
+      "options": "Role",
+      "reqd": 1,
+      "in_list_view": 1
+    }
+  ],
+  "permissions": []
+}

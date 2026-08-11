@@ -1,0 +1,174 @@
+{
+  "name": "Process Run Result",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "One answered step. The step's label, type and criticality are snapshotted here at the moment of answering, so editing the template later can never rewrite history — the certificate you print in two years still reads what the operator actually saw.",
+  "fields": [
+    {
+      "fieldname": "step_code",
+      "label": "Step Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "stage",
+      "label": "Stage",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "display_no",
+      "label": "No.",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section",
+      "label": "Section",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "label",
+      "label": "Check",
+      "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "description": "Snapshot of the step label as it was when answered."
+    },
+    {
+      "fieldname": "response_type",
+      "label": "Response Type",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "method_label",
+      "label": "Method",
+      "fieldtype": "Data"
+    },
+
+    {
+      "fieldname": "column_break_answer",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "response",
+      "label": "Response",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "value_numeric",
+      "label": "Value",
+      "fieldtype": "Float",
+      "precision": "4",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "value_text",
+      "label": "Text Value",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "unit",
+      "label": "Unit",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "spec_summary",
+      "label": "Spec",
+      "fieldtype": "Data",
+      "description": "Human-readable band as it applied at answer time, e.g. '10 ± 1 Nm (9.0–11.0)'."
+    },
+
+    {
+      "fieldname": "sb_outcome",
+      "label": "Outcome",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "is_pass",
+      "label": "Pass",
+      "fieldtype": "Check",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "is_deviation",
+      "label": "Deviation",
+      "fieldtype": "Check",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "is_critical",
+      "label": "Critical",
+      "fieldtype": "Check",
+      "description": "Snapshot of the step's criticality at answer time."
+    },
+    {
+      "fieldname": "is_skipped",
+      "label": "Skipped",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "skip_reason",
+      "label": "Skip Reason",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "remark",
+      "label": "Remark",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "column_break_score",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "weight",
+      "label": "Weight",
+      "fieldtype": "Float",
+      "precision": "2"
+    },
+    {
+      "fieldname": "score_earned",
+      "label": "Score Earned",
+      "fieldtype": "Float",
+      "precision": "2",
+      "read_only": 1
+    },
+    {
+      "fieldname": "answered_by",
+      "label": "Answered By",
+      "fieldtype": "Link",
+      "options": "User"
+    },
+    {
+      "fieldname": "answered_at",
+      "label": "Answered At",
+      "fieldtype": "Datetime"
+    },
+    {
+      "fieldname": "seconds_spent",
+      "label": "Seconds Spent",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "entry_flag",
+      "label": "Entry Flag",
+      "fieldtype": "Select",
+      "options": "Normal\nFast Entry\nLate Entry",
+      "default": "Normal",
+      "read_only": 1,
+      "description": "Advisory only. A section finished implausibly fast is noted on the report and never blocked — the goal is visible truth, not policing at the point of work."
+    },
+    {
+      "fieldname": "photo_count",
+      "label": "Photos",
+      "fieldtype": "Int",
+      "read_only": 1
+    }
+  ],
+  "permissions": []
+}

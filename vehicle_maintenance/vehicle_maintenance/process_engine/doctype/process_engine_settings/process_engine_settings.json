@@ -1,0 +1,128 @@
+{
+  "name": "Process Engine Settings",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "issingle": 1,
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "description": "Engine-wide defaults. Anything set here can be overridden per process or per step.",
+  "fields": [
+    {
+      "fieldname": "sb_defaults",
+      "label": "Defaults",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "default_brand",
+      "label": "Default Report Brand",
+      "fieldtype": "Link",
+      "options": "Report Brand Profile"
+    },
+    {
+      "fieldname": "default_alt_language",
+      "label": "Alternate Language Label",
+      "fieldtype": "Data",
+      "default": "हिंदी",
+      "description": "What the language toggle in the app is called. Content itself lives in the *_alt fields on stages and steps."
+    },
+    {
+      "fieldname": "column_break_photo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "photo_max_edge_px",
+      "label": "Photo Max Edge (px)",
+      "fieldtype": "Int",
+      "default": "1600"
+    },
+    {
+      "fieldname": "photo_quality",
+      "label": "Photo JPEG Quality",
+      "fieldtype": "Int",
+      "default": "85"
+    },
+    {
+      "fieldname": "offline_retention_days",
+      "label": "Offline Retention (days)",
+      "fieldtype": "Int",
+      "default": "30",
+      "description": "How long the app keeps a synced run on the device before clearing it."
+    },
+
+    {
+      "fieldname": "sb_geofence",
+      "label": "Geofence",
+      "fieldtype": "Section Break",
+      "description": "Advisory only. Geofence status is recorded on each photo and shown on the report; it never blocks a capture, because indoor GPS is unreliable and a blocked operator finds a second phone."
+    },
+    {
+      "fieldname": "geofence_enabled",
+      "label": "Evaluate Geofence",
+      "fieldtype": "Check",
+      "default": "0"
+    },
+    {
+      "fieldname": "geofence_radius_m",
+      "label": "Geofence Radius (m)",
+      "fieldtype": "Int",
+      "default": "500",
+      "depends_on": "geofence_enabled"
+    },
+    {
+      "fieldname": "column_break_geo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "plant_latitude",
+      "label": "Plant Latitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "depends_on": "geofence_enabled"
+    },
+    {
+      "fieldname": "plant_longitude",
+      "label": "Plant Longitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "depends_on": "geofence_enabled"
+    },
+
+    {
+      "fieldname": "sb_advisory",
+      "label": "Entry Advisories",
+      "fieldtype": "Section Break",
+      "description": "Flags surfaced on the report so implausible data entry is visible. Never blocking — the aim is that the truth is easy to record and dishonesty is easy to see, not that the operator is policed at the point of work."
+    },
+    {
+      "fieldname": "fast_entry_threshold_pct",
+      "label": "Fast Entry Threshold (%)",
+      "fieldtype": "Percent",
+      "default": "25",
+      "description": "A step answered in less than this share of its expected_seconds is flagged Fast Entry."
+    },
+    {
+      "fieldname": "late_entry_threshold_minutes",
+      "label": "Late Entry Threshold (min)",
+      "fieldtype": "Int",
+      "default": "120",
+      "description": "A photo received this long after its capture time is flagged Late Entry."
+    },
+    {
+      "fieldname": "column_break_app",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "app_step_type_capability",
+      "label": "Current App Capability",
+      "fieldtype": "Int",
+      "default": "1",
+      "description": "The step-type capability level the latest released app supports. Publishing a process above this warns the author that older installs will render some steps read-only."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Process Author", "read": 1, "write": 1},
+    {"role": "Process Operator", "read": 1},
+    {"role": "Process Verifier", "read": 1}
+  ]
+}

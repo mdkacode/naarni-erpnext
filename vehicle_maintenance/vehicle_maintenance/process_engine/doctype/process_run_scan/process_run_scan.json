@@ -1,0 +1,114 @@
+{
+  "name": "Process Run Scan",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "One captured component identity — the genealogy row. This is what makes 'which packs contain module batch X' answerable in a single query, turning a field failure from 'quarantine the fleet' into 'quarantine nine packs'. The raw payload is always kept, even when no pattern matched.",
+  "fields": [
+    {
+      "fieldname": "entity_type",
+      "label": "Entity Type",
+      "fieldtype": "Link",
+      "options": "Process Entity Type",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "step_code",
+      "label": "Step",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "position_index",
+      "label": "Position",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "description": "Which one of the expected count this is — module 1, 2 or 3."
+    },
+    {
+      "fieldname": "serial_no",
+      "label": "Serial No",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "mfg_date",
+      "label": "Manufacturing Date",
+      "fieldtype": "Date",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "module_number",
+      "label": "Module Number",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "batch_ref",
+      "label": "Batch Reference",
+      "fieldtype": "Data",
+      "search_index": 1,
+      "description": "Batch-level containment: one extra field buys what 48 per-cell scans would."
+    },
+    {
+      "fieldname": "revision",
+      "label": "Revision",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "column_break_raw",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "raw_payload",
+      "label": "Raw Payload",
+      "fieldtype": "Small Text",
+      "description": "Stored verbatim regardless of whether a pattern matched."
+    },
+    {
+      "fieldname": "is_manual_entry",
+      "label": "Manual Entry",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "description": "Typed rather than scanned. Always permitted — a scan is never mandatory."
+    },
+    {
+      "fieldname": "parse_failed",
+      "label": "Parse Failed",
+      "fieldtype": "Check",
+      "description": "No configured pattern matched. Add one on the entity type and re-parse; the payload was not lost."
+    },
+    {
+      "fieldname": "duplicate_of",
+      "label": "Duplicate Of",
+      "fieldtype": "Data",
+      "description": "A run that already recorded this serial. Recorded per the entity type's duplicate policy."
+    },
+    {
+      "fieldname": "scanned_by",
+      "label": "Scanned By",
+      "fieldtype": "Link",
+      "options": "User"
+    },
+    {
+      "fieldname": "scanned_at",
+      "label": "Scanned At",
+      "fieldtype": "Datetime"
+    },
+    {
+      "fieldname": "latitude",
+      "label": "Latitude",
+      "fieldtype": "Float",
+      "precision": "6"
+    },
+    {
+      "fieldname": "longitude",
+      "label": "Longitude",
+      "fieldtype": "Float",
+      "precision": "6"
+    }
+  ],
+  "permissions": []
+}

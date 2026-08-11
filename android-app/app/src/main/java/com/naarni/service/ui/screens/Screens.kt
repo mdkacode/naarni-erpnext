@@ -94,6 +94,7 @@ fun HomeScreen(
     onCreateJobCard: () -> Unit,
     onOpenNotifications: () -> Unit = {},
     onOpenJobCard: (String) -> Unit = {},
+    onOpenDuty: () -> Unit = {},
 ) {
     var items by remember { mutableStateOf<List<JobCardListItem>>(emptyList()) }
     var unread by remember { mutableStateOf(0) }
@@ -135,6 +136,11 @@ fun HomeScreen(
                     }
                 }
             }
+
+        // Duty check-in. First on the page because it is the first thing that
+        // happens on arriving at the depot, and it renders nothing at all for
+        // roles that cannot punch.
+        DutyCard(vm, onOpenDuty = onOpenDuty)
 
         // Stats
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -1,0 +1,105 @@
+{
+  "name": "Duty Roster",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "naming_series:",
+  "naming_rule": "By \"Naming Series\" field",
+  "track_changes": 1,
+  "description": "A depot's duty plan for a date range, authored by the Depot Manager. Draft rosters are invisible to engineers; publishing is what makes the shifts appear in the app.",
+  "fields": [
+    {
+      "fieldname": "naming_series",
+      "label": "Series",
+      "fieldtype": "Select",
+      "options": "ROS-.YYYY.-",
+      "default": "ROS-.YYYY.-",
+      "hidden": 1,
+      "no_copy": 1,
+      "print_hide": 1
+    },
+    {
+      "fieldname": "depot",
+      "label": "Depot",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "from_date",
+      "label": "From Date",
+      "fieldtype": "Date",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "to_date",
+      "label": "To Date",
+      "fieldtype": "Date",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "col_break_status",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Draft\nPublished\nArchived",
+      "default": "Draft",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Only a Published roster reaches the engineers' phones."
+    },
+    {
+      "fieldname": "published_by",
+      "label": "Published By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "published_at",
+      "label": "Published At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sec_entries",
+      "label": "Duty Days",
+      "fieldtype": "Section Break",
+      "description": "Use <b>Fill Roster</b> in the toolbar to generate these from a shift pattern instead of typing every row."
+    },
+    {
+      "fieldname": "entries",
+      "label": "Entries",
+      "fieldtype": "Table",
+      "options": "Duty Roster Entry"
+    },
+    {
+      "fieldname": "sec_notes",
+      "label": "Notes",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "notes",
+      "label": "Notes",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1}
+  ],
+  "sort_field": "from_date",
+  "sort_order": "DESC",
+  "title_field": "depot"
+}

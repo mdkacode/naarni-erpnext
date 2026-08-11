@@ -1,0 +1,245 @@
+{
+  "name": "Duty Attendance",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "naming_series:",
+  "naming_rule": "By \"Naming Series\" field",
+  "track_changes": 1,
+  "description": "One row per engineer per day: what they were rostered for, when they actually checked in and out, and where. Derived from Duty Punch — every read-only field here is recomputed from the punches, so correcting a punch corrects the day.",
+  "fields": [
+    {
+      "fieldname": "naming_series",
+      "label": "Series",
+      "fieldtype": "Select",
+      "options": "ATT-.YYYY.-",
+      "default": "ATT-.YYYY.-",
+      "hidden": 1,
+      "no_copy": 1,
+      "print_hide": 1
+    },
+    {
+      "fieldname": "attendance_date",
+      "label": "Date",
+      "fieldtype": "Date",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "user",
+      "label": "Engineer",
+      "fieldtype": "Link",
+      "options": "User",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "employee_name",
+      "label": "Name",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "depot",
+      "label": "Depot",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "col_break_status",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Not Started\nOn Duty\nPresent\nHalf Day\nAbsent\nWeek Off",
+      "default": "Not Started",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "read_only": 1
+    },
+    {
+      "fieldname": "roster",
+      "label": "Roster",
+      "fieldtype": "Link",
+      "options": "Duty Roster",
+      "read_only": 1
+    },
+    {
+      "fieldname": "shift",
+      "label": "Shift",
+      "fieldtype": "Link",
+      "options": "Duty Shift",
+      "read_only": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "planned_start",
+      "label": "Planned Start",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "planned_end",
+      "label": "Planned End",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sec_actual",
+      "label": "Actual",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "first_check_in",
+      "label": "First Check In",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "last_check_out",
+      "label": "Last Check Out",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "worked_hours",
+      "label": "Worked Hours",
+      "fieldtype": "Float",
+      "precision": "2",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "punch_count",
+      "label": "Punches",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "col_break_late",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "is_late",
+      "label": "Late",
+      "fieldtype": "Check",
+      "read_only": 1
+    },
+    {
+      "fieldname": "late_by_minutes",
+      "label": "Late By (min)",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "early_exit_minutes",
+      "label": "Early Exit (min)",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "outside_geofence",
+      "label": "Outside Depot Geofence",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "description": "Advisory. Set when any punch of the day landed outside the depot radius."
+    },
+    {
+      "fieldname": "sec_location",
+      "label": "Location",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "check_in_latitude",
+      "label": "Check-in Latitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "check_in_longitude",
+      "label": "Check-in Longitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "check_in_maps_link",
+      "label": "Check-in Map",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "col_break_geo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "check_out_latitude",
+      "label": "Check-out Latitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "check_out_longitude",
+      "label": "Check-out Longitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "check_out_maps_link",
+      "label": "Check-out Map",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sec_review",
+      "label": "Review",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "manual_status",
+      "label": "Override Status",
+      "fieldtype": "Select",
+      "options": "\nOn Duty\nPresent\nHalf Day\nAbsent\nWeek Off",
+      "description": "Set by a Depot Manager when the punches do not tell the true story (phone dead, field visit). Survives recomputation."
+    },
+    {
+      "fieldname": "override_reason",
+      "label": "Override Reason",
+      "fieldtype": "Small Text",
+      "depends_on": "manual_status",
+      "mandatory_depends_on": "manual_status"
+    },
+    {
+      "fieldname": "dedup_key",
+      "label": "Dedup Key",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "hidden": 1,
+      "no_copy": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Central Ops", "read": 1, "write": 1},
+    {"role": "N. Maintenance Head", "read": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1}
+  ],
+  "sort_field": "attendance_date",
+  "sort_order": "DESC"
+}

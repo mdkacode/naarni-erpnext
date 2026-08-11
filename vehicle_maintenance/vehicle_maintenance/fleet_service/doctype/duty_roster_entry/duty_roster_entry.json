@@ -1,0 +1,80 @@
+{
+  "name": "Duty Roster Entry",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "description": "One engineer on one date (child of Duty Roster.entries). A week off is a row too, so 'no row' always means 'not rostered' and never 'rostered as off'.",
+  "fields": [
+    {
+      "fieldname": "duty_date",
+      "label": "Date",
+      "fieldtype": "Date",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 2
+    },
+    {
+      "fieldname": "engineer",
+      "label": "Engineer",
+      "fieldtype": "Link",
+      "options": "User",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "engineer_name",
+      "label": "Name",
+      "fieldtype": "Data",
+      "fetch_from": "engineer.full_name",
+      "read_only": 1,
+      "in_list_view": 1,
+      "columns": 2
+    },
+    {
+      "fieldname": "shift",
+      "label": "Shift",
+      "fieldtype": "Link",
+      "options": "Duty Shift",
+      "in_list_view": 1,
+      "columns": 2,
+      "depends_on": "eval:!doc.is_week_off"
+    },
+    {
+      "fieldname": "is_week_off",
+      "label": "Week Off",
+      "fieldtype": "Check",
+      "default": "0",
+      "in_list_view": 1,
+      "columns": 1
+    },
+    {
+      "fieldname": "has_custom_time",
+      "label": "Custom Timing",
+      "fieldtype": "Check",
+      "default": "0",
+      "depends_on": "eval:!doc.is_week_off",
+      "description": "Tick to give this one day its own start and end, different from the shift."
+    },
+    {
+      "fieldname": "start_time",
+      "label": "Start Override",
+      "fieldtype": "Time",
+      "depends_on": "eval:doc.has_custom_time && !doc.is_week_off"
+    },
+    {
+      "fieldname": "end_time",
+      "label": "End Override",
+      "fieldtype": "Time",
+      "depends_on": "eval:doc.has_custom_time && !doc.is_week_off"
+    },
+    {
+      "fieldname": "remarks",
+      "label": "Remarks",
+      "fieldtype": "Data",
+      "description": "Shown to the engineer on their duty card, e.g. 'Cover for Ravi'."
+    }
+  ],
+  "permissions": []
+}

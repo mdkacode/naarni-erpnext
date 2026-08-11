@@ -49,6 +49,35 @@
       "fieldtype": "Small Text"
     },
     {
+      "fieldname": "sec_geo",
+      "label": "Location & Geofence",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "description": "Used to judge whether a duty check-in happened at the depot. Leave the coordinates blank and this depot is never geofenced — check-ins still work, they simply carry no distance."
+    },
+    {
+      "fieldname": "latitude",
+      "label": "Latitude",
+      "fieldtype": "Float",
+      "precision": "6"
+    },
+    {
+      "fieldname": "longitude",
+      "label": "Longitude",
+      "fieldtype": "Float",
+      "precision": "6"
+    },
+    {
+      "fieldname": "col_break_geo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "geofence_radius_m",
+      "label": "Geofence Radius (m)",
+      "fieldtype": "Int",
+      "description": "Leave 0 to use the default in Roster Settings."
+    },
+    {
       "fieldname": "sec_engineers",
       "label": "Service Engineers",
       "fieldtype": "Section Break",

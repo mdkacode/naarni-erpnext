@@ -1,0 +1,115 @@
+{
+  "name": "Roster Settings",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "issingle": 1,
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "description": "Policy for duty rosters and check-in. Every gate here defaults to advisory: the aim is that the truth is easy to record and a discrepancy is easy to see, not that an engineer standing at the gate with no GPS fix cannot start work.",
+  "fields": [
+    {
+      "fieldname": "sb_who",
+      "label": "Who Can Check In",
+      "fieldtype": "Section Break",
+      "description": "Anyone holding one of these roles gets the duty card in the app. System Manager always can."
+    },
+    {
+      "fieldname": "punch_roles",
+      "label": "Roles",
+      "fieldtype": "Table",
+      "options": "Roster Punch Role"
+    },
+    {
+      "fieldname": "allow_punch_without_roster",
+      "label": "Allow Check-in Without a Rostered Shift",
+      "fieldtype": "Check",
+      "default": "1",
+      "description": "On: an unrostered engineer can still check in and the day is recorded as unplanned. Off: only rostered engineers may check in — turn this on only once every depot reliably publishes its roster."
+    },
+    {
+      "fieldname": "sb_geofence",
+      "label": "Geofence",
+      "fieldtype": "Section Break",
+      "description": "Set the depot's coordinates on the Depot record. Depots with no coordinates are never geofenced."
+    },
+    {
+      "fieldname": "geofence_mode",
+      "label": "Geofence Mode",
+      "fieldtype": "Select",
+      "options": "Off\nWarn\nBlock",
+      "default": "Warn",
+      "description": "Warn records the distance and flags the punch. Block refuses it — expect gate-side GPS failures if you use this."
+    },
+    {
+      "fieldname": "default_radius_m",
+      "label": "Default Radius (m)",
+      "fieldtype": "Int",
+      "default": "300",
+      "description": "Used when a depot has no radius of its own."
+    },
+    {
+      "fieldname": "col_break_geo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "require_location",
+      "label": "Require a Location Fix",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Off (recommended): a punch with no GPS fix is accepted and marked 'Location not captured'."
+    },
+    {
+      "fieldname": "require_photo",
+      "label": "Ask for a Photo on Check-in",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Prompts for a stamped photo. Never blocking — the engineer can skip it."
+    },
+    {
+      "fieldname": "sb_day",
+      "label": "Day Close",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "auto_checkout_enabled",
+      "label": "Auto Check-out Forgotten Punches",
+      "fieldtype": "Check",
+      "default": "1",
+      "description": "Without this, a forgotten check-out leaves someone 'On Duty' on the board for days."
+    },
+    {
+      "fieldname": "auto_checkout_after_hours",
+      "label": "Auto Check-out After (hours)",
+      "fieldtype": "Float",
+      "default": "14",
+      "precision": "1",
+      "depends_on": "auto_checkout_enabled",
+      "description": "Measured from the check-in. The punch is written with source = Auto so it is never mistaken for the engineer's own."
+    },
+    {
+      "fieldname": "col_break_day",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "auto_absent_enabled",
+      "label": "Mark Absent Automatically",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Marks a rostered day with no punches as Absent once the day has passed. Off by default — an absence is a conversation, not a cron job."
+    },
+    {
+      "fieldname": "default_grace_minutes",
+      "label": "Fallback Late Grace (minutes)",
+      "fieldtype": "Int",
+      "default": "15",
+      "description": "Used when the shift does not set its own."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1},
+    {"role": "Central Ops", "read": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1}
+  ]
+}

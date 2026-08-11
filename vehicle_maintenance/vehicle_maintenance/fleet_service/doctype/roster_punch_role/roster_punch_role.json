@@ -1,0 +1,19 @@
+{
+  "name": "Roster Punch Role",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "description": "A role allowed to check in and out (child of Roster Settings.punch_roles).",
+  "fields": [
+    {
+      "fieldname": "role",
+      "label": "Role",
+      "fieldtype": "Link",
+      "options": "Role",
+      "reqd": 1,
+      "in_list_view": 1
+    }
+  ],
+  "permissions": []
+}

@@ -27,6 +27,7 @@ import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.screens.AlertDetailScreen
 import com.naarni.service.ui.screens.AlertsScreen
 import com.naarni.service.ui.screens.CreateJobCardScreen
+import com.naarni.service.ui.screens.DutyScreen
 import com.naarni.service.ui.screens.TicketDetailScreen
 import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardDetailScreen
@@ -116,8 +117,14 @@ fun MainShell(vm: AppViewModel) {
                     onCreateJobCard = { nav.navigate("create") },
                     onOpenNotifications = { nav.navigate("notifications") },
                     onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                    onOpenDuty = { nav.navigate("duty") },
                 )
             }
+
+            // Roster + attendance history. Reached from the duty card rather than
+            // a tab: checking in is a daily action, reviewing the roster is weekly,
+            // and the nav bar is already at its useful limit.
+            composable("duty") { DutyScreen(vm, onBack = { nav.popBackStack() }) }
             composable("notifications") {
                 NotificationsScreen(
                     vm,

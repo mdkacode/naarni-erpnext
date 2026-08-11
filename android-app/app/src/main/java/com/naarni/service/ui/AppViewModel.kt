@@ -30,6 +30,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val auth = container.authRepo
     val jobCards = container.jobCardRepo
 
+    /** Duty roster & check-in / check-out. */
+    val roster = container.rosterRepo
+
     var ui by mutableStateOf(AppUiState(loggedIn = session.isLoggedIn))
         private set
 

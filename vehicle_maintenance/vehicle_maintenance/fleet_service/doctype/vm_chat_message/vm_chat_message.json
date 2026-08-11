@@ -1,0 +1,182 @@
+{
+  "name": "VM Chat Message",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "hash",
+  "track_changes": 0,
+  "description": "One chat message. Identity is `client_id` (device-minted UUID, idempotency key); ordering is `seq` (per-room monotonic, server-allocated). Never order by creation/modified — they collide within a millisecond and skew across app servers.",
+  "fields": [
+    {
+      "fieldname": "room",
+      "label": "Room",
+      "fieldtype": "Link",
+      "options": "VM Chat Room",
+      "reqd": 1,
+      "search_index": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "seq",
+      "label": "Seq",
+      "fieldtype": "Int",
+      "reqd": 1,
+      "read_only": 1,
+      "in_list_view": 1,
+      "description": "Per-room monotonic. Allocated under a row lock; unique together with room."
+    },
+    {
+      "fieldname": "client_id",
+      "label": "Client ID",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "length": 64,
+      "description": "Device-minted UUID. Makes send_message idempotent across retries."
+    },
+    {
+      "fieldname": "author",
+      "label": "Author",
+      "fieldtype": "Link",
+      "options": "User",
+      "reqd": 1,
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_msg_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "kind",
+      "label": "Kind",
+      "fieldtype": "Select",
+      "options": "text\nimage\nvideo\naudio\nsystem",
+      "default": "text",
+      "reqd": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "reply_to",
+      "label": "Reply To",
+      "fieldtype": "Link",
+      "options": "VM Chat Message"
+    },
+    {
+      "fieldname": "deleted",
+      "label": "Deleted",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Soft delete. The row stays so seq never has a hole; the body is blanked."
+    },
+    {
+      "fieldname": "section_body",
+      "label": "Body",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "body",
+      "label": "Body",
+      "fieldtype": "Text"
+    },
+    {
+      "fieldname": "section_attachment",
+      "label": "Attachment",
+      "fieldtype": "Section Break",
+      "depends_on": "eval:doc.kind && doc.kind != 'text' && doc.kind != 'system'"
+    },
+    {
+      "fieldname": "file_url",
+      "label": "File URL",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "description": "Always a private file. Chat attachments carry EXIF GPS; a public URL would leak it."
+    },
+    {
+      "fieldname": "file_name",
+      "label": "File Name",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_msg_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "file_size",
+      "label": "File Size (bytes)",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "duration_ms",
+      "label": "Duration (ms)",
+      "fieldtype": "Int",
+      "read_only": 1,
+      "description": "Audio/video length, so the client can render a waveform without downloading."
+    },
+    {
+      "fieldname": "transcript",
+      "label": "Transcript",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "description": "Reserved for speech-to-text on voice notes. Populated by an external provider; empty until that is wired."
+    },
+    {
+      "fieldname": "section_context",
+      "label": "Context",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "vehicle",
+      "label": "Vehicle",
+      "fieldtype": "Link",
+      "options": "Vehicle",
+      "description": "Set by the long-press 'tag vehicle' action."
+    },
+    {
+      "fieldname": "ticket",
+      "label": "Service Ticket",
+      "fieldtype": "Link",
+      "options": "Service Ticket"
+    },
+    {
+      "fieldname": "column_break_msg_3",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "geotagged",
+      "label": "Geotagged",
+      "fieldtype": "Check",
+      "default": "0",
+      "read_only": 1,
+      "description": "False when the device had no location fix or the user denied permission. Never a hard failure."
+    },
+    {
+      "fieldname": "lat",
+      "label": "Latitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "lon",
+      "label": "Longitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1},
+    {"role": "Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Aftersales Eng", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "seq",
+  "sort_order": "DESC"
+}

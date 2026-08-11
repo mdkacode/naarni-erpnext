@@ -1,0 +1,106 @@
+{
+  "name": "VM Chat Upload",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "hash",
+  "track_changes": 0,
+  "description": "Staging record for one resumable chunked upload. Exists because Frappe's core upload_file reads the whole stream into memory (handler.py), which cannot carry a 500 MB video. The docname is the unguessable upload_id.",
+  "fields": [
+    {
+      "fieldname": "room",
+      "label": "Room",
+      "fieldtype": "Link",
+      "options": "VM Chat Room",
+      "reqd": 1,
+      "search_index": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "file_name",
+      "label": "File Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "content_type",
+      "label": "Content Type",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_up_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "total_size",
+      "label": "Total Size (bytes)",
+      "fieldtype": "Int",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "bytes_received",
+      "label": "Bytes Received",
+      "fieldtype": "Int",
+      "default": "0",
+      "in_list_view": 1,
+      "description": "Authoritative resume point. The client asks for this after process death rather than trusting its own bookkeeping."
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Staging\nCommitted\nAborted",
+      "default": "Staging",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "section_result",
+      "label": "Result",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "sha256",
+      "label": "SHA-256",
+      "fieldtype": "Data",
+      "length": 64,
+      "description": "Client-supplied digest of the whole file, verified at commit. Guards against a chunk silently truncated by a proxy."
+    },
+    {
+      "fieldname": "file_doc",
+      "label": "File",
+      "fieldtype": "Link",
+      "options": "File",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_up_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "message",
+      "label": "Message",
+      "fieldtype": "Link",
+      "options": "VM Chat Message",
+      "read_only": 1
+    },
+    {
+      "fieldname": "error",
+      "label": "Error",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC"
+}

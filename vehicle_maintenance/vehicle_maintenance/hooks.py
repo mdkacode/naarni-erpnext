@@ -18,6 +18,20 @@ doc_events: dict = {
 	},
 }
 
+# Chat access control. DocType role permissions decide who may use chat at all;
+# these decide *which rooms* — membership, not role, is the real boundary. Wiring
+# both hooks means the generic /api/resource endpoints are covered too, not just
+# our own whitelisted methods.
+permission_query_conditions = {
+	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.get_permission_query_conditions",
+	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.get_permission_query_conditions",
+}
+
+has_permission = {
+	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.has_permission",
+	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.has_permission",
+}
+
 # Idempotent seeders run after every migrate. Each function checks existence
 # before inserting, so this is safe to invoke repeatedly.
 after_migrate = [
@@ -36,6 +50,8 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_6.add_alert_event_indexes.execute",
 	"vehicle_maintenance.patches.v1_6.seed_km_sync_service_user.execute",
 	"vehicle_maintenance.patches.v1_6.seed_km_report_workflow.execute",
+	"vehicle_maintenance.patches.v1_7.seed_process_engine.execute",
+	"vehicle_maintenance.patches.v1_7.seed_battery_qc_process.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -53,6 +69,15 @@ APP_ROLES = [
 	# Two-level internal checkers for the Monthly KM Report before it emails the customer.
 	"KM Checker L1",
 	"KM Checker L2",
+	# Process engine. Author is the privileged one — a bad publish reaches every
+	# phone on the floor — so it is deliberately separate from running a process.
+	"Process Author",
+	"Process Operator",
+	"Process Verifier",
+	"Process Viewer",
+	# Owns the Battery Assembly QC process specifically: holds Process Author but
+	# is listed in that process's author_roles, so it cannot edit Vehicle PDI.
+	"Battery QA Admin",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.
@@ -111,6 +136,8 @@ fixtures = [
 doctype_js = {
 	"Job Card": "public/js/job_card.js",
 	"Alert Type": "public/js/alert_type.js",
+	"Process Definition": "public/js/process_definition.js",
+	"Process Entity Type": "public/js/process_entity_type.js",
 }
 
 # Scheduled tasks
@@ -168,6 +195,11 @@ scheduler_events = {
 		"vehicle_maintenance.fleet_service.tasks.monitor_feedback_requests",
 		# Expire KM report public tokens once their 7-day window passes.
 		"vehicle_maintenance.fleet_service.tasks.expire_km_report_snapshots",
+	],
+	"daily": [
+		# Sweep chat uploads nobody finished. Without this every abandoned
+		# 400 MB video stays in private/files/chat_staging forever.
+		"vehicle_maintenance.api.chat_upload.cleanup_stale_uploads",
 	],
 }
 

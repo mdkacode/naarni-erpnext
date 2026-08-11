@@ -14,7 +14,10 @@ import com.naarni.service.core.chat.FrappeSocket
 import com.naarni.service.data.chat.ChatMessageEntity
 import com.naarni.service.data.chat.ChatRoomEntity
 import com.naarni.service.data.chat.SendStatus
+import com.naarni.service.data.dto.ChatUserDto
 import com.naarni.service.data.repo.ChatRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -179,8 +182,48 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // -------------------------------------------------------- new conversation
+
+    var directory by mutableStateOf<List<ChatUserDto>>(emptyList())
+        private set
+
+    var searching by mutableStateOf(false)
+        private set
+
+    private var searchJob: Job? = null
+
+    /**
+     * Staff search, debounced.
+     *
+     * Cancelling the in-flight job on each keystroke matters more than usual
+     * here: field handsets are on slow links, and without it a fast typist
+     * queues six requests whose responses can land out of order and leave the
+     * list showing results for a prefix they already deleted.
+     */
+    fun searchUsers(query: String) {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            searching = true
+            directory = runCatching { repo.searchUsers(query) }.getOrDefault(emptyList())
+            searching = false
+        }
+    }
+
+    /** Open (or create) a DM and hand the room name back for navigation. */
+    fun openDirect(user: String, onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            runCatching { repo.openDirect(user) }
+                .onSuccess { onReady(it) }
+        }
+    }
+
     fun setMuted(room: String, muted: Boolean) {
         viewModelScope.launch { runCatching { repo.setMuted(room, muted) } }
+    }
+
+    private companion object {
+        const val SEARCH_DEBOUNCE_MS = 250L
     }
 
     fun isMine(m: ChatMessageEntity) = m.author == me

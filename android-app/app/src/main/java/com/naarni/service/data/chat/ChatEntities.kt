@@ -52,6 +52,9 @@ data class ChatRoomEntity(
     val lastMessagePreview: String? = null,
     val lastMessageAt: String? = null,
     val memberCount: Int = 0,
+    /** Direct rooms only — resolved per-viewer by the server. */
+    val peer: String? = null,
+    val peerImage: String? = null,
 )
 
 @Entity(

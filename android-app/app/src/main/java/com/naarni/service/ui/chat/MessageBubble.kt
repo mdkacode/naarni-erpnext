@@ -91,20 +91,26 @@ fun MessageBubble(
         RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp)
     }
 
-    val selectionTint by animateFloatAsState(if (isSelected) 1f else 0f, label = "selection")
+    // No animateFloatAsState here on purpose. It allocates an animation object
+    // per row, and in a thread of a few hundred messages that is a measurable
+    // amount of the frame budget for an effect nobody sees.
+    val selectionBg = if (isSelected) scheme.primary.copy(alpha = 0.10f) else Color.Transparent
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(scheme.primary.copy(alpha = 0.10f * selectionTint))
+            .background(selectionBg)
             .padding(horizontal = 10.dp, vertical = 1.dp),
         contentAlignment = if (isMine) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Surface(
             color = bubbleColor,
             shape = shape,
-            tonalElevation = if (isMine) 0.dp else 1.dp,
-            shadowElevation = 0.5.dp,
+            // Both elevations are zero deliberately: a shadow is a separate
+            // render pass per row, and WhatsApp's bubbles are flat anyway. The
+            // bubble reads against the background on colour alone.
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
             modifier = Modifier.widthIn(max = 300.dp),
         ) {
             Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
@@ -142,7 +148,10 @@ fun MessageBubble(
                 }
 
                 Spacer(Modifier.height(3.dp))
-                MetaRow(message, isMine, textColor, onRetry)
+                // align(End) rather than fillMaxWidth: filling stretches the
+                // bubble to its max width even for a two-letter message, which
+                // is the single most un-WhatsApp-like thing a bubble can do.
+                MetaRow(message, isMine, textColor, onRetry, Modifier.align(Alignment.End))
             }
         }
     }
@@ -155,10 +164,11 @@ private fun MetaRow(
     isMine: Boolean,
     textColor: Color,
     onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val muted = textColor.copy(alpha = 0.55f)
     Row(
-        Modifier.fillMaxWidth(),
+        modifier,
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {

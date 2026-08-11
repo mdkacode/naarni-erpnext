@@ -15,6 +15,7 @@ import com.naarni.service.data.chat.SendStatus
 import com.naarni.service.data.chat.previewOf
 import com.naarni.service.data.dto.ChatMessageDto
 import com.naarni.service.data.dto.ChatRoomDto
+import com.naarni.service.data.dto.ChatUserDto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -286,6 +287,21 @@ class ChatRepository(
         runCatching { api.chatSetMuted(room, if (muted) 1 else 0) }
     }
 
+    /** Staff directory search. Not cached — it is a live lookup, not app state. */
+    suspend fun searchUsers(query: String): List<ChatUserDto> =
+        api.chatSearchUsers(query).payload().users
+
+    /**
+     * Open (or create) the one-to-one thread with [user] and make sure it is in
+     * Room before the caller navigates, so the thread screen never opens onto a
+     * room the local database has not heard of.
+     */
+    suspend fun openDirect(user: String): String {
+        val room = api.chatGetOrCreateDirect(user).payload().room
+        runCatching { refreshRooms() }
+        return room
+    }
+
     suspend fun outbox(): List<ChatMessageEntity> = dao.outbox()
 
     /** Re-arm a failed send. Safe because the server is idempotent on client_id. */
@@ -311,6 +327,8 @@ class ChatRepository(
         lastMessagePreview = last_message_preview,
         lastMessageAt = last_message_at,
         memberCount = member_count,
+        peer = peer,
+        peerImage = peer_image,
     )
 
     private fun ChatMessageDto.toEntity() = ChatMessageEntity(

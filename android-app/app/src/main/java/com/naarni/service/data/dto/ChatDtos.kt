@@ -26,7 +26,24 @@ data class ChatRoomDto(
     val last_message_preview: String? = null,
     val last_message_at: String? = null,
     val member_count: Int = 0,
+    /** Direct rooms only: the other participant, resolved per-viewer. */
+    val peer: String? = null,
+    val peer_image: String? = null,
 )
+
+@Serializable
+data class ChatUserDto(
+    val name: String,
+    val full_name: String? = null,
+    val mobile_no: String? = null,
+    val user_image: String? = null,
+)
+
+@Serializable
+data class UsersPayload(val users: List<ChatUserDto> = emptyList())
+
+@Serializable
+data class DirectRoomPayload(val room: String, val created: Boolean = false)
 
 @Serializable
 data class ChatMessageDto(

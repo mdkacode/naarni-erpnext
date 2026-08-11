@@ -10,6 +10,7 @@ membership isolation, and resumable-upload offset discipline.
 
 import hashlib
 import io
+import random
 import types
 
 import frappe
@@ -403,3 +404,88 @@ class TestChatUpload(ChatTestBase):
 		file_doc = frappe.get_last_doc("File", filters={"attached_to_doctype": "VM Chat Room"})
 		self.assertEqual(file_doc.is_private, 1)
 		self.assertEqual(file_doc.attached_to_name, self.room)
+
+
+class TestChatDirectMessages(ChatTestBase):
+	def test_direct_room_is_created_once(self):
+		"""Two calls must not leave a user with two parallel DM threads."""
+		# A user nobody else in this suite has messaged, so the assertion holds
+		# regardless of the order the tests happen to run in.
+		suffix = "".join(random.choices("0123456789", k=8))
+		fresh = self._ensure_user(
+			f"chat-dm-{suffix}@test.localhost",
+			f"99{suffix}",  # User.validate requires 10 digits
+			["Technician"],
+		)
+		frappe.set_user(self.alice)
+		first = chat.get_or_create_direct(user=fresh)["data"]
+		second = chat.get_or_create_direct(user=fresh)["data"]
+		self.assertTrue(first["created"])
+		self.assertFalse(second["created"])
+		self.assertEqual(first["room"], second["room"])
+
+	def test_direct_room_is_symmetric(self):
+		"""Whoever opens it second must land in the same thread."""
+		frappe.set_user(self.alice)
+		mine = chat.get_or_create_direct(user=self.mallory)["data"]["room"]
+		frappe.set_user(self.mallory)
+		theirs = chat.get_or_create_direct(user=self.alice)["data"]["room"]
+		self.assertEqual(mine, theirs)
+
+	def test_group_containing_both_is_not_their_dm(self):
+		"""self.room already has alice+bob as a Group; it must not be reused."""
+		frappe.set_user(self.alice)
+		dm = chat.get_or_create_direct(user=self.bob)["data"]["room"]
+		self.assertNotEqual(dm, self.room)
+
+	def test_cannot_dm_yourself(self):
+		frappe.set_user(self.alice)
+		with self.assertRaises(frappe.ValidationError):
+			chat.get_or_create_direct(user=self.alice)
+
+	def test_both_parties_can_message_immediately(self):
+		frappe.set_user(self.alice)
+		room = chat.get_or_create_direct(user=self.bob)["data"]["room"]
+		frappe.set_user(self.bob)
+		res = chat.send_message(room=room, client_id=frappe.generate_hash(length=20), body="hi")
+		self.assertEqual(res["data"]["message"]["seq"], 1)
+
+
+class TestChatUserSearch(ChatTestBase):
+	def test_search_finds_by_name(self):
+		frappe.set_user(self.alice)
+		names = [u["name"] for u in chat.search_users(query="chat-bob")["data"]["users"]]
+		self.assertIn(self.bob, names)
+
+	def test_search_finds_by_phone(self):
+		frappe.set_user(self.alice)
+		names = [u["name"] for u in chat.search_users(query="9990100002")["data"]["users"]]
+		self.assertIn(self.bob, names)
+
+	def test_search_excludes_self(self):
+		frappe.set_user(self.alice)
+		names = [u["name"] for u in chat.search_users(query="chat-")["data"]["users"]]
+		self.assertNotIn(self.alice, names)
+
+	def test_empty_query_returns_a_browsable_directory(self):
+		frappe.set_user(self.alice)
+		users = chat.search_users(query="")["data"]["users"]
+		self.assertGreater(len(users), 0)
+		self.assertNotIn(self.alice, [u["name"] for u in users])
+
+	def test_each_side_sees_the_other_persons_name(self):
+		"""A DM must never show you your own name as the thread title."""
+		frappe.set_user(self.alice)
+		room = chat.get_or_create_direct(user=self.bob)["data"]["room"]
+
+		frappe.set_user(self.bob)
+		row = next(r for r in chat.list_rooms()["data"]["rooms"] if r["name"] == room)
+		bob_sees = row["title"]
+
+		frappe.set_user(self.alice)
+		row = next(r for r in chat.list_rooms()["data"]["rooms"] if r["name"] == room)
+		alice_sees = row["title"]
+
+		self.assertNotEqual(bob_sees, alice_sees)
+		self.assertIn("alice", bob_sees.lower())
+		self.assertIn("bob", alice_sees.lower())

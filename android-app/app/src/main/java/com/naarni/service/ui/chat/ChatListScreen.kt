@@ -22,9 +22,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -61,12 +63,17 @@ import java.util.Locale
  * connection banner is the only place the transport is ever mentioned.
  */
 @Composable
-fun ChatListScreen(vm: ChatViewModel, onOpenRoom: (String) -> Unit) {
+fun ChatListScreen(
+    vm: ChatViewModel,
+    onOpenRoom: (String) -> Unit,
+    onNewChat: () -> Unit = {},
+) {
     val rooms by vm.rooms.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     val filtered = remember(rooms, query) { vm.filterRooms(rooms, query) }
     val feedback = LocalFeedback.current
 
+  Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         // Brand header, matching the login hero and primary headers elsewhere.
@@ -128,6 +135,15 @@ fun ChatListScreen(vm: ChatViewModel, onOpenRoom: (String) -> Unit) {
             }
         }
     }
+
+    FloatingActionButton(
+        onClick = { feedback.tap(); onNewChat() },
+        containerColor = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp),
+    ) {
+        Icon(Icons.Default.Edit, contentDescription = "New chat", tint = Color.White)
+    }
+  }
 }
 
 @Composable

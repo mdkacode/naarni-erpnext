@@ -6,7 +6,10 @@ import com.naarni.service.data.dto.BusImage
 import com.naarni.service.data.dto.ChunkPayload
 import com.naarni.service.data.dto.ChunkStatusPayload
 import com.naarni.service.data.dto.CommitPayload
+import com.naarni.service.data.dto.ChatUserDto
 import com.naarni.service.data.dto.CreateRoomPayload
+import com.naarni.service.data.dto.DirectRoomPayload
+import com.naarni.service.data.dto.UsersPayload
 import com.naarni.service.data.dto.MarkReadPayload
 import com.naarni.service.data.dto.MessagesPayload
 import com.naarni.service.data.dto.RoomsPayload
@@ -631,6 +634,20 @@ interface FrappeApi {
         @Field("muted") muted: Int,
     ): FrappeWrap<Envelope<JsonObject>>
 
+    /** Staff directory search for starting a direct chat. */
+    @GET("api/method/vehicle_maintenance.api.chat.search_users")
+    suspend fun chatSearchUsers(
+        @Query("query") query: String = "",
+        @Query("limit") limit: Int = 25,
+    ): FrappeWrap<Envelope<UsersPayload>>
+
+    /** Idempotent: returns the existing one-to-one thread if there is one. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.get_or_create_direct")
+    suspend fun chatGetOrCreateDirect(
+        @Field("user") user: String,
+    ): FrappeWrap<Envelope<DirectRoomPayload>>
+
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.create_room")
     suspend fun chatCreateRoom(
@@ -680,4 +697,49 @@ interface FrappeApi {
         @Field("lat") lat: Double? = null,
         @Field("lon") lon: Double? = null,
     ): FrappeWrap<Envelope<CommitPayload>>
+
+    // ------------------------------------------------------------------ duty roster
+
+    /**
+     * Everything the duty card needs, in one call. `next_action` decides whether
+     * the button says Check In, Check Out, or nothing at all — the app never
+     * works that out for itself.
+     */
+    @GET("api/method/vehicle_maintenance.api.roster.get_my_duty")
+    suspend fun getMyDuty(
+        @Query("on_date") onDate: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.DutyState>>
+
+    /**
+     * Check in or out. Coordinates are optional by design: no GPS fix is recorded
+     * and flagged, never refused, because an engineer blocked at the gate just
+     * starts work without a record. [clientUuid] makes a retry after a timeout
+     * resolve to the same punch instead of a duplicate.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.roster.punch")
+    suspend fun dutyPunch(
+        @Field("punch_type") punchType: String,
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+        @Field("accuracy_m") accuracyM: Double? = null,
+        @Field("device_uuid") deviceUuid: String? = null,
+        @Field("client_uuid") clientUuid: String? = null,
+        @Field("note") note: String? = null,
+        @Field("photo") photo: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.PunchResult>>
+
+    /** The engineer's own published duty days — defaults to the coming fortnight. */
+    @GET("api/method/vehicle_maintenance.api.roster.get_my_roster")
+    suspend fun getMyRoster(
+        @Query("from_date") fromDate: String? = null,
+        @Query("to_date") toDate: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.MyRoster>>
+
+    /** The engineer's own attendance history — defaults to the last 30 days. */
+    @GET("api/method/vehicle_maintenance.api.roster.get_my_attendance")
+    suspend fun getMyAttendance(
+        @Query("from_date") fromDate: String? = null,
+        @Query("to_date") toDate: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.MyAttendance>>
 }

@@ -45,8 +45,23 @@ interface ChatDao {
     @Query("UPDATE chat_room SET lastSeq = MAX(lastSeq, :seq), lastMessagePreview = :preview WHERE name = :room")
     suspend fun touchRoom(room: String, seq: Long, preview: String)
 
-    /** Cursors for the delta sync: the highest seq we hold per room. */
-    @Query("SELECT name, lastSeq FROM chat_room")
+    /**
+     * Cursors for the delta sync: the highest seq we actually **hold**.
+     *
+     * Deliberately derived from chat_message, not from `chat_room.lastSeq`.
+     * `lastSeq` is the server's high-water mark, copied in by refreshRooms() —
+     * using it as the cursor tells the server "I already have everything up to
+     * N" when the message table is empty, so sync correctly returns nothing and
+     * every thread renders blank while the room list looks fully populated.
+     */
+    @Query(
+        """
+        SELECT r.name AS name, COALESCE(MAX(m.seq), 0) AS lastSeq
+          FROM chat_room r
+          LEFT JOIN chat_message m ON m.room = r.name
+         GROUP BY r.name
+        """
+    )
     suspend fun syncCursors(): List<RoomCursor>
 
     // --------------------------------------------------------------- messages

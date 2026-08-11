@@ -12,6 +12,7 @@ import com.naarni.service.ui.chat.ChatLifecycle
 import com.naarni.service.ui.chat.ChatListScreen
 import com.naarni.service.ui.chat.ChatThreadScreen
 import com.naarni.service.ui.chat.ChatViewModel
+import com.naarni.service.ui.chat.NewChatScreen
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -37,6 +38,7 @@ import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.screens.AlertDetailScreen
 import com.naarni.service.ui.screens.AlertsScreen
 import com.naarni.service.ui.screens.CreateJobCardScreen
+import com.naarni.service.ui.screens.DutyScreen
 import com.naarni.service.ui.screens.TicketDetailScreen
 import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardDetailScreen
@@ -167,8 +169,14 @@ fun MainShell(vm: AppViewModel) {
                     onCreateJobCard = { nav.navigate("create") },
                     onOpenNotifications = { nav.navigate("notifications") },
                     onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                    onOpenDuty = { nav.navigate("duty") },
                 )
             }
+
+            // Roster + attendance history. Reached from the duty card rather than
+            // a tab: checking in is a daily action, reviewing the roster is weekly,
+            // and the nav bar is already at its useful limit.
+            composable("duty") { DutyScreen(vm, onBack = { nav.popBackStack() }) }
             composable("notifications") {
                 NotificationsScreen(
                     vm,
@@ -268,7 +276,22 @@ fun MainShell(vm: AppViewModel) {
             }
             // ---- Chat: list + one generic thread screen.
             composable(Tab.Chat.route) {
-                ChatListScreen(chatVm, onOpenRoom = { room -> nav.navigate("thread/$room") })
+                ChatListScreen(
+                    chatVm,
+                    onOpenRoom = { room -> nav.navigate("thread/$room") },
+                    onNewChat = { nav.navigate("newchat") },
+                )
+            }
+            composable("newchat") {
+                NewChatScreen(
+                    chatVm,
+                    onBack = { nav.popBackStack() },
+                    onOpenRoom = { room ->
+                        // Replace the picker in the back stack: coming back from a
+                        // thread should land on the chat list, not the directory.
+                        nav.navigate("thread/$room") { popUpTo("newchat") { inclusive = true } }
+                    },
+                )
             }
             composable("thread/{room}") { entry ->
                 ChatThreadScreen(
@@ -278,8 +301,6 @@ fun MainShell(vm: AppViewModel) {
                     // A field observation becomes a Service Ticket without leaving
                     // the thread — the reason chat lives in this app at all.
                     onRaiseTicket = { msg -> nav.navigate("ticket/${msg.ticket ?: ""}") },
-                    onOpenCamera = { /* wired with the stamped-capture flow */ },
-                    onAttachFile = { /* wired with the photo picker */ },
                 )
             }
             composable(Tab.Profile.route) { ProfileScreen(vm) }

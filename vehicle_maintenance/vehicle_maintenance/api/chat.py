@@ -198,8 +198,31 @@ def list_rooms() -> dict:
 	):
 		counts[r["parent"]] = r["n"]
 
+	# A Direct room's stored title is whatever the creator saw — i.e. the other
+	# person's name from *their* side. Rendering that verbatim would show the
+	# recipient their own name, so each side gets the peer resolved for them.
+	direct_rooms = [r["name"] for r in rooms if r["kind"] == "Direct"]
+	peers: dict[str, dict] = {}
+	if direct_rooms:
+		for row in frappe.get_all(
+			"VM Chat Member",
+			filters={"parent": ["in", direct_rooms], "parenttype": "VM Chat Room", "user": ["!=", user]},
+			fields=["parent", "user"],
+			limit_page_length=0,
+		):
+			peers[row["parent"]] = {
+				"user": row["user"],
+				"full_name": frappe.db.get_value("User", row["user"], "full_name") or row["user"],
+				"user_image": frappe.db.get_value("User", row["user"], "user_image"),
+			}
+
 	data = []
 	for room in rooms:
+		peer = peers.get(room["name"])
+		if peer:
+			room["title"] = peer["full_name"]
+			room["peer"] = peer["user"]
+			room["peer_image"] = peer["user_image"]
 		cur = cursors.get(room["name"], {})
 		last_read = cint(cur.get("last_read_seq"))
 		last_seq = cint(room.get("last_seq"))
@@ -444,6 +467,124 @@ def create_room(
 	)
 	doc.insert()
 	return {"success": True, "data": {"room": doc.name}}
+
+
+@frappe.whitelist()
+def search_users(query: str = "", limit: int = 25) -> dict:
+	"""Staff directory search for starting a direct chat.
+
+	Matches on full name, phone or user id. The caller is excluded, as are
+	disabled accounts, Guest and the service accounts that would otherwise
+	clutter a technician's search results.
+
+	Returns: {success, data: {users: [{name, full_name, mobile_no, user_image, role}]}}.
+	"""
+	me = frappe.session.user
+	term = (query or "").strip()
+	limit = max(1, min(cint(limit) or 25, 50))
+
+	filters = [
+		["User", "enabled", "=", 1],
+		["User", "name", "not in", [me, "Guest", "Administrator"]],
+		# Website Users created for customers are not staff; keep them out of a
+		# field engineer's directory.
+		["User", "user_type", "=", "System User"],
+	]
+	or_filters = []
+	if term:
+		like = f"%{term}%"
+		or_filters = [
+			["User", "full_name", "like", like],
+			["User", "mobile_no", "like", like],
+			["User", "name", "like", like],
+		]
+
+	rows = frappe.get_all(
+		"User",
+		filters=filters,
+		or_filters=or_filters or None,
+		fields=["name", "full_name", "mobile_no", "user_image"],
+		order_by="full_name asc",
+		limit_page_length=limit,
+	)
+	return {"success": True, "data": {"users": rows}}
+
+
+@frappe.whitelist()
+def get_or_create_direct(user: str) -> dict:
+	"""Open the one-to-one thread with `user`, creating it only if needed.
+
+	Idempotent by construction: a direct room is keyed on its exact pair of
+	members, so calling this from two devices at once cannot leave a user with
+	two parallel DM threads to the same person.
+
+	Returns: {success, data: {room, created}}.
+	"""
+	target = (user or "").strip()
+	me = frappe.session.user
+	if not target or target == me:
+		frappe.throw(_("Pick someone else to message."))
+	if not frappe.db.exists("User", {"name": target, "enabled": 1}):
+		frappe.throw(_("That user is not available."), frappe.DoesNotExistError)
+
+	existing = _find_direct_room(me, target)
+	if existing:
+		return {"success": True, "data": {"room": existing, "created": False}}
+
+	other_name = frappe.db.get_value("User", target, "full_name") or target
+	doc = frappe.get_doc(
+		{
+			"doctype": "VM Chat Room",
+			# Title is only a fallback; the client renders a DM using the other
+			# person's name so each side sees the correct label.
+			"title": other_name,
+			"kind": "Direct",
+			"members": [
+				{"user": me, "member_role": "Admin"},
+				{"user": target, "member_role": "Admin"},
+			],
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	return {"success": True, "data": {"room": doc.name, "created": True}}
+
+
+def _find_direct_room(a: str, b: str) -> str | None:
+	"""The existing Direct room whose membership is exactly {a, b}."""
+	mine = {
+		r["parent"]
+		for r in frappe.get_all(
+			"VM Chat Member",
+			filters={"user": a, "parenttype": "VM Chat Room"},
+			fields=["parent"],
+			limit_page_length=0,
+		)
+	}
+	if not mine:
+		return None
+	theirs = {
+		r["parent"]
+		for r in frappe.get_all(
+			"VM Chat Member",
+			filters={"user": b, "parent": ["in", list(mine)], "parenttype": "VM Chat Room"},
+			fields=["parent"],
+			limit_page_length=0,
+		)
+	}
+	if not theirs:
+		return None
+	for room in frappe.get_all(
+		"VM Chat Room",
+		filters={"name": ["in", list(theirs)], "kind": "Direct"},
+		fields=["name"],
+		limit_page_length=0,
+	):
+		count = frappe.db.count("VM Chat Member", {"parent": room["name"], "parenttype": "VM Chat Room"})
+		# Exactly two members — a group that happens to contain both people is
+		# not their DM.
+		if count == 2:
+			return room["name"]
+	return None
 
 
 @frappe.whitelist()

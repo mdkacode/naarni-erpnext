@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "37fdcd642b04024cb973e987c5f730f4",
+    "identityHash": "6a80ece8c58a50b353cdf58d2427b204",
     "entities": [
       {
         "tableName": "chat_room",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `title` TEXT NOT NULL, `kind` TEXT NOT NULL, `depot` TEXT, `vehicle` TEXT, `ticket` TEXT, `jobCard` TEXT, `lastSeq` INTEGER NOT NULL, `lastReadSeq` INTEGER NOT NULL, `muted` INTEGER NOT NULL, `lastMessagePreview` TEXT, `lastMessageAt` TEXT, `memberCount` INTEGER NOT NULL, PRIMARY KEY(`name`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `title` TEXT NOT NULL, `kind` TEXT NOT NULL, `depot` TEXT, `vehicle` TEXT, `ticket` TEXT, `jobCard` TEXT, `lastSeq` INTEGER NOT NULL, `lastReadSeq` INTEGER NOT NULL, `muted` INTEGER NOT NULL, `lastMessagePreview` TEXT, `lastMessageAt` TEXT, `memberCount` INTEGER NOT NULL, `peer` TEXT, `peerImage` TEXT, PRIMARY KEY(`name`))",
         "fields": [
           {
             "fieldPath": "name",
@@ -85,6 +85,18 @@
             "columnName": "memberCount",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "peer",
+            "columnName": "peer",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "peerImage",
+            "columnName": "peerImage",
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -395,7 +407,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '37fdcd642b04024cb973e987c5f730f4')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6a80ece8c58a50b353cdf58d2427b204')"
     ]
   }
 }

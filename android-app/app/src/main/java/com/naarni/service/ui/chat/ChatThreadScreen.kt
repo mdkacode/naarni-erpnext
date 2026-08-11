@@ -1,6 +1,22 @@
 package com.naarni.service.ui.chat
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
+import com.naarni.service.ui.components.StampingCamera
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -44,12 +60,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -90,18 +103,51 @@ fun ChatThreadScreen(
     roomName: String,
     onBack: () -> Unit,
     onRaiseTicket: (ChatMessageEntity) -> Unit,
-    onOpenCamera: () -> Unit,
-    onAttachFile: () -> Unit,
 ) {
-    val room by vm.observeRoom(roomName).collectAsStateWithLifecycle(null)
-    val messages = vm.messages(roomName).collectAsLazyPagingItems()
+    // These MUST be remembered against roomName. Calling them in the composable
+    // body builds a brand-new Pager on every recomposition, which tears down and
+    // rebuilds the whole paging pipeline on each keystroke in the composer — the
+    // single biggest source of scroll jank here.
+    val roomFlow = remember(roomName) { vm.observeRoom(roomName) }
+    val messageFlow = remember(roomName) { vm.messages(roomName) }
+    val room by roomFlow.collectAsStateWithLifecycle(null)
+    val messages = messageFlow.collectAsLazyPagingItems()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val feedback = LocalFeedback.current
 
-    var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ChatMessageEntity?>(null) }
     var selected by remember { mutableStateOf<ChatMessageEntity?>(null) }
+    var showCamera by remember { mutableStateOf(false) }
+    var rejected by remember { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
+
+    // The Android 13+ photo picker needs no permission at all, which is why it
+    // is used instead of READ_MEDIA_IMAGES.
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val picked = Attachments.copyToOutbox(context, uri)
+            if (picked == null) {
+                rejected = "That file type can't be sent in chat."
+                feedback.error()
+            } else {
+                feedback.messageSent()
+                vm.sendAttachment(
+                    room = roomName,
+                    file = picked.file,
+                    contentType = picked.contentType,
+                    kind = picked.kind,
+                    replyTo = replyTo?.serverName,
+                )
+                replyTo = null
+                listState.animateScrollToItem(0)
+            }
+        }
+    }
 
     // Join the doc room while this screen is on top; leave on the way out so we
     // are not holding a subscription for every thread ever opened.
@@ -128,6 +174,37 @@ fun ChatThreadScreen(
     BackHandler(enabled = selected != null || replyTo != null) {
         selected = null
         replyTo = null
+    }
+
+    // Full-screen capture takes over the whole screen when active.
+    if (showCamera) {
+        StampingCamera(
+            label = "Chat",
+            onClose = { showCamera = false },
+            onCaptured = { file ->
+                showCamera = false
+                val picked = Attachments.fromCapture(file)
+                feedback.messageSent()
+                vm.sendAttachment(
+                    room = roomName,
+                    file = picked.file,
+                    contentType = picked.contentType,
+                    kind = picked.kind,
+                    replyTo = replyTo?.serverName,
+                )
+                replyTo = null
+            },
+        )
+        return
+    }
+
+    rejected?.let { message ->
+        AlertDialog(
+            onDismissRequest = { rejected = null },
+            title = { Text("Can't send that") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { rejected = null }) { Text("OK") } },
+        )
     }
 
     Column(
@@ -212,19 +289,20 @@ fun ChatThreadScreen(
         replyTo?.let { ReplyBar(it) { replyTo = null } }
 
         Composer(
-            draft = draft,
-            onDraftChange = { draft = it },
-            onSend = {
-                val text = draft
-                draft = ""
+            onSend = { text ->
                 val parent = replyTo
                 replyTo = null
                 feedback.messageSent()
                 vm.sendText(roomName, text, parent?.serverName)
                 scope.launch { listState.animateScrollToItem(0) }
             },
-            onCamera = { feedback.tap(); onOpenCamera() },
-            onAttach = { feedback.tap(); onAttachFile() },
+            onCamera = { feedback.tap(); showCamera = true },
+            onAttach = {
+                feedback.tap()
+                picker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                )
+            },
         )
     }
 }
@@ -232,9 +310,14 @@ fun ChatThreadScreen(
 /**
  * Swipe-to-reply.
  *
- * `confirmValueChange` returns false on purpose: the row animates, fires the
- * reply, then snaps back. Letting it settle would dismiss the message, which is
- * emphatically not what a reply gesture should do.
+ * Hand-rolled rather than `SwipeToDismissBox`, which instantiates an anchored
+ * draggable state machine and a background slot for every row — real cost in a
+ * long thread, for a gesture that only needs a horizontal offset and one
+ * threshold. This version keeps a single `Animatable` per row and draws the
+ * reply icon only while the row is actually displaced.
+ *
+ * The row always springs back: a reply is not a dismissal, so the message must
+ * never leave the list.
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -248,37 +331,53 @@ private fun SwipeableMessage(
     onLongPress: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    val state = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.StartToEnd) onReply()
-            false
-        },
-        positionalThreshold = { it * 0.28f },
-    )
+    val offsetX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val triggerPx = with(LocalDensity.current) { REPLY_TRIGGER_DP.dp.toPx() }
+    var fired by remember { mutableStateOf(false) }
 
-    SwipeToDismissBox(
-        state = state,
-        enableDismissFromEndToStart = false,
-        backgroundContent = {
+    Box(Modifier.fillMaxWidth()) {
+        // Only composed while the row is displaced, so a still list pays nothing.
+        if (offsetX.value > 1f) {
             Row(
-                Modifier.fillMaxSize().padding(start = 22.dp),
+                Modifier.matchParentSize().padding(start = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Reply,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.primary.copy(
+                        alpha = (offsetX.value / triggerPx).coerceIn(0f, 1f),
+                    ),
+                    modifier = Modifier.size(20.dp),
                 )
             }
-        },
-    ) {
+        }
+
         Box(
-            Modifier.combinedClickable(
-                onClick = {
-                    if (message.status == SendStatus.FAILED) onRetry()
-                },
-                onLongClick = onLongPress,
-            )
+            Modifier
+                .offset { IntOffset(offsetX.value.toInt(), 0) }
+                .draggable(
+                    orientation = Orientation.Horizontal,
+                    state = rememberDraggableState { delta ->
+                        // Right-swipe only, with resistance past the trigger so
+                        // the gesture feels bounded rather than loose.
+                        val next = (offsetX.value + delta).coerceIn(0f, triggerPx * 1.4f)
+                        scope.launch { offsetX.snapTo(next) }
+                        if (!fired && next >= triggerPx) {
+                            fired = true
+                            onReply()
+                        }
+                    },
+                    onDragStopped = {
+                        fired = false
+                        offsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                    },
+                )
+                .combinedClickable(
+                    onClick = { if (message.status == SendStatus.FAILED) onRetry() },
+                    onLongClick = onLongPress,
+                ),
         ) {
             MessageBubble(
                 message = message,
@@ -291,6 +390,8 @@ private fun SwipeableMessage(
         }
     }
 }
+
+private const val REPLY_TRIGGER_DP = 64
 
 @Composable
 private fun ThreadHeader(
@@ -418,14 +519,20 @@ private fun ReplyBar(message: ChatMessageEntity, onClear: () -> Unit) {
     }
 }
 
+/**
+ * The composer owns its own draft.
+ *
+ * Hoisting the text into the parent meant every keystroke recomposed the whole
+ * thread — header, message list lambda and all. Keeping it local confines
+ * typing to this row.
+ */
 @Composable
 private fun Composer(
-    draft: String,
-    onDraftChange: (String) -> Unit,
-    onSend: () -> Unit,
+    onSend: (String) -> Unit,
     onCamera: () -> Unit,
     onAttach: () -> Unit,
 ) {
+    var draft by remember { mutableStateOf("") }
     val canSend = draft.isNotBlank()
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -448,7 +555,7 @@ private fun Composer(
             }
             TextField(
                 value = draft,
-                onValueChange = onDraftChange,
+                onValueChange = { draft = it },
                 placeholder = { Text("Message") },
                 maxLines = 5,
                 shape = RoundedCornerShape(22.dp),
@@ -471,7 +578,12 @@ private fun Composer(
             // The send button only materialises when there is something to send,
             // so the camera stays the obvious action in a photo-first workflow.
             FloatingActionButton(
-                onClick = { if (canSend) onSend() },
+                onClick = {
+                    if (canSend) {
+                        onSend(draft)
+                        draft = ""
+                    }
+                },
                 containerColor = if (canSend) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.surfaceVariant,
                 elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(0.dp, 0.dp),

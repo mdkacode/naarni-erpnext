@@ -1,0 +1,320 @@
+{
+  "name": "Process Definition",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:process_code",
+  "track_changes": 1,
+  "allow_rename": 0,
+  "description": "An admin-authored process: what it runs against, its stages, its steps, who may run it and how it scores. Published versions are immutable — editing forks version+1 — so a run from March replays March's process exactly.",
+  "fields": [
+    {
+      "fieldname": "process_code",
+      "label": "Process Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Stable identifier including the version suffix, e.g. BATTERY_QC-v1."
+    },
+    {
+      "fieldname": "process_name",
+      "label": "Process Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "family",
+      "label": "Family",
+      "fieldtype": "Data",
+      "in_standard_filter": 1,
+      "description": "Groups every version of the same process. Versions share a family; the newest Published one in a family is what operators get."
+    },
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "column_break_status",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "version",
+      "label": "Version",
+      "fieldtype": "Int",
+      "default": "1",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Draft\nPublished\nRetired",
+      "default": "Draft",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "read_only": 1,
+      "description": "Set via the Publish and Retire actions, not by editing."
+    },
+    {
+      "fieldname": "effective_from",
+      "label": "Effective From",
+      "fieldtype": "Date"
+    },
+    {
+      "fieldname": "published_by",
+      "label": "Published By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "published_at",
+      "label": "Published At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "supersedes",
+      "label": "Supersedes",
+      "fieldtype": "Link",
+      "options": "Process Definition",
+      "read_only": 1
+    },
+
+    {
+      "fieldname": "sb_subject",
+      "label": "Subject",
+      "fieldtype": "Section Break",
+      "description": "What this process runs against. This one field is what lets the same engine serve battery QC, vehicle PDI and a standalone audit."
+    },
+    {
+      "fieldname": "subject_doctype",
+      "label": "Subject DocType",
+      "fieldtype": "Link",
+      "options": "DocType",
+      "in_standard_filter": 1,
+      "description": "Leave blank for a standalone process that attaches to nothing."
+    },
+    {
+      "fieldname": "subject_label",
+      "label": "Subject Label",
+      "fieldtype": "Data",
+      "description": "What the operator calls it — 'Battery Pack', 'Bus'."
+    },
+    {
+      "fieldname": "identifier_mode",
+      "label": "Identifier Mode",
+      "fieldtype": "Select",
+      "options": "Scan QR\nManual Entry\nAuto Generate\nPick From List\nFrom Context",
+      "default": "Scan QR"
+    },
+    {
+      "fieldname": "column_break_subject",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "identifier_pattern",
+      "label": "Identifier Validation Pattern",
+      "fieldtype": "Data",
+      "description": "Optional regex the typed or scanned identifier must match. Blank accepts anything."
+    },
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "in_standard_filter": 1,
+      "description": "Blank = available to every customer. Set it to scope this process to one customer's sites."
+    },
+    {
+      "fieldname": "stage_label",
+      "label": "Stage Label",
+      "fieldtype": "Data",
+      "default": "Stage",
+      "description": "The word operators see for a stage — 'Module', 'Phase', 'Section'. The schema says Stage; your team sees this."
+    },
+
+    {
+      "fieldname": "sb_access",
+      "label": "Access",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "allowed_roles",
+      "label": "Who May Run This",
+      "fieldtype": "Table",
+      "options": "Process Allowed Role",
+      "description": "Empty means any user holding Process Operator."
+    },
+    {
+      "fieldname": "column_break_access",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "author_roles",
+      "label": "Who May Edit This",
+      "fieldtype": "Table",
+      "options": "Process Allowed Role",
+      "description": "Scopes authoring to a team, e.g. Battery QA Admin edits the battery process but not Vehicle PDI. Empty means any Process Author."
+    },
+
+    {
+      "fieldname": "sb_content",
+      "label": "Content",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "stages",
+      "label": "Stages",
+      "fieldtype": "Table",
+      "options": "Process Stage"
+    },
+    {
+      "fieldname": "steps",
+      "label": "Steps",
+      "fieldtype": "Table",
+      "options": "Process Step"
+    },
+    {
+      "fieldname": "sb_conditions",
+      "label": "Conditional Visibility",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "description": "Optional. A step with no clause here is always shown. Clauses are matched to their step by code and fold left to right — no operator precedence, so they read exactly as listed."
+    },
+    {
+      "fieldname": "step_conditions",
+      "label": "Show Step Only When",
+      "fieldtype": "Table",
+      "options": "Process Step Condition"
+    },
+
+    {
+      "fieldname": "sb_scoring",
+      "label": "Scoring",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "scoring_enabled",
+      "label": "Score This Process",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "scoring_mode",
+      "label": "Scoring Mode",
+      "fieldtype": "Select",
+      "options": "Weighted\nSimple",
+      "default": "Weighted",
+      "depends_on": "scoring_enabled",
+      "description": "Weighted uses each step's weight; Simple counts every scoreable step equally."
+    },
+    {
+      "fieldname": "pass_threshold_pct",
+      "label": "Pass Threshold (%)",
+      "fieldtype": "Percent",
+      "default": "90",
+      "depends_on": "scoring_enabled"
+    },
+    {
+      "fieldname": "column_break_scoring",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "critical_fails_allowed",
+      "label": "Critical Fails Allowed",
+      "fieldtype": "Int",
+      "default": "0",
+      "depends_on": "scoring_enabled",
+      "description": "A run above the threshold still fails if it exceeds this. Zero means any critical fail fails the run."
+    },
+    {
+      "fieldname": "skipped_steps_count_as",
+      "label": "Skipped Steps Count As",
+      "fieldtype": "Select",
+      "options": "Excluded\nFail",
+      "default": "Excluded",
+      "depends_on": "scoring_enabled",
+      "description": "Excluded keeps a skipped step out of both numerator and denominator."
+    },
+
+    {
+      "fieldname": "sb_runtime",
+      "label": "Runtime",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "allow_offline",
+      "label": "Allow Offline",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "allow_resume",
+      "label": "Allow Resume",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "expected_minutes",
+      "label": "Expected Minutes",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "column_break_runtime",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "min_app_step_types",
+      "label": "Minimum App Capability",
+      "fieldtype": "Int",
+      "default": "1",
+      "read_only": 1,
+      "description": "Computed on publish from the step types used. An older app that reports a lower capability renders unknown steps read-only instead of crashing."
+    },
+    {
+      "fieldname": "icon",
+      "label": "Icon",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "color",
+      "label": "Colour",
+      "fieldtype": "Data"
+    },
+
+    {
+      "fieldname": "sb_reporting",
+      "label": "Reporting",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "default_brand",
+      "label": "Default Report Brand",
+      "fieldtype": "Link",
+      "options": "Report Brand Profile",
+      "description": "Falls back to the engine-wide default. The brand is always overridable when a report is generated."
+    },
+    {
+      "fieldname": "completion_actions",
+      "label": "On Process Complete",
+      "fieldtype": "Table",
+      "options": "Process Step Action"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "import": 1},
+    {"role": "Process Author", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "import": 1},
+    {"role": "Process Operator", "read": 1},
+    {"role": "Process Verifier", "read": 1},
+    {"role": "Process Viewer", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "process_name"
+}

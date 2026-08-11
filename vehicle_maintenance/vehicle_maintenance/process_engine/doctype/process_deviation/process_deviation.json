@@ -1,0 +1,185 @@
+{
+  "name": "Process Deviation",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "naming_series:",
+  "track_changes": 1,
+  "description": "A non-conformance raised by a failed step — the controlled disposition path that replaces an eraser. Raised automatically by a Raise Deviation action, or by hand from a run.",
+  "fields": [
+    {
+      "fieldname": "naming_series",
+      "label": "Series",
+      "fieldtype": "Select",
+      "options": "NCR-.YYYY.-.#####",
+      "default": "NCR-.YYYY.-.#####",
+      "hidden": 1
+    },
+    {
+      "fieldname": "process_run",
+      "label": "Process Run",
+      "fieldtype": "Link",
+      "options": "Process Run",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "step_code",
+      "label": "Step",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "step_label",
+      "label": "Check",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "severity",
+      "label": "Severity",
+      "fieldtype": "Select",
+      "options": "Info\nMinor\nMajor\nCritical",
+      "default": "Major",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Open\nIn Rework\nVerified\nClosed\nCancelled",
+      "default": "Open",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_subject",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "subject_doctype",
+      "label": "Subject DocType",
+      "fieldtype": "Link",
+      "options": "DocType",
+      "read_only": 1
+    },
+    {
+      "fieldname": "subject_name",
+      "label": "Subject",
+      "fieldtype": "Dynamic Link",
+      "options": "subject_doctype",
+      "read_only": 1
+    },
+    {
+      "fieldname": "raised_by",
+      "label": "Raised By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "raised_at",
+      "label": "Raised At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+
+    {
+      "fieldname": "sb_detail",
+      "label": "Detail",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "description",
+      "label": "Description",
+      "fieldtype": "Small Text",
+      "reqd": 1
+    },
+    {
+      "fieldname": "observed_value",
+      "label": "Observed",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "expected_value",
+      "label": "Expected",
+      "fieldtype": "Data"
+    },
+
+    {
+      "fieldname": "sb_disposition",
+      "label": "Disposition",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "disposition",
+      "label": "Disposition",
+      "fieldtype": "Select",
+      "options": "\nRework\nUse As Is\nScrap\nReturn to Vendor"
+    },
+    {
+      "fieldname": "disposition_by",
+      "label": "Disposed By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "disposition_at",
+      "label": "Disposed At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_rca",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "root_cause",
+      "label": "Root Cause",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "corrective_action",
+      "label": "Corrective Action",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "verified_by",
+      "label": "Verified By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "verified_at",
+      "label": "Verified At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+
+    {
+      "fieldname": "sb_photos",
+      "label": "Evidence",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "photos",
+      "label": "Photos",
+      "fieldtype": "Table",
+      "options": "Process Run Photo"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Process Verifier", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+    {"role": "Process Author", "read": 1, "write": 1, "create": 1, "report": 1},
+    {"role": "Process Operator", "read": 1, "create": 1},
+    {"role": "Process Viewer", "read": 1, "report": 1},
+    {"role": "Central Ops", "read": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC"
+}

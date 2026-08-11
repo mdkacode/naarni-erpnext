@@ -1,0 +1,105 @@
+{
+  "name": "Process Stage",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "A sign-off gate within a process — the unit an operator submits and a verifier approves. The parent's `stage_label` decides what operators call these (set it to 'Module' and every screen reads Module). Steps are grouped onto screens by their `section`, so a 17-step stage still renders as five right-sized screens without a fourth level of nesting.",
+  "fields": [
+    {
+      "fieldname": "stage_code",
+      "label": "Stage Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Stable identifier referenced by steps and run history. Never reuse a retired code."
+    },
+    {
+      "fieldname": "label",
+      "label": "Label",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "label_alt",
+      "label": "Label (Alt Language)",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "sequence",
+      "label": "Sequence",
+      "fieldtype": "Int",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_signoff",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "signoff_role",
+      "label": "Sign-off Role",
+      "fieldtype": "Link",
+      "options": "Role",
+      "description": "Blank means operator self-inspection — whoever ran the stage signs it."
+    },
+    {
+      "fieldname": "requires_second_signoff",
+      "label": "Requires Second Sign-off",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "description": "Adds an independent verification step after the operator submits."
+    },
+    {
+      "fieldname": "second_signoff_role",
+      "label": "Second Sign-off Role",
+      "fieldtype": "Link",
+      "options": "Role",
+      "depends_on": "requires_second_signoff"
+    },
+    {
+      "fieldname": "blocks_next_on_critical",
+      "label": "Block Next Stage on Critical Fail",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "section_layout",
+      "label": "Layout",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "screen_grouping",
+      "label": "Screen Grouping",
+      "fieldtype": "Select",
+      "options": "By Section\nFixed Count\nOne Per Screen\nSingle Screen",
+      "default": "By Section",
+      "description": "By Section is the researched default — it matches how an operator physically moves around the subject."
+    },
+    {
+      "fieldname": "steps_per_screen",
+      "label": "Steps per Screen",
+      "fieldtype": "Int",
+      "default": "5",
+      "depends_on": "eval:doc.screen_grouping=='Fixed Count'"
+    },
+    {
+      "fieldname": "column_break_entry",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "instructions",
+      "label": "Stage Instructions",
+      "fieldtype": "Small Text",
+      "description": "Shown once before the first screen of the stage — safety notes, tools required."
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1"
+    }
+  ],
+  "permissions": []
+}

@@ -36,6 +36,8 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_6.add_alert_event_indexes.execute",
 	"vehicle_maintenance.patches.v1_6.seed_km_sync_service_user.execute",
 	"vehicle_maintenance.patches.v1_6.seed_km_report_workflow.execute",
+	"vehicle_maintenance.patches.v1_7.seed_process_engine.execute",
+	"vehicle_maintenance.patches.v1_7.seed_battery_qc_process.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -53,6 +55,15 @@ APP_ROLES = [
 	# Two-level internal checkers for the Monthly KM Report before it emails the customer.
 	"KM Checker L1",
 	"KM Checker L2",
+	# Process engine. Author is the privileged one — a bad publish reaches every
+	# phone on the floor — so it is deliberately separate from running a process.
+	"Process Author",
+	"Process Operator",
+	"Process Verifier",
+	"Process Viewer",
+	# Owns the Battery Assembly QC process specifically: holds Process Author but
+	# is listed in that process's author_roles, so it cannot edit Vehicle PDI.
+	"Battery QA Admin",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.
@@ -111,6 +122,8 @@ fixtures = [
 doctype_js = {
 	"Job Card": "public/js/job_card.js",
 	"Alert Type": "public/js/alert_type.js",
+	"Process Definition": "public/js/process_definition.js",
+	"Process Entity Type": "public/js/process_entity_type.js",
 }
 
 # Scheduled tasks

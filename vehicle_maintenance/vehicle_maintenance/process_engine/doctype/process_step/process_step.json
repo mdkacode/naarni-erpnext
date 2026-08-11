@@ -1,0 +1,336 @@
+{
+  "name": "Process Step",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "One question an operator answers. Everything about how it behaves — what kind of answer it takes, its pass band, whether it wants a photo or a scan, what happens when it fails — is configuration on this row. Adding a step to a process is a Desk edit, never a deploy.",
+  "fields": [
+    {
+      "fieldname": "step_code",
+      "label": "Step Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Stable identifier. Conditions, actions and run history all refer to it, so it must survive reordering and relabelling."
+    },
+    {
+      "fieldname": "stage",
+      "label": "Stage",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "The stage_code this step belongs to."
+    },
+    {
+      "fieldname": "sequence",
+      "label": "Seq",
+      "fieldtype": "Int",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "display_no",
+      "label": "Display No.",
+      "fieldtype": "Data",
+      "description": "The number the operator sees, e.g. the number printed on the original paper sheet. Independent of sequence."
+    },
+    {
+      "fieldname": "section",
+      "label": "Section",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "description": "Screen grouping — steps sharing a section render on one screen."
+    },
+    {
+      "fieldname": "section_alt",
+      "label": "Section (Alt Language)",
+      "fieldtype": "Data"
+    },
+
+    {
+      "fieldname": "sb_content",
+      "label": "Content",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "label",
+      "label": "Label",
+      "fieldtype": "Small Text",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "label_alt",
+      "label": "Label (Alt Language)",
+      "fieldtype": "Small Text",
+      "description": "Hindi / regional rendering, shown under the label. Editable by the plant — not a translation file."
+    },
+    {
+      "fieldname": "method_label",
+      "label": "Method",
+      "fieldtype": "Data",
+      "description": "Free text shown as a chip: Visual, Functional, Torque, Document."
+    },
+    {
+      "fieldname": "help_text",
+      "label": "Help Text",
+      "fieldtype": "Text"
+    },
+    {
+      "fieldname": "help_text_alt",
+      "label": "Help Text (Alt Language)",
+      "fieldtype": "Text"
+    },
+    {
+      "fieldname": "column_break_ref",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "reference_image_good",
+      "label": "Reference Image — Good",
+      "fieldtype": "Attach Image",
+      "description": "What a passing result looks like. The highest-value field on this table for a new operator."
+    },
+    {
+      "fieldname": "reference_image_bad",
+      "label": "Reference Image — Bad",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "reaction_plan",
+      "label": "Reaction Plan",
+      "fieldtype": "Small Text",
+      "description": "What to do when this step fails. Carrying it on the step is what puts the control plan at the point of use (IATF 16949)."
+    },
+
+    {
+      "fieldname": "sb_input",
+      "label": "Input",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "response_type",
+      "label": "Response Type",
+      "fieldtype": "Select",
+      "options": "Choice\nChoice Multi\nNumber\nNumber in Range\nNumber with Tolerance\nComputed\nText Short\nText Long\nYes No\nDate\nDatetime\nPhoto Only\nScan\nSignature\nLink\nSection Note",
+      "default": "Choice",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "outcome_set",
+      "label": "Outcome Set",
+      "fieldtype": "Link",
+      "options": "Process Outcome Set",
+      "in_list_view": 1,
+      "depends_on": "eval:['Choice','Choice Multi','Yes No'].includes(doc.response_type)",
+      "description": "The answer vocabulary — Pass/Fail/NA, three-tier, anything. Shared across steps so a wording fix lands everywhere at once."
+    },
+    {
+      "fieldname": "link_doctype",
+      "label": "Link DocType",
+      "fieldtype": "Link",
+      "options": "DocType",
+      "depends_on": "eval:doc.response_type=='Link'"
+    },
+    {
+      "fieldname": "computed_expression",
+      "label": "Computed From",
+      "fieldtype": "Data",
+      "depends_on": "eval:doc.response_type=='Computed'",
+      "description": "A safe expression over earlier step codes, e.g. MAX(CELL_V_MAX) - MIN(CELL_V_MIN) or DIFF(A,B). Parsed, never eval()'d."
+    },
+    {
+      "fieldname": "column_break_range",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "unit",
+      "label": "Unit",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "min_value",
+      "label": "Min Value",
+      "fieldtype": "Float",
+      "precision": "4"
+    },
+    {
+      "fieldname": "max_value",
+      "label": "Max Value",
+      "fieldtype": "Float",
+      "precision": "4"
+    },
+    {
+      "fieldname": "nominal_value",
+      "label": "Nominal",
+      "fieldtype": "Float",
+      "precision": "4",
+      "description": "For Number with Tolerance — the target, e.g. 10 Nm."
+    },
+    {
+      "fieldname": "tolerance",
+      "label": "Tolerance ±",
+      "fieldtype": "Float",
+      "precision": "4"
+    },
+    {
+      "fieldname": "pass_condition",
+      "label": "Pass Condition",
+      "fieldtype": "Select",
+      "options": "Within Range\nGreater Than Min\nLess Than Max\nEquals Nominal\nAny Value",
+      "default": "Within Range"
+    },
+    {
+      "fieldname": "decimals",
+      "label": "Decimal Places",
+      "fieldtype": "Int",
+      "default": "2"
+    },
+    {
+      "fieldname": "default_value",
+      "label": "Default Value",
+      "fieldtype": "Data"
+    },
+
+    {
+      "fieldname": "sb_evidence",
+      "label": "Evidence",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "requires_photo",
+      "label": "Requires Photo",
+      "fieldtype": "Check",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "photo_policy",
+      "label": "Photo Policy",
+      "fieldtype": "Select",
+      "options": "Always\nOn Fail\nOn Pass\nNever",
+      "default": "On Fail",
+      "depends_on": "requires_photo",
+      "description": "On Fail is the speed sweet spot — evidence where it matters, no tax on a clean run."
+    },
+    {
+      "fieldname": "min_photos",
+      "label": "Min Photos",
+      "fieldtype": "Int",
+      "default": "1",
+      "depends_on": "requires_photo"
+    },
+    {
+      "fieldname": "max_photos",
+      "label": "Max Photos",
+      "fieldtype": "Int",
+      "default": "3",
+      "depends_on": "requires_photo"
+    },
+    {
+      "fieldname": "photo_hint",
+      "label": "Photo Hint",
+      "fieldtype": "Data",
+      "depends_on": "requires_photo",
+      "description": "What to shoot, e.g. 'close-up of the weld joint'."
+    },
+    {
+      "fieldname": "column_break_scan",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "requires_scan",
+      "label": "Requires Scan",
+      "fieldtype": "Check",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "scan_entity_type",
+      "label": "Scan Entity Type",
+      "fieldtype": "Link",
+      "options": "Process Entity Type",
+      "depends_on": "requires_scan"
+    },
+    {
+      "fieldname": "scan_count",
+      "label": "Scan Count",
+      "fieldtype": "Int",
+      "default": "1",
+      "depends_on": "requires_scan",
+      "description": "How many of this entity to capture here. A scan is never mandatory — manual entry and skip always remain."
+    },
+    {
+      "fieldname": "requires_signature",
+      "label": "Requires Signature",
+      "fieldtype": "Check"
+    },
+
+    {
+      "fieldname": "sb_governance",
+      "label": "Governance & Scoring",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "is_critical",
+      "label": "Critical",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "description": "A failure here quarantines the run and can block the next stage."
+    },
+    {
+      "fieldname": "is_mandatory",
+      "label": "Mandatory",
+      "fieldtype": "Check",
+      "description": "Must be answered before the stage can be submitted. Default off — the engine prefers soft gates."
+    },
+    {
+      "fieldname": "allow_skip",
+      "label": "Allow Skip",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "skip_reasons",
+      "label": "Skip Reasons",
+      "fieldtype": "Small Text",
+      "depends_on": "allow_skip",
+      "description": "One per line. Becomes a dropdown so skipping never needs free text."
+    },
+    {
+      "fieldname": "column_break_score",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "weight",
+      "label": "Score Weight",
+      "fieldtype": "Float",
+      "default": "1",
+      "precision": "2",
+      "description": "Contribution to the run score. 0 excludes this step from scoring entirely."
+    },
+    {
+      "fieldname": "expected_seconds",
+      "label": "Expected Seconds",
+      "fieldtype": "Int",
+      "description": "Baseline for the fast-entry advisory on the report. Advisory only — never blocks."
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1",
+      "description": "Retire a step without deleting the history that refers to it."
+    },
+
+    {
+      "fieldname": "action_set",
+      "label": "Action Set",
+      "fieldtype": "Link",
+      "options": "Process Action Set",
+      "in_list_view": 1,
+      "description": "What happens automatically on this step's outcome — notify, raise a deviation, quarantine. Shared, so changing who gets alerted is one edit rather than twenty."
+    }
+  ],
+  "permissions": []
+}

@@ -1,0 +1,106 @@
+{
+  "name": "Report Brand Profile",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:brand_code",
+  "track_changes": 1,
+  "description": "White-label identity for generated reports and certificates. The brand is a record, never a string in the code — nothing in this app hardcodes whose name appears on a certificate. Picked at generation time, defaulting to the engine default.",
+  "fields": [
+    {
+      "fieldname": "brand_code",
+      "label": "Brand Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "display_name",
+      "label": "Display Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "The name printed on the report header."
+    },
+    {
+      "fieldname": "is_default",
+      "label": "Default",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "description": "Used when neither the process nor the request names a brand. Only one profile can hold this."
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "column_break_logo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "logo",
+      "label": "Logo",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "primary_color",
+      "label": "Primary Colour",
+      "fieldtype": "Data",
+      "default": "#111827"
+    },
+    {
+      "fieldname": "certificate_title",
+      "label": "Certificate Title",
+      "fieldtype": "Data",
+      "default": "Quality Inspection Certificate"
+    },
+
+    {
+      "fieldname": "sb_details",
+      "label": "Details",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "address",
+      "label": "Address",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "footer_text",
+      "label": "Footer Text",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "column_break_signatory",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "signatory_name",
+      "label": "Signatory Name",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "signatory_designation",
+      "label": "Signatory Designation",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "signatory_signature",
+      "label": "Signatory Signature",
+      "fieldtype": "Attach Image"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Process Author", "read": 1, "write": 1, "create": 1},
+    {"role": "Process Verifier", "read": 1},
+    {"role": "Process Operator", "read": 1},
+    {"role": "Process Viewer", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "display_name"
+}

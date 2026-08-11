@@ -21,6 +21,15 @@ securityCrypto = "1.1.0-alpha06"
 datastore = "1.1.1"
 googleServices = "4.4.2"
 firebaseBom = "33.5.1"
+# Chat module. Room is the client's single source of truth, WorkManager carries
+# the resumable uploads, Paging3's maxSize is the OOM guard on long threads.
+# ~960 KB total against the < 12 MB budget; media3/ExoPlayer deliberately not
+# added — video opens in an external viewer for now.
+room = "2.6.1"
+ksp = "2.0.20-1.0.25"          # must track the Kotlin version exactly
+work = "2.9.1"
+paging = "3.3.2"
+exifinterface = "1.3.7"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -59,9 +68,23 @@ datastore-preferences = { group = "androidx.datastore", name = "datastore-prefer
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 
+# --- Chat module ---
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+paging-runtime-ktx = { group = "androidx.paging", name = "paging-runtime-ktx", version.ref = "paging" }
+paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
+exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
+# First annotation processor in this build (Room requires one). App.kt's
+# hand-rolled AppContainer stays — this does not introduce a DI framework.
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

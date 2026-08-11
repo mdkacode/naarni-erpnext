@@ -1,7 +1,17 @@
 package com.naarni.service.core.network
 
 import com.naarni.service.data.dto.AlertEventItem
+import com.naarni.service.data.dto.BeginUploadPayload
 import com.naarni.service.data.dto.BusImage
+import com.naarni.service.data.dto.ChunkPayload
+import com.naarni.service.data.dto.ChunkStatusPayload
+import com.naarni.service.data.dto.CommitPayload
+import com.naarni.service.data.dto.CreateRoomPayload
+import com.naarni.service.data.dto.MarkReadPayload
+import com.naarni.service.data.dto.MessagesPayload
+import com.naarni.service.data.dto.RoomsPayload
+import com.naarni.service.data.dto.SendPayload
+import com.naarni.service.data.dto.SyncPayload
 import com.naarni.service.data.dto.CreatedJobCard
 import com.naarni.service.data.dto.CustomerFeedbackData
 import com.naarni.service.data.dto.CustomerHit
@@ -465,4 +475,209 @@ interface FrappeApi {
         @Field("name") name: String,
         @Field("job_card_type") jobCardType: String = "Breakdown",
     ): FrappeWrap<Envelope<JsonObject>>
+
+    // ---------------------------------------------------------------- process engine
+    //
+    // Generic across every process. Nothing here mentions batteries: the app
+    // renders whatever definition the server sends, so publishing a new process
+    // needs no app release.
+
+    /** Processes this user's roles allow, for the process list. */
+    @GET("api/method/vehicle_maintenance.api.process.list_processes")
+    suspend fun listProcesses(): FrappeWrap<Envelope<List<com.naarni.service.data.dto.ProcessSummary>>>
+
+    /**
+     * The full definition in one round trip — stages, steps, options, conditions
+     * and entity types. `appCapability` tells the server which step types this
+     * build can render; anything newer comes back flagged unsupported rather
+     * than crashing the runner.
+     */
+    @GET("api/method/vehicle_maintenance.api.process.get_definition")
+    suspend fun getProcessDefinition(
+        @Query("process") process: String,
+        @Query("app_capability") appCapability: Int = 1,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessDefinition>>
+
+    /** Idempotent on [clientUuid] — a retry over a dead Wi-Fi zone resumes, never duplicates. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process.start_run")
+    suspend fun startProcessRun(
+        @Field("process") process: String,
+        @Field("identifier") identifier: String? = null,
+        @Field("subject_name") subjectName: String? = null,
+        @Field("client_uuid") clientUuid: String? = null,
+        @Field("station") station: String? = null,
+        @Field("shift") shift: String? = null,
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessRun>>
+
+    @GET("api/method/vehicle_maintenance.api.process.get_run")
+    suspend fun getProcessRun(
+        @Query("name") name: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessRun>>
+
+    /** Saves one answer. The server judges it and fires its actions — the client never decides pass/fail. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process.save_step_result")
+    suspend fun saveStepResult(
+        @Field("run") run: String,
+        @Field("step_code") stepCode: String,
+        @Field("response") response: String? = null,
+        @Field("value") value: String? = null,
+        @Field("remark") remark: String? = null,
+        @Field("skipped") skipped: Int = 0,
+        @Field("skip_reason") skipReason: String? = null,
+        @Field("seconds_spent") secondsSpent: Int = 0,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.SaveResultResponse>>
+
+    /** Records a scan. A payload no pattern matches is still stored, never rejected. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process.record_scan")
+    suspend fun recordProcessScan(
+        @Field("run") run: String,
+        @Field("entity_type") entityType: String,
+        @Field("payload") payload: String,
+        @Field("step_code") stepCode: String? = null,
+        @Field("position_index") positionIndex: Int = 0,
+        @Field("is_manual_entry") isManualEntry: Int = 0,
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.RecordScanResponse>>
+
+    /** Maps an uploaded photo to a step, with the capture metadata burnt into it. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process.attach_photo")
+    suspend fun attachProcessPhoto(
+        @Field("run") run: String,
+        @Field("step_code") stepCode: String,
+        @Field("file_url") fileUrl: String,
+        @Field("captured_at") capturedAt: String? = null,
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+        @Field("accuracy_m") accuracyM: Double? = null,
+        @Field("location_source") locationSource: String = "Unavailable",
+        @Field("is_stamped") isStamped: Int = 1,
+    ): FrappeWrap<Envelope<JsonObject>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process.submit_stage")
+    suspend fun submitProcessStage(
+        @Field("run") run: String,
+        @Field("stage") stage: String,
+        @Field("remarks") remarks: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessRun>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process.verify_stage")
+    suspend fun verifyProcessStage(
+        @Field("run") run: String,
+        @Field("stage") stage: String,
+        @Field("decision") decision: String,
+        @Field("remarks") remarks: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessRun>>
+
+    /** Runs this user started and has not finished — the resume list. */
+    @GET("api/method/vehicle_maintenance.api.process.my_open_runs")
+    suspend fun myOpenProcessRuns(): FrappeWrap<Envelope<List<com.naarni.service.data.dto.OpenRun>>>
+
+    // ══════════════════════════════════════════════════════════════════ Chat
+
+    @GET("api/method/vehicle_maintenance.api.chat.list_rooms")
+    suspend fun chatRooms(): FrappeWrap<Envelope<RoomsPayload>>
+
+    @GET("api/method/vehicle_maintenance.api.chat.list_messages")
+    suspend fun chatMessages(
+        @Query("room") room: String,
+        @Query("before_seq") beforeSeq: Long? = null,
+        @Query("limit") limit: Int = 50,
+    ): FrappeWrap<Envelope<MessagesPayload>>
+
+    /**
+     * The correctness path. `cursors` is a JSON object of {room: highest_seq}.
+     * Run on every reconnect, foreground and push — a dropped socket event is
+     * then not a special case, just a cursor that is behind.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.sync")
+    suspend fun chatSync(@Field("cursors") cursors: String): FrappeWrap<Envelope<SyncPayload>>
+
+    /** Idempotent on `client_id` — a retry after a lost response is safe. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.send_message")
+    suspend fun chatSend(
+        @Field("room") room: String,
+        @Field("client_id") clientId: String,
+        @Field("body") body: String,
+        @Field("kind") kind: String = "text",
+        @Field("reply_to") replyTo: String? = null,
+        @Field("lat") lat: Double? = null,
+        @Field("lon") lon: Double? = null,
+        @Field("vehicle") vehicle: String? = null,
+        @Field("ticket") ticket: String? = null,
+    ): FrappeWrap<Envelope<SendPayload>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.mark_read")
+    suspend fun chatMarkRead(
+        @Field("room") room: String,
+        @Field("seq") seq: Long,
+    ): FrappeWrap<Envelope<MarkReadPayload>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.set_muted")
+    suspend fun chatSetMuted(
+        @Field("room") room: String,
+        @Field("muted") muted: Int,
+    ): FrappeWrap<Envelope<JsonObject>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.create_room")
+    suspend fun chatCreateRoom(
+        @Field("title") title: String,
+        @Field("kind") kind: String = "Group",
+        @Field("members") members: String = "[]",
+        @Field("depot") depot: String? = null,
+        @Field("vehicle") vehicle: String? = null,
+        @Field("ticket") ticket: String? = null,
+        @Field("job_card") jobCard: String? = null,
+    ): FrappeWrap<Envelope<CreateRoomPayload>>
+
+    // ── Resumable chunked upload (core upload_file buffers whole files in RAM) ──
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat_upload.begin_upload")
+    suspend fun chatBeginUpload(
+        @Field("room") room: String,
+        @Field("file_name") fileName: String,
+        @Field("total_size") totalSize: Long,
+        @Field("content_type") contentType: String,
+        @Field("sha256") sha256: String? = null,
+    ): FrappeWrap<Envelope<BeginUploadPayload>>
+
+    @Multipart
+    @POST("api/method/vehicle_maintenance.api.chat_upload.upload_chunk")
+    suspend fun chatUploadChunk(
+        @Part("upload_id") uploadId: RequestBody,
+        @Part("offset") offset: RequestBody,
+        @Part chunk: MultipartBody.Part,
+    ): FrappeWrap<Envelope<ChunkPayload>>
+
+    /** Authoritative resume point — trusted over local bookkeeping after death. */
+    @GET("api/method/vehicle_maintenance.api.chat_upload.chunk_status")
+    suspend fun chatChunkStatus(
+        @Query("upload_id") uploadId: String,
+    ): FrappeWrap<Envelope<ChunkStatusPayload>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat_upload.commit_upload")
+    suspend fun chatCommitUpload(
+        @Field("upload_id") uploadId: String,
+        @Field("client_id") clientId: String,
+        @Field("body") body: String = "",
+        @Field("reply_to") replyTo: String? = null,
+        @Field("duration_ms") durationMs: Long? = null,
+        @Field("lat") lat: Double? = null,
+        @Field("lon") lon: Double? = null,
+    ): FrappeWrap<Envelope<CommitPayload>>
 }

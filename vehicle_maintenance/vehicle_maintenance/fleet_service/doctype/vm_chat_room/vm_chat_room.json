@@ -1,0 +1,120 @@
+{
+  "name": "VM Chat Room",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "document_type": "Document",
+  "engine": "InnoDB",
+  "autoname": "CHAT-.#####",
+  "track_changes": 0,
+  "description": "A chat thread. Rooms are scoped to a depot and may be tagged to a vehicle, ticket or job card so field conversation stays attached to the asset it is about.",
+  "fields": [
+    {
+      "fieldname": "title",
+      "label": "Title",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "kind",
+      "label": "Kind",
+      "fieldtype": "Select",
+      "options": "Group\nDepot\nVehicle\nTicket\nJob Card\nDirect",
+      "default": "Group",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_room_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "depot",
+      "label": "Depot",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "in_standard_filter": 1,
+      "description": "Routing scope. Depot-kind rooms auto-enrol the depot's engineers."
+    },
+    {
+      "fieldname": "vehicle",
+      "label": "Vehicle",
+      "fieldtype": "Link",
+      "options": "Vehicle",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "ticket",
+      "label": "Service Ticket",
+      "fieldtype": "Link",
+      "options": "Service Ticket"
+    },
+    {
+      "fieldname": "job_card",
+      "label": "Job Card",
+      "fieldtype": "Link",
+      "options": "Job Card"
+    },
+    {
+      "fieldname": "section_seq",
+      "label": "Sequence",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "last_seq",
+      "label": "Last Allocated Seq",
+      "fieldtype": "Int",
+      "default": "0",
+      "read_only": 1,
+      "description": "Per-room monotonic counter. Allocated under a row lock by allocate_seq(); never edit by hand."
+    },
+    {
+      "fieldname": "last_message_at",
+      "label": "Last Message At",
+      "fieldtype": "Datetime",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_room_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "last_message_preview",
+      "label": "Last Message",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_members",
+      "label": "Members",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "members",
+      "label": "Members",
+      "fieldtype": "Table",
+      "options": "VM Chat Member",
+      "reqd": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1},
+    {"role": "Technician", "read": 1},
+    {"role": "Aftersales Eng", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "last_message_at",
+  "sort_order": "DESC"
+}

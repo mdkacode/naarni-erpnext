@@ -18,6 +18,20 @@ doc_events: dict = {
 	},
 }
 
+# Chat access control. DocType role permissions decide who may use chat at all;
+# these decide *which rooms* — membership, not role, is the real boundary. Wiring
+# both hooks means the generic /api/resource endpoints are covered too, not just
+# our own whitelisted methods.
+permission_query_conditions = {
+	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.get_permission_query_conditions",
+	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.get_permission_query_conditions",
+}
+
+has_permission = {
+	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.has_permission",
+	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.has_permission",
+}
+
 # Idempotent seeders run after every migrate. Each function checks existence
 # before inserting, so this is safe to invoke repeatedly.
 after_migrate = [
@@ -181,6 +195,11 @@ scheduler_events = {
 		"vehicle_maintenance.fleet_service.tasks.monitor_feedback_requests",
 		# Expire KM report public tokens once their 7-day window passes.
 		"vehicle_maintenance.fleet_service.tasks.expire_km_report_snapshots",
+	],
+	"daily": [
+		# Sweep chat uploads nobody finished. Without this every abandoned
+		# 400 MB video stays in private/files/chat_staging forever.
+		"vehicle_maintenance.api.chat_upload.cleanup_stale_uploads",
 	],
 }
 

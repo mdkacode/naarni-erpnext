@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only. Permits cleartext strictly to the loopback addresses used by
+  `adb reverse` when targeting the local bench (-PdevBackend=true). Everything
+  else, including production, still requires TLS — so a debug build cannot
+  quietly downgrade a real connection.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="true">dev.localhost</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

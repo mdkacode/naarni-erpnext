@@ -69,6 +69,10 @@ class FrappeSocket(
     private var reconnectJob: Job? = null
     private var attempt = 0
 
+    /** True between connect() and the socket settling either way. */
+    @Volatile
+    private var connecting = false
+
     @Volatile
     var isConnected: Boolean = false
         private set
@@ -78,8 +82,14 @@ class FrappeSocket(
 
     // ------------------------------------------------------------- lifecycle
 
+    @Synchronized
     fun connect() {
-        if (socket != null) return
+        // Guarding on `socket` alone races: the lifecycle observer and the
+        // connectivity callback can both call in before newWebSocket() returns,
+        // producing two sockets that then back off independently. Observed on
+        // device as interleaved "attempt 1"/"attempt 2" logs.
+        if (socket != null || connecting) return
+        connecting = true
         reconnectJob?.cancel()
         val request = Request.Builder()
             .url(socketUrl)
@@ -94,6 +104,7 @@ class FrappeSocket(
     fun disconnect() {
         reconnectJob?.cancel()
         reconnectJob = null
+        connecting = false
         isConnected = false
         socket?.close(NORMAL_CLOSURE, "client stopped")
         socket = null
@@ -145,6 +156,7 @@ class FrappeSocket(
     }
 
     private fun onNamespaceJoined() {
+        connecting = false
         isConnected = true
         // Reset backoff only here — not on TCP connect, which also succeeds
         // against a captive portal.
@@ -155,6 +167,7 @@ class FrappeSocket(
     }
 
     private fun onFatal(payload: String) {
+        connecting = false
         val reason = runCatching {
             json.parseToJsonElement(payload).let { (it as? JsonObject) }
                 ?.get("message")?.jsonPrimitive?.content
@@ -177,6 +190,7 @@ class FrappeSocket(
 
     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
         Log.w(TAG, "socket failure: ${t.message}")
+        connecting = false
         socket = null
         isConnected = false
         scope.launch { _events.emit(Event.Disconnected) }
@@ -184,6 +198,7 @@ class FrappeSocket(
     }
 
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+        connecting = false
         socket = null
         isConnected = false
         scope.launch { _events.emit(Event.Disconnected) }

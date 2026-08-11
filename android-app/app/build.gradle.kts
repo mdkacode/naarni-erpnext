@@ -170,6 +170,9 @@ dependencies {
 
     // collectAsStateWithLifecycle — stops chat Flows collecting while backgrounded.
     implementation(libs.androidx.lifecycle.runtime.compose)
+    // ProcessLifecycleOwner — one app-wide foreground/background signal for the
+    // socket, so screen-lock and backgrounding are not two separate code paths.
+    implementation(libs.androidx.lifecycle.process)
 }
 
 // Room schema export: lets a future migration be written against a real

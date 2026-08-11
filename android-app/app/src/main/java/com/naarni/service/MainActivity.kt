@@ -74,6 +74,24 @@ class MainActivity : ComponentActivity() {
                             if (vm.ui.loggedIn) registerFcmToken(context)
                         }
 
+                        // Debug-only scripted sign-in, for driving the device from
+                        // adb during the test matrix:
+                        //   adb shell am start -n <pkg>/.MainActivity \
+                        //     --es dev_login "9990200001:secret"
+                        // Absent from release builds; OTP remains the only real path.
+                        if (BuildConfig.DEBUG) {
+                            val creds = remember { intent?.getStringExtra("dev_login") }
+                            LaunchedEffect(creds, vm.ui.loggedIn) {
+                                if (!creds.isNullOrBlank() && !vm.ui.loggedIn) {
+                                    val phone = creds.substringBefore(':')
+                                    val password = creds.substringAfter(':', "")
+                                    if (phone.isNotBlank() && password.isNotBlank()) {
+                                        vm.devLogin(phone, password)
+                                    }
+                                }
+                            }
+                        }
+
                         if (vm.ui.loggedIn) MainShell(vm) else LoginScreen(vm)
 
                         if (update?.update_available == true && !optionalDismissed) {

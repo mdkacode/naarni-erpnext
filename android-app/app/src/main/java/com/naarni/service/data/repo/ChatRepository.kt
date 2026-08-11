@@ -288,6 +288,11 @@ class ChatRepository(
 
     suspend fun outbox(): List<ChatMessageEntity> = dao.outbox()
 
+    /** Re-arm a failed send. Safe because the server is idempotent on client_id. */
+    suspend fun markStatusPending(clientId: String) {
+        dao.markStatus(clientId, SendStatus.PENDING, null)
+    }
+
     suspend fun highestSeq(room: String): Long = dao.highestSeq(room) ?: 0
 
     // ----------------------------------------------------------------- mapping

@@ -1,0 +1,331 @@
+{
+  "name": "Process Run",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "naming_series:",
+  "track_changes": 1,
+  "is_submittable": 0,
+  "description": "One execution of a process against one subject. Records the definition AND its version, so a run always replays the process exactly as it was when it happened.",
+  "fields": [
+    {
+      "fieldname": "naming_series",
+      "label": "Series",
+      "fieldtype": "Select",
+      "options": "RUN-.YYYY.-.#####",
+      "default": "RUN-.YYYY.-.#####",
+      "hidden": 1
+    },
+    {
+      "fieldname": "process_definition",
+      "label": "Process",
+      "fieldtype": "Link",
+      "options": "Process Definition",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "process_name",
+      "label": "Process Name",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "definition_version",
+      "label": "Version",
+      "fieldtype": "Int",
+      "read_only": 1,
+      "description": "Frozen at start. This is what makes a two-year-old certificate reproducible."
+    },
+    {
+      "fieldname": "run_identifier",
+      "label": "Identifier",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "search_index": 1,
+      "description": "The scanned or typed subject identifier, e.g. the battery pack serial."
+    },
+    {
+      "fieldname": "client_uuid",
+      "label": "Client UUID",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "description": "Client-generated idempotency key. A retried submission from a flaky plant network resumes the same run instead of creating a second one."
+    },
+    {
+      "fieldname": "column_break_subject",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "subject_doctype",
+      "label": "Subject DocType",
+      "fieldtype": "Link",
+      "options": "DocType",
+      "read_only": 1
+    },
+    {
+      "fieldname": "subject_name",
+      "label": "Subject",
+      "fieldtype": "Dynamic Link",
+      "options": "subject_doctype",
+      "in_standard_filter": 1,
+      "description": "The polymorphic hook — this is what attaches a run to a Vehicle, a Job Card or a battery pack."
+    },
+    {
+      "fieldname": "status",
+      "label": "Status",
+      "fieldtype": "Select",
+      "options": "Draft\nIn Progress\nAwaiting Verification\nPassed\nQuarantined\nIn Rework\nCancelled",
+      "default": "Draft",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "read_only": 1
+    },
+    {
+      "fieldname": "current_stage",
+      "label": "Current Stage",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "is_test_run",
+      "label": "Test Run",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "description": "Authoring sandbox. Excluded from every analytic so a template test can never pollute first-pass-yield."
+    },
+
+    {
+      "fieldname": "sb_context",
+      "label": "Context",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "started_by",
+      "label": "Started By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "started_at",
+      "label": "Started At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "completed_at",
+      "label": "Completed At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
+      "fieldname": "duration_seconds",
+      "label": "Duration (s)",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_station",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "station",
+      "label": "Station",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "shift",
+      "label": "Shift",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "depot",
+      "label": "Depot / Plant",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "latitude",
+      "label": "Latitude",
+      "fieldtype": "Float",
+      "precision": "6"
+    },
+    {
+      "fieldname": "longitude",
+      "label": "Longitude",
+      "fieldtype": "Float",
+      "precision": "6"
+    },
+
+    {
+      "fieldname": "sb_outcome",
+      "label": "Outcome",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "result",
+      "label": "Result",
+      "fieldtype": "Select",
+      "options": "\nPass\nFail",
+      "read_only": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "score_pct",
+      "label": "Score (%)",
+      "fieldtype": "Percent",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "score_earned",
+      "label": "Score Earned",
+      "fieldtype": "Float",
+      "precision": "2",
+      "read_only": 1
+    },
+    {
+      "fieldname": "score_max",
+      "label": "Score Max",
+      "fieldtype": "Float",
+      "precision": "2",
+      "read_only": 1
+    },
+    {
+      "fieldname": "is_first_pass",
+      "label": "First Pass",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "description": "Passed with no deviation and no rework. The input to first-pass-yield, which is how this module proves it paid for itself."
+    },
+    {
+      "fieldname": "column_break_counts",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "pass_count",
+      "label": "Passed",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "fail_count",
+      "label": "Failed",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "skip_count",
+      "label": "Skipped",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "critical_count",
+      "label": "Critical Fails",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "answered_count",
+      "label": "Answered",
+      "fieldtype": "Int",
+      "read_only": 1
+    },
+    {
+      "fieldname": "trace_completeness_pct",
+      "label": "Traceability (%)",
+      "fieldtype": "Percent",
+      "read_only": 1,
+      "description": "Share of expected component scans actually captured. Low is reported, never blocked — a scan is never mandatory."
+    },
+
+    {
+      "fieldname": "sb_results",
+      "label": "Results",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "results",
+      "label": "Step Results",
+      "fieldtype": "Table",
+      "options": "Process Run Result"
+    },
+    {
+      "fieldname": "sb_scans",
+      "label": "Component Scans",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "scans",
+      "label": "Scans",
+      "fieldtype": "Table",
+      "options": "Process Run Scan"
+    },
+    {
+      "fieldname": "sb_photos",
+      "label": "Photos",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "photos",
+      "label": "Photos",
+      "fieldtype": "Table",
+      "options": "Process Run Photo"
+    },
+    {
+      "fieldname": "sb_signoffs",
+      "label": "Sign-offs",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "signoffs",
+      "label": "Sign-offs",
+      "fieldtype": "Table",
+      "options": "Process Run Signoff"
+    },
+    {
+      "fieldname": "sb_notes",
+      "label": "Notes",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "quarantine_reason",
+      "label": "Quarantine Reason",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "blocked_stages",
+      "label": "Blocked Stages",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "notes",
+      "label": "Notes",
+      "fieldtype": "Text"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+    {"role": "Process Author", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+    {"role": "Process Verifier", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+    {"role": "Process Operator", "read": 1, "write": 1, "create": 1},
+    {"role": "Process Viewer", "read": 1, "export": 1, "report": 1},
+    {"role": "Central Ops", "read": 1, "export": 1, "report": 1},
+    {"role": "Depot Manager", "read": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "run_identifier"
+}

@@ -1,0 +1,65 @@
+{
+  "name": "Process Outcome Set",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:set_code",
+  "track_changes": 1,
+  "allow_import": 1,
+  "description": "A named, reusable answer vocabulary — 'Pass / Fail / N-A', 'Good / Recommend / Immediate', 'OK / Rework / Scrap'. Steps link to one rather than each authoring its own, so a wording or translation fix lands on every step that uses it at once. This is what replaces a hardcoded Pass/Fail in the engine.",
+  "fields": [
+    {
+      "fieldname": "set_code",
+      "label": "Set Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "set_name",
+      "label": "Name",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "description",
+      "label": "When to use",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "column_break_meta",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "sb_options",
+      "label": "Options",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "options",
+      "label": "Options",
+      "fieldtype": "Table",
+      "options": "Process Step Option",
+      "reqd": 1
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "import": 1},
+    {"role": "Process Author", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "import": 1},
+    {"role": "Process Operator", "read": 1},
+    {"role": "Process Verifier", "read": 1},
+    {"role": "Process Viewer", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "set_name"
+}

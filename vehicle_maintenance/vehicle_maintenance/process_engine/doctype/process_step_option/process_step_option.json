@@ -1,0 +1,82 @@
+{
+  "name": "Process Step Option",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "One selectable outcome on a Choice step. This table is why the engine has no built-in Pass/Fail: Pass/Fail is simply two rows here, a three-tier check is three, and any other vocabulary (OK / Rework / Scrap) is authored the same way. `is_pass` drives scoring; `is_critical` drives quarantine.",
+  "fields": [
+    {
+      "fieldname": "value",
+      "label": "Value",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "Stored value. Keep stable — run history refers to it."
+    },
+    {
+      "fieldname": "label",
+      "label": "Label",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "description": "Shown to the operator. Defaults to Value."
+    },
+    {
+      "fieldname": "label_alt",
+      "label": "Label (Alt Language)",
+      "fieldtype": "Data",
+      "description": "Hindi / regional rendering shown under the label."
+    },
+    {
+      "fieldname": "is_pass",
+      "label": "Counts as Pass",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "description": "Earns this step's weight when scoring."
+    },
+    {
+      "fieldname": "is_critical",
+      "label": "Critical",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "description": "Choosing this quarantines the run and fires On Critical actions."
+    },
+    {
+      "fieldname": "column_break_req",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "requires_remark",
+      "label": "Requires Remark",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "requires_photo",
+      "label": "Requires Photo",
+      "fieldtype": "Check",
+      "description": "Ask for a photo when this option is chosen, regardless of the step's photo policy."
+    },
+    {
+      "fieldname": "color",
+      "label": "Colour",
+      "fieldtype": "Select",
+      "options": "green\nred\namber\ngrey\nblue",
+      "default": "grey",
+      "description": "Never the only signal — the app always renders icon + word + colour."
+    },
+    {
+      "fieldname": "icon",
+      "label": "Icon",
+      "fieldtype": "Data",
+      "description": "Short glyph shown above the label, e.g. a tick or a cross."
+    },
+    {
+      "fieldname": "sequence",
+      "label": "Sequence",
+      "fieldtype": "Int",
+      "in_list_view": 1
+    }
+  ],
+  "permissions": []
+}

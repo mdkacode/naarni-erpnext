@@ -1,0 +1,53 @@
+{
+  "name": "Process Step Condition",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "One clause of a step's visibility rule, evaluated against an earlier step's answer. Deliberately structured rows rather than a formula language: no eval(), and still editable by a non-programmer. Clauses combine left-to-right using each row's `join`. Held flat on the Process Definition and matched to its step by `step_code`.",
+  "fields": [
+    {
+      "fieldname": "step_code",
+      "label": "Applies to Step",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "The step this clause controls."
+    },
+    {
+      "fieldname": "when_step",
+      "label": "When Step",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "The step_code of an earlier step in the same process."
+    },
+    {
+      "fieldname": "operator",
+      "label": "Operator",
+      "fieldtype": "Select",
+      "options": "Equals\nNot Equals\nGreater Than\nLess Than\nIs Answered\nIs Not Answered\nIs Pass\nIs Failed\nIs Out Of Range\nIs Skipped",
+      "default": "Equals",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "value",
+      "label": "Value",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "description": "Compared against the earlier step's answer. Ignored by the Is/Has operators."
+    },
+    {
+      "fieldname": "join",
+      "label": "Join",
+      "fieldtype": "Select",
+      "options": "AND\nOR",
+      "default": "AND",
+      "in_list_view": 1,
+      "description": "How this clause combines with the one before it."
+    }
+  ],
+  "permissions": []
+}

@@ -1,0 +1,73 @@
+{
+  "name": "Process Run Signoff",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "Who accepted a stage, in which capacity, and when. A stage with requires_second_signoff produces two rows — the operator's submission and an independent verification, mirroring the operator / line-inspector split that Indian assembly lines already run.",
+  "fields": [
+    {
+      "fieldname": "stage",
+      "label": "Stage",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "level",
+      "label": "Level",
+      "fieldtype": "Select",
+      "options": "Operator\nVerifier L1\nVerifier L2",
+      "default": "Operator",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "decision",
+      "label": "Decision",
+      "fieldtype": "Select",
+      "options": "Submitted\nApproved\nRejected",
+      "default": "Submitted",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "role",
+      "label": "Role",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "column_break_who",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "user",
+      "label": "User",
+      "fieldtype": "Link",
+      "options": "User",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "user_full_name",
+      "label": "Name",
+      "fieldtype": "Data",
+      "description": "Snapshotted so a later rename or deactivation cannot change a signed record."
+    },
+    {
+      "fieldname": "signed_at",
+      "label": "Signed At",
+      "fieldtype": "Datetime",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "signature",
+      "label": "Signature",
+      "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "remarks",
+      "label": "Remarks",
+      "fieldtype": "Small Text"
+    }
+  ],
+  "permissions": []
+}

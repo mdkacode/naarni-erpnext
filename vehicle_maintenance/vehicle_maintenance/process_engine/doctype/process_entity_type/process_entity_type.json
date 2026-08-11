@@ -1,0 +1,117 @@
+{
+  "name": "Process Entity Type",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "field:entity_code",
+  "track_changes": 1,
+  "allow_import": 1,
+  "description": "Anything a process can scan — a battery module, a slave BMS, a tyre, a fire extinguisher. Holds the QR pattern used to pull a serial, manufacturing date and module number out of the payload. Patterns live here rather than in code because vendors change their labels without telling anyone.",
+  "fields": [
+    {
+      "fieldname": "entity_code",
+      "label": "Entity Code",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "label",
+      "label": "Label",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "label_alt",
+      "label": "Label (Alt Language)",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "icon",
+      "label": "Icon",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "column_break_count",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "expected_count",
+      "label": "Expected Count per Subject",
+      "fieldtype": "Int",
+      "default": "1",
+      "in_list_view": 1,
+      "description": "How many of these a complete subject should have — 3 modules, 1 slave BMS. Drives the traceability completeness score."
+    },
+    {
+      "fieldname": "is_scan_enabled",
+      "label": "Scanning Enabled",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1,
+      "description": "Turn cell-level scanning on or off with one checkbox — no code change either way."
+    },
+    {
+      "fieldname": "duplicate_policy",
+      "label": "Duplicate Policy",
+      "fieldtype": "Select",
+      "options": "Warn\nBlock\nIgnore",
+      "default": "Warn",
+      "description": "Warn is the default because a legitimate rework re-scan must never be blocked."
+    },
+
+    {
+      "fieldname": "sb_parsing",
+      "label": "QR Parsing",
+      "fieldtype": "Section Break",
+      "description": "Patterns are tried in order; the first match wins. If none match, the raw payload is still stored and the scan is flagged for an admin to add a pattern. Nothing is ever rejected or lost."
+    },
+    {
+      "fieldname": "qr_pattern",
+      "label": "QR Pattern",
+      "fieldtype": "Small Text",
+      "description": "Python regex with named groups. Recognised: serial, mfg, module, batch, rev. One pattern per line. Example: ^(?P<serial>[A-Z0-9]{12})-(?P<mfg>\\d{6})-M(?P<module>[123])$"
+    },
+    {
+      "fieldname": "mfg_date_format",
+      "label": "Manufacturing Date Format",
+      "fieldtype": "Data",
+      "default": "DDMMYY",
+      "description": "How to read the `mfg` group. DDMMYY matches the industry convention on cell and module labels."
+    },
+    {
+      "fieldname": "column_break_test",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "sample_payload",
+      "label": "Sample Payload",
+      "fieldtype": "Data",
+      "description": "Paste a real scan here and use Test Pattern to check the parse before saving."
+    },
+    {
+      "fieldname": "sample_result",
+      "label": "Parse Result",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "import": 1},
+    {"role": "Process Author", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "import": 1},
+    {"role": "Process Operator", "read": 1},
+    {"role": "Process Verifier", "read": 1},
+    {"role": "Process Viewer", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "label"
+}

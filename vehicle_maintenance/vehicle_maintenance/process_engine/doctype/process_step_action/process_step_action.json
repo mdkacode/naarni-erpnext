@@ -1,0 +1,72 @@
+{
+  "name": "Process Step Action",
+  "module": "Process Engine",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "editable_grid": 1,
+  "description": "What the engine does automatically when a step (or the whole process) reaches an outcome. Rows are dispatched server-side on save of the result, so the automation cannot be bypassed by the client.",
+  "fields": [
+    {
+      "fieldname": "trigger",
+      "label": "Trigger",
+      "fieldtype": "Select",
+      "options": "On Answer\nOn Pass\nOn Fail\nOn Critical\nOn Skip\nOn Out Of Range\nOn Option\nOn Stage Complete\nOn Process Complete",
+      "default": "On Fail",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "trigger_value",
+      "label": "Trigger Value",
+      "fieldtype": "Data",
+      "description": "Only for the On Option trigger — the option value that fires this action."
+    },
+    {
+      "fieldname": "action_type",
+      "label": "Action",
+      "fieldtype": "Select",
+      "options": "Notify Role\nNotify User\nRaise Deviation\nBlock Stage\nQuarantine Run\nSet Run Status\nRequire Photo\nRequire Remark\nJump To Step\nSet Field On Subject\nCreate Document\nSend Email\nSend SMS\nAdd Tag\nRun Server Script",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "severity",
+      "label": "Severity",
+      "fieldtype": "Select",
+      "options": "Info\nMinor\nMajor\nCritical",
+      "default": "Major",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_params",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "target",
+      "label": "Target",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "description": "Role name, user, stage_code, step_code, fieldname, doctype or Server Script name — whichever the action needs."
+    },
+    {
+      "fieldname": "message_template",
+      "label": "Message",
+      "fieldtype": "Small Text",
+      "description": "Jinja over the run context: {{ run.name }}, {{ step.label }}, {{ result.response }}, {{ subject }}."
+    },
+    {
+      "fieldname": "params",
+      "label": "Extra Parameters (JSON)",
+      "fieldtype": "Small Text",
+      "description": "Optional JSON object for actions that need more than a target, e.g. {\"value\": \"Hold\"}."
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1"
+    }
+  ],
+  "permissions": []
+}

@@ -48,9 +48,64 @@ Backend first, because everything downstream assumes the contract.
 
 ### Cycle 0 — 2026-08-11, setup
 - Verified environment (table above). Device connected and authorised.
-- Created branch `feat/chat-module`.
-- Wrote this file.
-- Next: DocType JSONs.
+- Created branch `feat/chat-module`. Wrote this file.
+
+### Cycle 1 — 2026-08-11, backend complete + deployed + B3 verified
+Commit `e9a315be3e` — 18 files, 2375 insertions. **Steps 1–8 done.**
+
+- DocTypes migrated onto dev.localhost. Verified in MariaDB: unique index
+  `unique_room_seq` on (room, seq) and unique `client_id` both present.
+- `api/chat.py` + `api/chat_upload.py` + `fleet_service/chat_notify.py`.
+- **35/35 tests pass** (`bench --site dev.localhost run-tests --module
+  vehicle_maintenance.api.test_chat`).
+- Bench started (web :8000, socketio :9000). HTTP smoke test passed:
+  `list_rooms`, `send_message` (seq 1), replay of same `client_id` → `dup True`.
+- **B3 spike PASSED — the blueprint's riskiest assumption is now fact.**
+  - Without `Origin`: `44/dev.localhost,{"message":"Invalid origin"}`.
+    **Worse than predicted — the WebSocket upgrade SUCCEEDS and `onOpen` fires.**
+    The rejection is an application-level Socket.IO error frame, so a naive
+    client believes it is connected and simply never receives anything.
+    The Kotlin codec must treat a `44` frame as a fatal auth error, not retry it.
+  - With `Origin: http://dev.localhost:8000`: `40/dev.localhost,{"sid":…}` acked,
+    auto-joined `user:` room, and a live `vm_chat_envelope` arrived after a
+    curl-sent message. Full realtime path proven.
+
+Smoke fixtures on dev.localhost (kept, harmless):
+`chat-smoke@test.localhost` / `ChatSmoke#2026`, peer `chat-smoke-peer@test.localhost`,
+room `CHAT-00001`.
+
+### Cycle 2 — 2026-08-11, Android data layer
+Commit `<see git log>` — steps 9, 10 and most of 12 done. Compiles clean.
+
+- Deps added: Room (+KSP), WorkManager, Paging3, ExifInterface,
+  lifecycle-runtime-compose. **KSP is now in the build** — first annotation
+  processor; `AppContainer` stays hand-rolled.
+- `data/chat/` — entities, DAO, ChatDatabase (separate DB from the rest of the
+  app so a destructive chat migration can't touch job-card state).
+- `core/chat/FrappeSocket.kt` — Socket.IO v4 over raw OkHttp, faithful to the
+  verified spike. Treats `44` as fatal; backoff resets only on namespace ack.
+- `core/chat/ChatWorkers.kt` — ChatSendWorker + ChunkUploadWorker (dataSync FGS,
+  server-authoritative resume, progress mirrored to Room).
+- `data/repo/ChatRepository.kt` — sync engine, gap detection, outbox, queueing.
+- `-PdevBackend=true` build flag + `DevHostInterceptor` + debug-only network
+  security config (cleartext to loopback ONLY) for on-device testing against
+  this laptop's bench via `adb reverse`.
+
+**Still to do:** chat tab + thread UI (step 11), EXIF capture fix, FCM handler,
+lifecycle observer for the socket, then TC01–TC06 on the Xiaomi.
+
+## Gotchas hit (append as found)
+
+- `adb` is not on PATH; the bench is not auto-started (`bench start` needed).
+- Working tree carried uncommitted process-engine work from the previous branch —
+  only chat paths are committed here. **Never `git add -A`** on this branch;
+  stage chat paths explicitly. `hooks.py` unavoidably carries both.
+- Stale bench redis on :11000/:13000 from a dead honcho blocks `bench start`
+  (it tears down every process). Fix: `pkill -f "redis-server 127.0.0.1:11000"`.
+- `~/.gradle/caches/journal-1/file-access.bin` was corrupt and spammed every
+  build. Fixed with `./gradlew --stop && rm -rf ~/.gradle/caches/journal-1`.
+- Pre-commit runs ruff lint + format and will **abort the commit** if it
+  reformats. Run the tests, then commit twice if needed.
 
 ## Needs Mayank (do not proceed without an answer)
 

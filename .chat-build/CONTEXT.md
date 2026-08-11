@@ -128,8 +128,39 @@ of the production path), chat 35/35, process engine 38/38.
 Mayank merges it (PR button, or `gh pr merge 49 --merge`). Then watch:
 `gh run watch $(gh run list --workflow=deploy-azure.yml --limit 1 --json databaseId -q '.[0].databaseId')`
 
-Post-deploy smoke check:
-`curl -b "sid=<sid>" https://service.naarni.com/api/method/vehicle_maintenance.api.chat.list_rooms`
+### Cycle 4 — 2026-08-12, chat UI + PRODUCTION IS LIVE
+
+**Backend is deployed to production.** PR #49 merged as `f76e37153a`;
+`deploy-azure.yml` completed/success 2026-08-11T23:08Z. Verified by probing prod:
+`chat.list_rooms` → "not whitelisted" (exists, needs auth) while a fake method →
+"module has no attribute". The module is loaded on prod.
+
+**The app now points at production by default.** `-PdevBackend=true` remains an
+opt-in for local-bench testing over adb reverse.
+
+Built `ui/chat/` — ChatViewModel, MessageBubble, ChatListScreen, ChatThreadScreen,
+ChatLifecycle. Chat is the 2nd of 5 bottom-nav tabs. Commit `d871144bf0`.
+
+**Three bugs found only by running on the device:**
+1. `FrappeErrorInterceptor` threw on every WebSocket upgrade — 101 Switching
+   Protocols is not in OkHttp's 200..299 `isSuccessful`, and the socket shares
+   the REST client. The socket could never connect. Invisible to any unit test.
+2. `connect()` raced — two sockets backing off independently.
+3. `naarni://vehicle/...` was handled in MainShell but missing from the manifest.
+
+**Verified on the Xiaomi (Android 15):** `200 OK` on `list_rooms` +
+`FrappeSocket: connected to /dev.localhost`.
+
+Device testing recipe: `adb shell pm clear com.naarni.service.debug`, then
+`adb shell am start -n com.naarni.service.debug/com.naarni.service.MainActivity
+--es dev_login "phone:password"` (debug builds only).
+
+**Still to do:** onboarding (profile photo + depot), camera/EXIF into the
+composer, FCM chat handler, TC01–TC06.
+
+**Do not touch:** Mayank is building a roster/duty feature in parallel
+(`api/roster.py`, `duty_punch`, `duty_attendance`, `tasks.py`, `hooks.py`,
+`depot.json`). Stage Android chat paths only.
 
 ## Gotchas hit (append as found)
 

@@ -94,6 +94,43 @@ Commit `<see git log>` — steps 9, 10 and most of 12 done. Compiles clean.
 **Still to do:** chat tab + thread UI (step 11), EXIF capture fix, FCM handler,
 lifecycle observer for the socket, then TC01–TC06 on the Xiaomi.
 
+### Cycle 3 — 2026-08-12, production deploy prepared (BLOCKED on final merge)
+
+**PR #49 is open against `develop` and ready to merge.**
+https://github.com/mdkacode/naarni-erpnext/pull/49
+
+Merging it triggers `deploy-azure.yml` → SSH to the Azure VM → rsync `--delete`
+→ `bench migrate` → `bench build`. **Merging IS the production deploy.**
+
+Two things found while preparing it, both of which would have broken prod:
+
+1. **`hooks.py` named modules that were not in git.** The chat commit swept in
+   process-engine lines from the then-uncommitted working tree. The deploy runs
+   `bench migrate` under `set -e`, so `after_migrate` resolving
+   `patches.v1_7.seed_process_engine` would have raised ModuleNotFoundError
+   partway through creating the chat DocTypes.
+   → Added `.chat-build/verify_hooks.py`, a gate asserting every module and JS
+   asset `hooks.py` names is tracked. **Worth wiring into CI.**
+2. **`origin/develop` had moved on: PR #48 merged the process engine.** The
+   branch was 2 commits behind, so the fix in (1) would have *reverted* the
+   process-engine wiring. Merged develop in and resolved `hooks.py` to keep both.
+   The gate went 32 → 34 refs, confirming the process-engine paths now resolve.
+
+Local WIP handling: 72 untracked files were byte-identical to PR #48 and are
+stashed as `stash@{0}` ("chat-branch: local WIP, verified byte-identical to
+PR#48"), plus a copy under the session scratchpad. Nothing lost; stash can be
+dropped.
+
+Verified on the merged tree before pushing: `bench migrate` clean (a real dry run
+of the production path), chat 35/35, process engine 38/38.
+
+**Blocked:** `gh pr merge 49` was denied by the sandbox permission classifier.
+Mayank merges it (PR button, or `gh pr merge 49 --merge`). Then watch:
+`gh run watch $(gh run list --workflow=deploy-azure.yml --limit 1 --json databaseId -q '.[0].databaseId')`
+
+Post-deploy smoke check:
+`curl -b "sid=<sid>" https://service.naarni.com/api/method/vehicle_maintenance.api.chat.list_rooms`
+
 ## Gotchas hit (append as found)
 
 - `adb` is not on PATH; the bench is not auto-started (`bench start` needed).

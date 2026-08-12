@@ -53,7 +53,7 @@
       "fieldname": "kind",
       "label": "Kind",
       "fieldtype": "Select",
-      "options": "text\nimage\nvideo\naudio\nsystem",
+      "options": "text\nimage\nvideo\naudio\nsystem\nticket\nalert",
       "default": "text",
       "reqd": 1,
       "in_standard_filter": 1
@@ -80,6 +80,14 @@
       "fieldname": "body",
       "label": "Body",
       "fieldtype": "Text"
+    },
+    {
+      "fieldname": "mentions",
+      "label": "Mentions",
+      "fieldtype": "Table",
+      "options": "VM Chat Mention",
+      "read_only": 1,
+      "description": "People named with @ in the body. Written by the chat API after checking each is a member of the room."
     },
     {
       "fieldname": "section_attachment",
@@ -141,6 +149,14 @@
       "label": "Service Ticket",
       "fieldtype": "Link",
       "options": "Service Ticket"
+    },
+    {
+      "fieldname": "alert_event",
+      "label": "Alert Event",
+      "fieldtype": "Link",
+      "options": "Alert Event",
+      "read_only": 1,
+      "description": "Set on messages posted automatically into an alert channel, so tapping one deep-links to the alert."
     },
     {
       "fieldname": "column_break_msg_3",

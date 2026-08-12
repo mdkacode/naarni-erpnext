@@ -23,6 +23,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
+from vehicle_maintenance.fleet_service import chat_feed
 from vehicle_maintenance.fleet_service.chat_notify import preview_for
 from vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room import (
 	VMChatRoom,
@@ -32,6 +33,10 @@ from vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room import 
 # Hard ceiling on any single page of messages, whatever the client asks for.
 MAX_PAGE = 100
 DEFAULT_PAGE = 50
+
+# Accounts that exist but are nobody. Everyone else — staff, drivers, customer
+# portal users — is reachable, because "who can I message" should mean "anyone".
+NON_HUMAN_USERS = ("Guest", "Administrator", "airflow-km@naarni.com")
 
 # Fields we ever put on the wire for a message. Explicit — never SELECT *.
 MESSAGE_FIELDS = (
@@ -50,6 +55,7 @@ MESSAGE_FIELDS = (
 	"reply_to",
 	"vehicle",
 	"ticket",
+	"alert_event",
 	"geotagged",
 	"lat",
 	"lon",
@@ -73,6 +79,21 @@ def _as_dict(value, field: str):
 		frappe.throw(_("{0} must be valid JSON.").format(field))
 	if not isinstance(parsed, dict):
 		frappe.throw(_("{0} must be a JSON object.").format(field))
+	return parsed
+
+
+def _as_list(value, field: str) -> list:
+	"""Same tolerance as `_as_dict`, for the JSON arrays the app posts."""
+	if value is None or value == "":
+		return []
+	if isinstance(value, list):
+		return value
+	try:
+		parsed = json.loads(value)
+	except (TypeError, ValueError):
+		frappe.throw(_("{0} must be valid JSON.").format(field))
+	if not isinstance(parsed, list):
+		frappe.throw(_("{0} must be a JSON array.").format(field))
 	return parsed
 
 
@@ -113,6 +134,17 @@ def _serialise(rows: list[dict]) -> list[dict]:
 		if authors
 		else {}
 	)
+	# Mentions in one query for the whole page rather than one per message.
+	mentions: dict[str, list[str]] = {}
+	if rows:
+		for row in frappe.get_all(
+			"VM Chat Mention",
+			filters={"parent": ["in", [r["name"] for r in rows]], "parenttype": "VM Chat Message"},
+			fields=["parent", "user"],
+			limit_page_length=0,
+		):
+			mentions.setdefault(row["parent"], []).append(row["user"])
+
 	out = []
 	for r in rows:
 		deleted = bool(r.get("deleted"))
@@ -134,6 +166,8 @@ def _serialise(rows: list[dict]) -> list[dict]:
 				"reply_to": r.get("reply_to"),
 				"vehicle": r.get("vehicle"),
 				"ticket": r.get("ticket"),
+				"alert_event": r.get("alert_event"),
+				"mentions": mentions.get(r["name"], []),
 				"geotagged": bool(r.get("geotagged")),
 				"lat": r.get("lat"),
 				"lon": r.get("lon"),
@@ -326,6 +360,7 @@ def send_message(
 	lon: float | None = None,
 	vehicle: str | None = None,
 	ticket: str | None = None,
+	mentions=None,
 ) -> dict:
 	"""Post a message. Idempotent on `client_id`.
 
@@ -335,6 +370,11 @@ def send_message(
 
 	`lat`/`lon` are optional by design: a technician who permanently denied
 	location still sends, the message is just flagged `geotagged = 0`.
+
+	`mentions` is a JSON list of user ids named with `@` in the body. It is the
+	client's parse of its own text rather than something re-derived here: two
+	people can share a display name, and only the composer knows which one was
+	picked from the dropdown.
 
 	Returns: {success, data: {message: {...}, duplicate: bool}}.
 	"""
@@ -358,6 +398,12 @@ def send_message(
 	if reply_to and not frappe.db.exists("VM Chat Message", {"name": reply_to, "room": room}):
 		frappe.throw(_("The message being replied to is not in this room."))
 
+	# Silently drop anyone who is not in the room rather than rejecting the
+	# message: a stale mention (someone removed between composing and sending)
+	# should cost the sender their typing, not their message.
+	member_users = set(room_doc.member_users())
+	mention_users = [u for u in dict.fromkeys(_as_list(mentions, "mentions")) if u in member_users]
+
 	seq = room_doc.allocate_seq()
 
 	msg = frappe.get_doc(
@@ -379,6 +425,7 @@ def send_message(
 			"geotagged": 1 if (lat is not None and lon is not None) else 0,
 			"vehicle": vehicle,
 			"ticket": ticket,
+			"mentions": [{"user": u} for u in mention_users],
 		}
 	)
 	msg.insert(ignore_permissions=True)  # membership already enforced above + in validate
@@ -470,14 +517,55 @@ def create_room(
 
 
 @frappe.whitelist()
+def add_depot_members(room: str) -> dict:
+	"""Enrol every engineer attached to the room's depot. Idempotent.
+
+	Backs the "Add Depot Engineers" button in Desk. An alert channel is only
+	useful if the people who can act on the alert are actually in it, and typing
+	twenty rows into a child-table grid is how that step gets skipped.
+
+	Returns: {success, data: {added: [user, ...]}}.
+	"""
+	frappe.only_for(["System Manager", "Central Ops", "Depot Manager"])
+	doc: VMChatRoom = frappe.get_doc("VM Chat Room", room)
+	if not doc.depot:
+		frappe.throw(_("Set a Depot on this room first."))
+
+	engineers = frappe.get_all(
+		"Depot Engineer",
+		filters={"parent": doc.depot, "parenttype": "Depot"},
+		fields=["user"],
+		limit_page_length=0,
+	)
+	existing = set(doc.member_users())
+	added = []
+	for row in engineers:
+		user = row["user"]
+		if not user or user in existing:
+			continue
+		# A disabled account in the members table only produces dead push tokens.
+		if not frappe.db.get_value("User", user, "enabled"):
+			continue
+		doc.append("members", {"user": user, "member_role": "Member"})
+		existing.add(user)
+		added.append(user)
+
+	if added:
+		doc.save(ignore_permissions=True)
+	return {"success": True, "data": {"added": added}}
+
+
+@frappe.whitelist()
 def search_users(query: str = "", limit: int = 25) -> dict:
-	"""Staff directory search for starting a direct chat.
+	"""Directory search for starting a direct chat with anyone in the org.
 
-	Matches on full name, phone or user id. The caller is excluded, as are
-	disabled accounts, Guest and the service accounts that would otherwise
-	clutter a technician's search results.
+	Matches on full name, phone or user id. Everyone enabled is reachable — the
+	earlier `user_type = "System User"` filter hid every customer-portal and
+	driver account, which meant the people a depot most often needs to reach were
+	the ones who could not be found. Only Guest and the automation accounts are
+	held back, because neither is a person who can read a message.
 
-	Returns: {success, data: {users: [{name, full_name, mobile_no, user_image, role}]}}.
+	Returns: {success, data: {users: [{name, full_name, mobile_no, user_image}]}}.
 	"""
 	me = frappe.session.user
 	term = (query or "").strip()
@@ -485,10 +573,7 @@ def search_users(query: str = "", limit: int = 25) -> dict:
 
 	filters = [
 		["User", "enabled", "=", 1],
-		["User", "name", "not in", [me, "Guest", "Administrator"]],
-		# Website Users created for customers are not staff; keep them out of a
-		# field engineer's directory.
-		["User", "user_type", "=", "System User"],
+		["User", "name", "not in", [me, *NON_HUMAN_USERS]],
 	]
 	or_filters = []
 	if term:
@@ -585,6 +670,189 @@ def _find_direct_room(a: str, b: str) -> str | None:
 		if count == 2:
 			return room["name"]
 	return None
+
+
+@frappe.whitelist()
+def list_members(room: str, query: str = "", limit: int = 30) -> dict:
+	"""The room's members, for the `@` autocomplete.
+
+	Scoped to the room rather than the whole directory on purpose: `@` in a group
+	means "notify this person here", and offering someone who cannot see the
+	thread would produce a mention that silently notifies nobody.
+
+	Returns: {success, data: {users: [{name, full_name, mobile_no, user_image}]}}.
+	"""
+	room_doc = _room_checked(room)
+	me = frappe.session.user
+	term = (query or "").strip().lower()
+	limit = max(1, min(cint(limit) or 30, 50))
+
+	users = [u for u in room_doc.member_users() if u != me]
+	if not users:
+		return {"success": True, "data": {"users": []}}
+
+	rows = frappe.get_all(
+		"User",
+		filters={"name": ["in", users], "enabled": 1},
+		fields=["name", "full_name", "mobile_no", "user_image"],
+		order_by="full_name asc",
+		limit_page_length=0,
+	)
+	if term:
+		rows = [r for r in rows if term in (r.get("full_name") or "").lower() or term in r["name"].lower()]
+	return {"success": True, "data": {"users": rows[:limit]}}
+
+
+# --------------------------------------------------------------------- tickets
+
+
+@frappe.whitelist()
+def search_tickets(query: str = "", limit: int = 20) -> dict:
+	"""Find a Service Ticket to share into a thread.
+
+	Matches on ticket id, title, or the vehicle's registration — the last being
+	what someone standing next to the bus actually has to hand. Open work sorts
+	first; a resolved ticket is rarely the one being discussed.
+
+	Returns: {success, data: {tickets: [{name, title, status, severity,
+	registration_number, depot, assigned_to, assigned_to_name}]}}.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+
+	term = (query or "").strip()
+	limit = max(1, min(cint(limit) or 20, 50))
+
+	or_filters = None
+	if term:
+		like = f"%{term}%"
+		or_filters = [
+			["Service Ticket", "name", "like", like],
+			["Service Ticket", "title", "like", like],
+			["Service Ticket", "registration_number", "like", like],
+		]
+
+	rows = frappe.get_all(
+		"Service Ticket",
+		or_filters=or_filters,
+		fields=[
+			"name",
+			"title",
+			"status",
+			"severity",
+			"registration_number",
+			"vehicle",
+			"depot",
+			"assigned_to",
+		],
+		# Open before Acknowledged before Resolved, newest first inside each.
+		order_by="field(status,'Open','Acknowledged','Resolved') asc, modified desc",
+		limit_page_length=limit,
+	)
+	names = {r["assigned_to"] for r in rows if r.get("assigned_to")}
+	full = (
+		{
+			u["name"]: u["full_name"]
+			for u in frappe.get_all(
+				"User", filters={"name": ["in", list(names)]}, fields=["name", "full_name"]
+			)
+		}
+		if names
+		else {}
+	)
+	for r in rows:
+		r["assigned_to_name"] = full.get(r.get("assigned_to")) or r.get("assigned_to")
+	return {"success": True, "data": {"tickets": rows}}
+
+
+@frappe.whitelist()
+def share_ticket(room: str, ticket: str, client_id: str | None = None, note: str = "") -> dict:
+	"""Post a ticket card into `room` so the thread can work from it.
+
+	Idempotent on `client_id` like every other send, so a retry over a bad link
+	does not paste the same ticket twice.
+
+	Returns: {success, data: {message: {...}, duplicate: bool}}.
+	"""
+	room_doc = _room_checked(room)
+	if not frappe.db.exists("Service Ticket", ticket):
+		frappe.throw(_("Ticket {0} not found.").format(ticket), frappe.DoesNotExistError)
+	frappe.has_permission("Service Ticket", doc=ticket, throw=True)
+
+	client_id = (client_id or "").strip() or frappe.generate_hash(length=32)
+	existing = frappe.db.get_value("VM Chat Message", {"client_id": client_id}, "name")
+	if existing:
+		doc = frappe.get_doc("VM Chat Message", existing)
+		return {"success": True, "data": {"message": doc.as_payload(), "duplicate": True}}
+
+	info = frappe.db.get_value(
+		"Service Ticket", ticket, ["title", "status", "severity", "registration_number"], as_dict=True
+	)
+	# The body is the fallback for anything that cannot render a ticket card —
+	# a push notification, an older build, the Desk timeline.
+	body = f"{ticket} · {info.title or 'Service ticket'} ({info.status})"
+	if info.registration_number:
+		body += f" · {info.registration_number}"
+	if (note or "").strip():
+		body += f"\n{note.strip()}"
+
+	seq = room_doc.allocate_seq()
+	msg = frappe.get_doc(
+		{
+			"doctype": "VM Chat Message",
+			"room": room,
+			"seq": seq,
+			"client_id": client_id,
+			"author": frappe.session.user,
+			"kind": "ticket",
+			"body": body,
+			"ticket": ticket,
+		}
+	)
+	msg.insert(ignore_permissions=True)
+	room_doc.touch_last_message(preview_for(msg), msg.creation)
+	_advance_cursor(room, frappe.session.user, seq)
+	return {"success": True, "data": {"message": msg.as_payload(), "duplicate": False}}
+
+
+@frappe.whitelist()
+def assign_ticket(ticket: str, user: str, room: str | None = None) -> dict:
+	"""Assign a Service Ticket from inside a chat thread.
+
+	Writes both halves of what "assigned" means in Frappe — the ticket's own
+	`assigned_to` field and a ToDo, which is what drives the assignee's Desk
+	sidebar — then posts a notice back into the conversation so the handover is
+	on the record everyone is reading rather than only in the ticket's history.
+
+	Returns: {success, data: {ticket, assigned_to}}.
+	"""
+	frappe.has_permission("Service Ticket", ptype="write", doc=ticket, throw=True)
+	target = (user or "").strip()
+	if not frappe.db.exists("User", {"name": target, "enabled": 1}):
+		frappe.throw(_("That user is not available."), frappe.DoesNotExistError)
+	if room:
+		_room_checked(room)
+
+	frappe.db.set_value("Service Ticket", ticket, "assigned_to", target)
+
+	try:
+		from frappe.desk.form.assign_to import add as assign_add
+
+		assign_add(
+			{
+				"assign_to": [target],
+				"doctype": "Service Ticket",
+				"name": ticket,
+				"description": _("Assigned from chat"),
+			}
+		)
+	except frappe.ValidationError:
+		# Already assigned to this person — the field write above is still the
+		# thing that matters, so this is not a failure.
+		pass
+
+	chat_feed.announce_assignment(ticket, target, frappe.session.user, room)
+	return {"success": True, "data": {"ticket": ticket, "assigned_to": target}}
 
 
 @frappe.whitelist()

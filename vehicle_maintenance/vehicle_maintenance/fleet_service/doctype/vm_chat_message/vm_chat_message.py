@@ -28,6 +28,12 @@ class VMChatMessage(Document):
 
 	def _validate_membership(self) -> None:
 		"""Defence in depth — the API checks too, but this closes the direct-REST path."""
+		# Server-authored notices (an alert landing in a channel, "X assigned this
+		# ticket to Y") have no human author to be a member. The generic REST path
+		# is still shut: the has_permission hook below rejects a non-member for
+		# every ptype, and send_message refuses these kinds outright.
+		if self.kind in ("system", "alert"):
+			return
 		if is_chat_supervisor(self.author):
 			return
 		is_member = frappe.db.exists(
@@ -38,7 +44,7 @@ class VMChatMessage(Document):
 			frappe.throw(_("You are not a member of this room."), frappe.PermissionError)
 
 	def _validate_attachment(self) -> None:
-		if self.kind in ("text", "system"):
+		if self.kind in ("text", "system", "ticket", "alert"):
 			return
 		if not self.file_url:
 			frappe.throw(_("A {0} message needs an attachment.").format(self.kind))
@@ -71,6 +77,8 @@ class VMChatMessage(Document):
 			"reply_to": self.reply_to,
 			"vehicle": self.vehicle,
 			"ticket": self.ticket,
+			"alert_event": self.alert_event,
+			"mentions": [m.user for m in (self.mentions or [])],
 			"geotagged": bool(self.geotagged),
 			"lat": self.lat,
 			"lon": self.lon,

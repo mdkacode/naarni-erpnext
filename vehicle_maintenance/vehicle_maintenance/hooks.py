@@ -16,6 +16,11 @@ doc_events: dict = {
 	"KM Report Snapshot": {
 		"on_update": "vehicle_maintenance.fleet_service.monthly_km_report.send_on_approval",
 	},
+	# Fan a new alert into every chat channel an admin has opted in. Enqueued
+	# inside the hook, so alert ingest never pays for chat fan-out.
+	"Alert Event": {
+		"after_insert": "vehicle_maintenance.fleet_service.chat_feed.on_alert_event",
+	},
 }
 
 # Chat access control. DocType role permissions decide who may use chat at all;
@@ -138,6 +143,7 @@ doctype_js = {
 	"Alert Type": "public/js/alert_type.js",
 	"Process Definition": "public/js/process_definition.js",
 	"Process Entity Type": "public/js/process_entity_type.js",
+	"VM Chat Room": "public/js/vm_chat_room.js",
 }
 
 # Scheduled tasks

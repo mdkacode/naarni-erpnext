@@ -230,7 +230,7 @@ fun ChatThreadScreen(
             )
         }
 
-        ConnectionBanner(vm.connection)
+        ConnectionBanner(vm.connection, vm.connectionDetail)
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             androidx.compose.foundation.lazy.LazyColumn(

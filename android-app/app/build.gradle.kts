@@ -41,6 +41,9 @@ android {
             "\"wss://service.naarni.com/socket.io/?EIO=4&transport=websocket\"",
         )
         buildConfigField("String", "ORIGIN_URL", "\"https://service.naarni.com\"")
+        // HTTP base for the Engine.IO long-polling fallback, used when a proxy
+        // or carrier refuses the WebSocket upgrade.
+        buildConfigField("String", "SOCKET_HTTP_URL", "\"https://service.naarni.com/socket.io/\"")
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -77,6 +80,7 @@ android {
                     "\"ws://localhost:9000/socket.io/?EIO=4&transport=websocket\"",
                 )
                 buildConfigField("String", "ORIGIN_URL", "\"http://dev.localhost:8000\"")
+                buildConfigField("String", "SOCKET_HTTP_URL", "\"http://localhost:9000/socket.io/\"")
             }
         }
         release {

@@ -51,6 +51,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var connection by mutableStateOf(ConnectionState.Connecting)
         private set
 
+    /** Why the socket is unhappy, surfaced in the banner instead of guessed at. */
+    var connectionDetail by mutableStateOf<String?>(null)
+        private set
+
     /** Emits when a message lands in the open thread, so the UI can chime. */
     val incoming = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
 
@@ -73,17 +77,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 when (event) {
                     is FrappeSocket.Event.Connected -> {
                         connection = ConnectionState.Live
+                        connectionDetail = null
                         // Always resync on reconnect. The socket is a latency
                         // optimisation; this is the correctness path.
                         runCatching { repo.sync() }
                         openRoom?.let { socket.subscribeThread(it) }
                     }
 
-                    is FrappeSocket.Event.Disconnected -> connection = ConnectionState.Offline
+                    is FrappeSocket.Event.Disconnected -> {
+                        connection = ConnectionState.Offline
+                        connectionDetail = socket.lastError
+                    }
 
                     // Auth/namespace rejection. Retrying without a new session is
                     // pointless, so we surface it rather than spin.
-                    is FrappeSocket.Event.Fatal -> connection = ConnectionState.Rejected
+                    is FrappeSocket.Event.Fatal -> {
+                        connection = ConnectionState.Rejected
+                        connectionDetail = event.reason
+                    }
 
                     is FrappeSocket.Event.Message -> {
                         repo.onRealtimeMessage(event.name, event.payload)

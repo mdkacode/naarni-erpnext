@@ -19,6 +19,7 @@ import com.naarni.service.data.repo.AuthRepository
 import com.naarni.service.data.repo.ChatRepository
 import com.naarni.service.data.repo.JobCardRepository
 import com.naarni.service.data.repo.ProcessRepository
+import com.naarni.service.data.repo.RosterRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -138,6 +139,7 @@ class AppContainer(context: Context) {
     val authRepo by lazy { AuthRepository(api, session) }
     val jobCardRepo by lazy { JobCardRepository(api) }
     val processRepo by lazy { ProcessRepository(api) }
+    val rosterRepo by lazy { RosterRepository(api, appContext) }
 
     // ---- Chat ----
     val chatDb by lazy { ChatDatabase.build(appContext) }
@@ -152,6 +154,7 @@ class AppContainer(context: Context) {
         FrappeSocket(
             client = httpClient,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            session = session,
         )
     }
 }

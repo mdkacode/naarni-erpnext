@@ -98,7 +98,7 @@ fun ChatListScreen(
             }
         }
 
-        ConnectionBanner(vm.connection)
+        ConnectionBanner(vm.connection, vm.connectionDetail)
 
         OutlinedTextField(
             value = query,
@@ -248,7 +248,7 @@ private fun RoomAvatar(room: ChatRoomEntity) {
 
 /** Shown only when the transport is not healthy — silent when things work. */
 @Composable
-fun ConnectionBanner(state: ConnectionState) {
+fun ConnectionBanner(state: ConnectionState, detail: String? = null) {
     val visible = state != ConnectionState.Live
     AnimatedVisibility(visible, enter = expandVertically(), exit = shrinkVertically()) {
         val (text, color) = when (state) {
@@ -272,7 +272,9 @@ fun ConnectionBanner(state: ConnectionState) {
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                text,
+                // The raw server reason beats a generic "offline" when someone
+                // has to work out why a depot's phones are silent.
+                if (detail.isNullOrBlank()) text else "$text · $detail",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

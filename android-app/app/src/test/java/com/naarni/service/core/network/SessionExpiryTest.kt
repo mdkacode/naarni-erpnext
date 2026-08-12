@@ -1,6 +1,8 @@
 package com.naarni.service.core.network
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,6 +20,14 @@ import org.junit.Test
  * from that direction.
  */
 class SessionExpiryTest {
+
+    /** An ordinary authenticated call, made while holding a session. */
+    private fun dead(code: Int, body: String?) = isSessionDeadResponse(
+        path = "/api/method/vehicle_maintenance.api.chat.list_rooms",
+        code = code,
+        body = body,
+        hadSession = true,
+    )
 
     private val deadSid = """
         {"session_expired":1,
@@ -43,56 +53,155 @@ class SessionExpiryTest {
 
     @Test
     fun `a dead sid signs the user out`() {
-        assertTrue(isSessionDeadResponse(403, deadSid))
+        assertTrue(dead(403, deadSid))
     }
 
     @Test
     fun `a 401 signs the user out whatever the body says`() {
-        assertTrue(isSessionDeadResponse(401, null))
-        assertTrue(isSessionDeadResponse(401, "<html>Session Expired</html>"))
+        assertTrue(dead(401, null))
+        assertTrue(dead(401, "<html>Session Expired</html>"))
     }
 
     @Test
     fun `a forbidden action does not sign the user out`() {
-        assertFalse(isSessionDeadResponse(403, forbiddenAction))
+        assertFalse(dead(403, forbiddenAction))
     }
 
     @Test
     fun `a request with no cookie does not sign the user out`() {
         // Same status, same exc_type, same wording as an expiry — only the flag
         // separates them, which is the whole reason this function exists.
-        assertFalse(isSessionDeadResponse(403, noCookie))
+        assertFalse(dead(403, noCookie))
     }
 
     @Test
     fun `an ordinary validation error is left alone`() {
-        assertFalse(isSessionDeadResponse(417, validationError))
+        assertFalse(dead(417, validationError))
     }
 
     @Test
     fun `a server error is not an expiry`() {
-        assertFalse(isSessionDeadResponse(500, """{"exception":"boom"}"""))
+        assertFalse(dead(500, """{"exception":"boom"}"""))
     }
 
     @Test
     fun `an html error page is not mistaken for an expiry`() {
         // A proxy or load balancer can answer 403 with no JSON at all.
-        assertFalse(isSessionDeadResponse(403, "<html><body>Forbidden</body></html>"))
+        assertFalse(dead(403, "<html><body>Forbidden</body></html>"))
     }
 
     @Test
     fun `an empty or absent body on a 403 is not an expiry`() {
-        assertFalse(isSessionDeadResponse(403, null))
-        assertFalse(isSessionDeadResponse(403, ""))
+        assertFalse(dead(403, null))
+        assertFalse(dead(403, ""))
     }
 
     @Test
     fun `the flag is only honoured when it is actually set`() {
-        assertFalse(isSessionDeadResponse(403, """{"session_expired":0}"""))
+        assertFalse(dead(403, """{"session_expired":0}"""))
     }
 
     @Test
     fun `success codes never reach a sign-out`() {
-        assertFalse(isSessionDeadResponse(200, deadSid))
+        assertFalse(dead(200, deadSid))
+    }
+
+    // ------------------------------------- signing in is not signing out
+
+    @Test
+    fun `a wrong password is not an expired session`() {
+        // Frappe answers AuthenticationError with 401 — the same status it uses
+        // for a dead session. Reported "Your session expired" on a mistyped
+        // password on a real handset before this case existed.
+        assertFalse(
+            isSessionDeadResponse(
+                path = "/api/method/vehicle_maintenance.api.auth.login_with_phone",
+                code = 401,
+                body = """{"message":"Invalid login credentials","exc_type":"AuthenticationError"}""",
+                hadSession = true,
+            )
+        )
+    }
+
+    @Test
+    fun `a stale sid left over from a previous user cannot break a fresh login`() {
+        // The login POST carries the dead cookie, so the response really does
+        // set session_expired — but the user is signing *in*, and bouncing them
+        // to the login screen they are already on would strand them there.
+        assertFalse(
+            isSessionDeadResponse(
+                path = "/api/method/vehicle_maintenance.api.auth.login_with_phone",
+                code = 403,
+                body = """{"session_expired":1,"message":"Invalid login credentials"}""",
+                hadSession = true,
+            )
+        )
+    }
+
+    @Test
+    fun `otp endpoints are exempt too`() {
+        for (endpoint in listOf("api.auth.request_otp", "api.auth.verify_otp")) {
+            assertFalse(
+                endpoint,
+                isSessionDeadResponse("/api/method/vehicle_maintenance.$endpoint", 401, null, true),
+            )
+        }
+    }
+
+    @Test
+    fun `nothing expires when we never had a session`() {
+        assertFalse(
+            isSessionDeadResponse(
+                path = "/api/method/vehicle_maintenance.api.chat.list_rooms",
+                code = 401,
+                body = null,
+                hadSession = false,
+            )
+        )
+    }
+}
+
+/**
+ * What the user is told when a request fails.
+ *
+ * A field engineer reading "frappe.exceptions.AuthenticationError" learns
+ * nothing; the readable sentence is sitting in the same body under `message`.
+ * That is exactly what a mistyped password showed on a handset.
+ */
+class FrappeErrorMessageTest {
+
+    @Test
+    fun `a bare exception class falls through to the message field`() {
+        assertEquals(
+            "Invalid login credentials",
+            parseFrappeError(
+                """{"message":"Invalid login credentials","exception":"frappe.exceptions.AuthenticationError"}""",
+            ),
+        )
+    }
+
+    @Test
+    fun `an exception carrying its own text is used`() {
+        assertEquals(
+            "Message cannot be empty.",
+            parseFrappeError("""{"exception":"frappe.exceptions.ValidationError: Message cannot be empty."}"""),
+        )
+    }
+
+    @Test
+    fun `server messages win over everything`() {
+        assertEquals(
+            "You are not a member of this room.",
+            parseFrappeError(
+                """{"_server_messages":"[\"{\\\"message\\\": \\\"You are not a member of this room.\\\"}\"]",""" +
+                    """"exception":"frappe.exceptions.PermissionError: nope"}""",
+            ),
+        )
+    }
+
+    @Test
+    fun `an unparseable body yields nothing rather than nonsense`() {
+        assertNull(parseFrappeError("<html>502 Bad Gateway</html>"))
+        assertNull(parseFrappeError(""))
     }
 }

@@ -99,7 +99,13 @@ private class DevHostInterceptor : Interceptor {
 private class SessionCookieJar(private val session: SessionManager) : CookieJar {
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        cookies.firstOrNull { it.name == "sid" }?.let { session.sid = it.value }
+        // Frappe clears a dead session by setting `sid=Guest`, not by deleting
+        // the cookie. Persisting that would overwrite a perfectly good session
+        // with a placeholder and make the next request look authenticated when
+        // it is not, so it is dropped here rather than special-cased downstream.
+        cookies.firstOrNull { it.name == "sid" }
+            ?.takeIf { it.value.isNotBlank() && it.value != "Guest" }
+            ?.let { session.sid = it.value }
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {

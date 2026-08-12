@@ -35,7 +35,13 @@ class FrappeErrorInterceptor(private val session: SessionManager) : Interceptor 
 
         val body = runCatching { response.peekBody(MAX_PEEK).string() }.getOrNull()
 
-        if (isSessionDeadResponse(response.code, body)) {
+        val dead = isSessionDeadResponse(
+            path = chain.request().url.encodedPath,
+            code = response.code,
+            body = body,
+            hadSession = session.hasLiveSession,
+        )
+        if (dead) {
             session.markExpired()
             throw FrappeHttpException(SESSION_EXPIRED_MESSAGE)
         }
@@ -45,66 +51,100 @@ class FrappeErrorInterceptor(private val session: SessionManager) : Interceptor 
         throw FrappeHttpException(message)
     }
 
-    private fun parseFrappeError(body: String): String? {
-        if (body.isBlank()) return null
-        return try {
-            val obj = JSONObject(body)
-            serverMessage(obj) ?: exceptionMessage(obj) ?: obj.optString("message").ifBlank { null }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /** `_server_messages`: "[\"{\\\"message\\\": \\\"...\\\"}\"]" → the message. */
-    private fun serverMessage(obj: JSONObject): String? {
-        val raw = obj.optString("_server_messages").ifBlank { return null }
-        return try {
-            val arr = JSONArray(raw)
-            if (arr.length() == 0) return null
-            val first = arr.getString(0)
-            try {
-                JSONObject(first).optString("message").ifBlank { first }
-            } catch (_: Exception) {
-                first
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /** `exception`: "frappe.exceptions.ValidationError: <message>" → <message>. */
-    private fun exceptionMessage(obj: JSONObject): String? {
-        val ex = obj.optString("exception").ifBlank { return null }
-        return ex.substringAfter(": ", ex).trim().ifBlank { null }
-    }
-
     private companion object {
         const val MAX_PEEK = 1L * 1024 * 1024
         const val HTTP_SWITCHING_PROTOCOLS = 101
-        const val HTTP_UNAUTHORIZED = 401
-        const val HTTP_FORBIDDEN = 403
+    }
+}
+
+internal fun parseFrappeError(body: String): String? {
+    if (body.isBlank()) return null
+    return try {
+        val obj = JSONObject(body)
+        serverMessage(obj) ?: exceptionMessage(obj) ?: obj.optString("message").ifBlank { null }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/** `_server_messages`: "[\"{\\\"message\\\": \\\"...\\\"}\"]" → the message. */
+private fun serverMessage(obj: JSONObject): String? {
+    val raw = obj.optString("_server_messages").ifBlank { return null }
+    return try {
+        val arr = JSONArray(raw)
+        if (arr.length() == 0) return null
+        val first = arr.getString(0)
+        try {
+            JSONObject(first).optString("message").ifBlank { first }
+        } catch (_: Exception) {
+            first
+        }
+    } catch (_: Exception) {
+        null
     }
 }
 
 /**
- * Is this "your session is gone", or merely "you may not do that"?
+ * `exception`: "frappe.exceptions.ValidationError: <message>" → <message>.
+ *
+ * Returns null when there is no `: ` — some Frappe errors carry only the
+ * class name there and put the readable text in `message` instead, and a
+ * failed login showing "frappe.exceptions.AuthenticationError" is no use to
+ * anyone holding a phone.
+ */
+private fun exceptionMessage(obj: JSONObject): String? {
+    val ex = obj.optString("exception").ifBlank { return null }
+    if (": " !in ex) return null
+    return ex.substringAfter(": ").trim().ifBlank { null }
+}
+
+/**
+ * Endpoints whose whole purpose is to *obtain* a session.
+ *
+ * A failure here can never mean "your session expired" — there was no session
+ * to lose. This matters because Frappe answers a wrong password with 401, the
+ * same status it uses for a dead session, so without this list a mistyped
+ * password reports itself as an expiry and the real reason never reaches the
+ * user. Found on a handset, not in a test.
+ */
+private val UNAUTHENTICATED_ENDPOINTS = listOf(
+    "api.auth.login_with_phone",
+    "api.auth.request_otp",
+    "api.auth.verify_otp",
+    "api.auth.login_with_naarni_token",
+)
+
+/**
+ * Is this "your session is gone", or something else entirely?
  *
  * Getting this wrong in the permissive direction is the dangerous failure: a
- * Technician who touches one endpoint their role does not cover would be signed
- * out mid-job. So the test is the server's own explicit flag, not the status
- * code — a dead session and a forbidden action both answer 403, and a dead
- * session's message even claims the method "is not whitelisted".
+ * Technician who touches one endpoint their role does not cover, or fat-fingers
+ * a password, would be signed out and told the wrong reason. So this is
+ * deliberately narrow, and every clause earns its place:
  *
- * `session_expired` is set in `frappe/sessions.py` at exactly one place
- * (`get_session_record`): a non-Guest `sid` was presented and no session record
- * exists for it. It is absent when no cookie was sent at all, and absent for a
- * permission denial on a live session. HTTP 401 is Frappe's other expiry path —
- * its "Session Expired" web page — and is unambiguous on its own.
+ * * **[hadSession]** — if we sent no session, there is nothing to expire. Note
+ *   that Frappe answers a dead `sid` by setting the cookie to `Guest`, so a
+ *   literal "Guest" counts as no session; see [SessionCookieJar].
+ * * **an unauthenticated endpoint** — see above; 401 there means bad
+ *   credentials.
+ * * **401** on anything else is Frappe's "Session Expired" path.
+ * * **403 with `session_expired`** — set in `frappe/sessions.py`
+ *   (`get_session_record`) at exactly one place: a non-Guest `sid` was
+ *   presented and no session record exists for it. The flag is what separates
+ *   this from a permission denial, because both answer 403 and the expired one
+ *   even claims the method "is not whitelisted".
  *
- * Top-level and internal so it can be tested without an Android runtime; this
- * is the one branch in the app that must never fire by accident.
+ * Top-level and pure so it can be tested without an Android runtime; this is
+ * the one branch in the app that must never fire by accident.
  */
-internal fun isSessionDeadResponse(code: Int, body: String?): Boolean {
+internal fun isSessionDeadResponse(
+    path: String,
+    code: Int,
+    body: String?,
+    hadSession: Boolean,
+): Boolean {
+    if (!hadSession) return false
+    if (UNAUTHENTICATED_ENDPOINTS.any { path.contains(it) }) return false
     if (code == 401) return true
     if (code != 403 || body.isNullOrBlank()) return false
     return runCatching { JSONObject(body).optInt("session_expired") == 1 }.getOrDefault(false)

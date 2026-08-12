@@ -94,6 +94,23 @@ data class ChatMessageEntity(
     val transcript: String? = null,
     val vehicle: String? = null,
     val ticket: String? = null,
+    val alertEvent: String? = null,
+    /**
+     * User ids named with `@`, comma-joined.
+     *
+     * A list flattened into a column rather than a second table: the only reads
+     * are "highlight these names" and "does this name me", both of which happen
+     * while a row is already in hand. A join per message row on a paging query
+     * would cost far more than it could ever return.
+     */
+    val mentions: String? = null,
+    /**
+     * Resolved once, when the row is written, against the account that was
+     * signed in at the time. Recomputing it at render would mean a string
+     * comparison per visible row per recomposition, and would quietly go wrong
+     * on a shared depot handset after a re-login.
+     */
+    val mentionsMe: Boolean = false,
     val geotagged: Boolean = false,
     val lat: Double? = null,
     val lon: Double? = null,

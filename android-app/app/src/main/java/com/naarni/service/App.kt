@@ -144,7 +144,7 @@ class AppContainer(context: Context) {
     // ---- Chat ----
     val chatDb by lazy { ChatDatabase.build(appContext) }
     val chatDao by lazy { chatDb.chatDao() }
-    val chatRepo by lazy { ChatRepository(api, chatDao, appContext) }
+    val chatRepo by lazy { ChatRepository(api, chatDao, appContext, session) }
 
     /**
      * One socket for the process, bound to the app lifecycle rather than to any

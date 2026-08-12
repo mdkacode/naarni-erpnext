@@ -14,6 +14,7 @@ import com.naarni.service.core.chat.FrappeSocket
 import com.naarni.service.data.chat.ChatMessageEntity
 import com.naarni.service.data.chat.ChatRoomEntity
 import com.naarni.service.data.chat.SendStatus
+import com.naarni.service.data.dto.ChatTicketDto
 import com.naarni.service.data.dto.ChatUserDto
 import com.naarni.service.data.repo.ChatRepository
 import kotlinx.coroutines.Job
@@ -60,6 +61,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     val me: String get() = session.user.orEmpty()
     private val myName: String get() = session.fullName ?: session.user.orEmpty()
+
+    /** How the rest of the room sees your name — what an `@` of you looks like. */
+    val myDisplayName: String get() = myName
 
     /** The thread currently on screen, if any — drives doc-room subscription. */
     private var openRoom: String? = null
@@ -124,10 +128,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun observeRoom(room: String) = repo.observeRoom(room)
 
+    /**
+     * The room's members, held for the `@` autocomplete.
+     *
+     * Fetched once per thread and filtered on the device rather than queried per
+     * keystroke. A room has tens of members, not thousands, and an autocomplete
+     * that waits on a depot's link before offering a name is one people stop
+     * using — they type the name by hand and the mention never happens.
+     */
+    var members by mutableStateOf<List<ChatUserDto>>(emptyList())
+        private set
+
     fun openThread(room: String) {
         openRoom = room
         socket.subscribeThread(room)
         viewModelScope.launch { runCatching { repo.sync() } }
+        viewModelScope.launch {
+            members = runCatching { repo.roomMembers(room, "") }.getOrDefault(emptyList())
+        }
     }
 
     fun closeThread(room: String) {
@@ -143,11 +161,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------- send
 
-    fun sendText(room: String, body: String, replyTo: String? = null) {
+    fun sendText(
+        room: String,
+        body: String,
+        replyTo: String? = null,
+        mentions: List<String> = emptyList(),
+    ) {
         val text = body.trim()
         if (text.isEmpty()) return
         viewModelScope.launch {
-            val clientId = repo.queueText(room, text, me, myName, replyTo)
+            val clientId = repo.queueText(room, text, me, myName, replyTo, mentions)
             ChatWork.enqueueText(getApplication(), clientId)
         }
     }
@@ -195,31 +218,49 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     // -------------------------------------------------------- new conversation
 
-    var directory by mutableStateOf<List<ChatUserDto>>(emptyList())
-        private set
-
-    var searching by mutableStateOf(false)
-        private set
-
-    private var searchJob: Job? = null
-
     /**
-     * Staff search, debounced.
+     * A debounced staff-directory search.
      *
      * Cancelling the in-flight job on each keystroke matters more than usual
      * here: field handsets are on slow links, and without it a fast typist
      * queues six requests whose responses can land out of order and leave the
      * list showing results for a prefix they already deleted.
+     *
+     * Two independent instances exist — one behind the chat list's search box,
+     * one behind the new-chat directory — because with a single shared result
+     * list, opening the directory wipes whatever the list screen was showing.
      */
-    fun searchUsers(query: String) {
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            delay(SEARCH_DEBOUNCE_MS)
-            searching = true
-            directory = runCatching { repo.searchUsers(query) }.getOrDefault(emptyList())
-            searching = false
+    inner class PeopleSearch {
+        var results by mutableStateOf<List<ChatUserDto>>(emptyList())
+            private set
+
+        var busy by mutableStateOf(false)
+            private set
+
+        private var job: Job? = null
+
+        fun query(term: String) {
+            job?.cancel()
+            job = viewModelScope.launch {
+                delay(SEARCH_DEBOUNCE_MS)
+                busy = true
+                results = runCatching { repo.searchUsers(term) }.getOrDefault(emptyList())
+                busy = false
+            }
+        }
+
+        fun clear() {
+            job?.cancel()
+            results = emptyList()
+            busy = false
         }
     }
+
+    /** Backs the full-screen "New chat" directory. */
+    val directory = PeopleSearch()
+
+    /** Backs the people results inlined under the chat list's search box. */
+    val contacts = PeopleSearch()
 
     /** Open (or create) a DM and hand the room name back for navigation. */
     fun openDirect(user: String, onReady: (String) -> Unit) {
@@ -231,6 +272,45 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMuted(room: String, muted: Boolean) {
         viewModelScope.launch { runCatching { repo.setMuted(room, muted) } }
+    }
+
+    // ---------------------------------------------------------------- tickets
+
+    var tickets by mutableStateOf<List<ChatTicketDto>>(emptyList())
+        private set
+
+    var ticketsLoading by mutableStateOf(false)
+        private set
+
+    private var ticketJob: Job? = null
+
+    fun searchTickets(term: String) {
+        ticketJob?.cancel()
+        ticketJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            ticketsLoading = true
+            tickets = runCatching { repo.searchTickets(term) }.getOrDefault(emptyList())
+            ticketsLoading = false
+        }
+    }
+
+    /** [onResult] carries null on success, or a message to show on failure. */
+    fun shareTicket(room: String, ticket: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val error = runCatching { repo.shareTicket(room, ticket) }
+                .exceptionOrNull()
+                ?.let { it.message ?: "Couldn't share that ticket." }
+            onResult(error)
+        }
+    }
+
+    fun assignTicket(ticket: String, user: String, room: String?, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val error = runCatching { repo.assignTicket(ticket, user, room) }
+                .exceptionOrNull()
+                ?.let { it.message ?: "Couldn't assign that ticket." }
+            onResult(error)
+        }
     }
 
     private companion object {

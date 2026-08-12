@@ -177,6 +177,11 @@ dependencies {
     // ProcessLifecycleOwner — one app-wide foreground/background signal for the
     // socket, so screen-lock and backgrounding are not two separate code paths.
     implementation(libs.androidx.lifecycle.process)
+
+    // Local JVM tests. Chat's fiddliest logic — @-token scanning, mention
+    // survival across edits — is pure string work, and pinning it here is far
+    // cheaper than discovering a regression on a handset in a depot.
+    testImplementation(libs.junit)
 }
 
 // Room schema export: lets a future migration be written against a real

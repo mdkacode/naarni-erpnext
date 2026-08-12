@@ -1,0 +1,184 @@
+{
+  "name": "Duty Punch",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "autoname": "naming_series:",
+  "naming_rule": "By \"Naming Series\" field",
+  "track_changes": 1,
+  "description": "A single check-in or check-out, stamped with the time and the coordinates the phone reported. The raw event log — Duty Attendance is derived from it, never the other way round.",
+  "fields": [
+    {
+      "fieldname": "naming_series",
+      "label": "Series",
+      "fieldtype": "Select",
+      "options": "PNCH-.YYYY.-",
+      "default": "PNCH-.YYYY.-",
+      "hidden": 1,
+      "no_copy": 1,
+      "print_hide": 1
+    },
+    {
+      "fieldname": "punch_type",
+      "label": "Type",
+      "fieldtype": "Select",
+      "options": "In\nOut",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "punch_time",
+      "label": "Time",
+      "fieldtype": "Datetime",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "user",
+      "label": "Engineer",
+      "fieldtype": "Link",
+      "options": "User",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "employee_name",
+      "label": "Name",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "col_break_ctx",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "depot",
+      "label": "Depot",
+      "fieldtype": "Link",
+      "options": "Depot",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "attendance",
+      "label": "Attendance",
+      "fieldtype": "Link",
+      "options": "Duty Attendance",
+      "read_only": 1
+    },
+    {
+      "fieldname": "source",
+      "label": "Source",
+      "fieldtype": "Select",
+      "options": "App\nDesk\nAuto",
+      "default": "App",
+      "read_only": 1,
+      "in_standard_filter": 1,
+      "description": "Auto marks a punch the system wrote — a forgotten check-out closed at the end of the shift window."
+    },
+    {
+      "fieldname": "device_uuid",
+      "label": "Device",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "client_uuid",
+      "label": "Client UUID",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "hidden": 1,
+      "no_copy": 1,
+      "description": "Idempotency key. A retried punch over a flaky network resolves to the same record instead of a duplicate."
+    },
+    {
+      "fieldname": "sec_location",
+      "label": "Location",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "location_available",
+      "label": "Location Captured",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "in_list_view": 1,
+      "description": "Unticked means the phone could not get a fix. The punch is still valid — GPS fails indoors and a blocked punch just moves the problem to a paper register."
+    },
+    {
+      "fieldname": "latitude",
+      "label": "Latitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "longitude",
+      "label": "Longitude",
+      "fieldtype": "Float",
+      "precision": "6",
+      "read_only": 1
+    },
+    {
+      "fieldname": "accuracy_m",
+      "label": "Accuracy (m)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "read_only": 1
+    },
+    {
+      "fieldname": "col_break_geo",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "maps_link",
+      "label": "Map",
+      "fieldtype": "Small Text",
+      "read_only": 1
+    },
+    {
+      "fieldname": "distance_from_depot_m",
+      "label": "Distance from Depot (m)",
+      "fieldtype": "Float",
+      "precision": "1",
+      "read_only": 1
+    },
+    {
+      "fieldname": "outside_geofence",
+      "label": "Outside Geofence",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "sec_extra",
+      "label": "Notes",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "note",
+      "label": "Note",
+      "fieldtype": "Small Text",
+      "description": "Why this punch is unusual — 'at customer site', 'phone had no signal at gate'."
+    },
+    {
+      "fieldname": "photo",
+      "label": "Photo",
+      "fieldtype": "Attach Image",
+      "description": "Optional selfie / site photo, stamped by the app with time, coordinates and name."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Central Ops", "read": 1},
+    {"role": "N. Maintenance Head", "read": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1}
+  ],
+  "sort_field": "punch_time",
+  "sort_order": "DESC"
+}

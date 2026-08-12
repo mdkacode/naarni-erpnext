@@ -1,0 +1,106 @@
+{
+  "name": "Duty Shift",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "allow_import": 1,
+  "engine": "InnoDB",
+  "autoname": "field:shift_name",
+  "naming_rule": "By fieldname",
+  "track_changes": 1,
+  "description": "A reusable duty window (Morning, General, Night...). Depot admins pick one per roster day rather than typing times, so a shift-timing change is one edit here instead of hundreds across the roster.",
+  "fields": [
+    {
+      "fieldname": "shift_name",
+      "label": "Shift Name",
+      "fieldtype": "Data",
+      "unique": 1,
+      "reqd": 1,
+      "in_list_view": 1,
+      "description": "What the engineer sees in the app, e.g. Morning."
+    },
+    {
+      "fieldname": "start_time",
+      "label": "Start Time",
+      "fieldtype": "Time",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "end_time",
+      "label": "End Time",
+      "fieldtype": "Time",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "crosses_midnight",
+      "label": "Ends Next Day",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Tick for a night shift, e.g. 22:00 to 06:00. Without this the shift is treated as zero-length and hours never add up."
+    },
+    {
+      "fieldname": "col_break_policy",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "grace_minutes",
+      "label": "Late Grace (minutes)",
+      "fieldtype": "Int",
+      "default": "15",
+      "description": "Arriving within this many minutes of start is not counted late."
+    },
+    {
+      "fieldname": "early_window_minutes",
+      "label": "Early Check-in Window (minutes)",
+      "fieldtype": "Int",
+      "default": "90",
+      "description": "How long before start the app offers the Check In button. Advisory — an early punch is still accepted and recorded."
+    },
+    {
+      "fieldname": "full_day_hours",
+      "label": "Full Day After (hours)",
+      "fieldtype": "Float",
+      "default": "8",
+      "precision": "2"
+    },
+    {
+      "fieldname": "half_day_hours",
+      "label": "Half Day After (hours)",
+      "fieldtype": "Float",
+      "default": "4",
+      "precision": "2"
+    },
+    {
+      "fieldname": "sec_display",
+      "label": "Display",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "color",
+      "label": "Colour",
+      "fieldtype": "Select",
+      "options": "Blue\nGreen\nOrange\nPurple\nRed\nGrey",
+      "default": "Blue",
+      "description": "Used on the roster grid and the app's duty card."
+    },
+    {
+      "fieldname": "is_active",
+      "label": "Active",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_standard_filter": 1,
+      "description": "Inactive shifts stay on existing rosters but stop being offered for new ones."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Central Ops", "read": 1, "write": 1, "create": 1},
+    {"role": "Service Engineer", "read": 1},
+    {"role": "Technician", "read": 1}
+  ],
+  "sort_field": "start_time",
+  "sort_order": "ASC",
+  "title_field": "shift_name"
+}

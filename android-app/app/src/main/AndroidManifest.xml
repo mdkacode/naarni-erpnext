@@ -89,6 +89,21 @@
             </intent-filter>
         </service>
 
+        <!--
+          Inline reply from a chat notification. Not exported: the reply
+          PendingIntent has to be MUTABLE so RemoteInput can write the typed
+          text into it, and an exported receiver would let any app on the
+          device post messages as this user.
+        -->
+        <receiver
+            android:name=".core.push.ChatReplyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.naarni.service.CHAT_REPLY" />
+                <action android:name="com.naarni.service.CHAT_DISMISS" />
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_stat_notify" />

@@ -61,6 +61,9 @@ class ChatRepository(
     /** Attachments and links for one conversation's gallery. */
     fun observeGallery(room: String): Flow<List<ChatMessageEntity>> = dao.observeGallery(room)
 
+    /** Title for a room already in Room, for the notification tray. */
+    suspend fun roomTitle(room: String): String = dao.room(room)?.title.orEmpty()
+
     /** Drives the bottom-nav badge. Correct offline and on a cold start. */
     fun observeUnreadTotal(): Flow<Int> = dao.observeUnreadTotal()
 

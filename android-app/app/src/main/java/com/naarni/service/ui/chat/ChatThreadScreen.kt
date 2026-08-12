@@ -92,6 +92,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import com.naarni.service.core.feedback.LocalFeedback
+import com.naarni.service.core.push.ChatNotifications
 import com.naarni.service.data.chat.ChatMessageEntity
 import com.naarni.service.data.chat.SendStatus
 import com.naarni.service.data.dto.ChatUserDto
@@ -182,7 +183,7 @@ fun ChatThreadScreen(
                     replyTo = replyTo?.serverName,
                 )
                 replyTo = null
-                listState.animateScrollToItem(0)
+                listState.scrollToItem(0)
             }
         }
     }
@@ -210,7 +211,7 @@ fun ChatThreadScreen(
                     replyTo = replyTo?.serverName,
                 )
                 replyTo = null
-                listState.animateScrollToItem(0)
+                listState.scrollToItem(0)
             }
         }
     }
@@ -219,6 +220,15 @@ fun ChatThreadScreen(
     // are not holding a subscription for every thread ever opened.
     LaunchedEffect(roomName) { vm.openThread(roomName) }
     DisposableEffect(roomName) { onDispose { vm.closeThread(roomName) } }
+
+    // Tell the notifier this thread is on screen, and clear anything already in
+    // the tray for it. Buzzing someone's pocket about a message they are
+    // watching arrive is the fastest way to get notifications switched off.
+    DisposableEffect(roomName) {
+        ChatNotifications.visibleRoom = roomName
+        ChatNotifications.clear(context, roomName)
+        onDispose { if (ChatNotifications.visibleRoom == roomName) ChatNotifications.visibleRoom = null }
+    }
 
     // Chime only for messages that arrive while you are looking at the thread.
     LaunchedEffect(Unit) { vm.incoming.collect { feedback.messageReceived() } }
@@ -230,6 +240,46 @@ fun ChatThreadScreen(
     LaunchedEffect(newestSeq) { if (newestSeq > 0) vm.markRead(roomName, newestSeq) }
 
     val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex <= 2 } }
+
+    /**
+     * Follow the conversation as it grows.
+     *
+     * Keyed on the newest row's identity rather than fired at the send call
+     * site, which was the bug: sending scrolled immediately, before the
+     * optimistic row had travelled through Room and Paging, so it animated to
+     * the message that was already there and the new one appeared below the
+     * fold. Incoming messages did not scroll at all.
+     *
+     * Your own message always wins the scroll — you just pressed send, so being
+     * shown anything else is wrong. Someone else's only scrolls if you were
+     * already at the bottom; yanking the view while a technician is reading
+     * back through a thread is worse than making them tap the jump button,
+     * which is what appears instead.
+     */
+    val newestKey = if (messages.itemCount == 0) null else messages.peek(0)?.clientId
+    LaunchedEffect(newestKey) {
+        if (newestKey == null) return@LaunchedEffect
+        val mine = messages.peek(0)?.author == vm.me
+        if (mine || atBottom) listState.scrollToItem(0)
+    }
+
+    /**
+     * Where "New messages" goes.
+     *
+     * Captured the first time the room row is seen and then left alone,
+     * because opening the thread immediately advances the read cursor — read
+     * it live and the divider would vanish the moment it appeared. Null once
+     * the thread has been open a while, which is what keeps the line from
+     * re-appearing above every message that arrives while you are watching.
+     */
+    var unreadFrom by remember(roomName) { mutableStateOf<Long?>(null) }
+    var unreadPinned by remember(roomName) { mutableStateOf(false) }
+    LaunchedEffect(roomName, room?.lastReadSeq, room?.lastSeq) {
+        val r = room ?: return@LaunchedEffect
+        if (unreadPinned) return@LaunchedEffect
+        unreadPinned = true
+        unreadFrom = r.lastReadSeq.takeIf { r.lastSeq > it }
+    }
 
     BackHandler(enabled = selected != null || replyTo != null) {
         selected = null
@@ -414,6 +464,20 @@ fun ChatThreadScreen(
                     // Breathing room above a new speaker, so a busy depot thread
                     // reads as a set of turns rather than one wall.
                     if (newRun && !newDay) Spacer(Modifier.height(ChatTokens.gapBetweenRuns))
+
+                    // Emitted after the message because reverseLayout draws it
+                    // above — the same trick the day divider uses. This is the
+                    // boundary row: the oldest message you have not read.
+                    unreadFrom?.let { mark ->
+                        val seq = message.seq
+                        val olderSeq = older?.seq
+                        val isFirstUnread = seq != null && seq > mark &&
+                            (older == null || (olderSeq != null && olderSeq <= mark))
+                        if (isFirstUnread && !vm.isMine(message)) {
+                            UnreadDivider(((room?.lastSeq ?: 0L) - mark).toInt().coerceAtLeast(1))
+                        }
+                    }
+
                     if (newDay) DayDivider(dayLabel(message.createdAt))
                 }
             }
@@ -430,7 +494,7 @@ fun ChatThreadScreen(
                     shape = CircleShape,
                     shadowElevation = 3.dp,
                     modifier = Modifier.size(40.dp).clickable {
-                        scope.launch { listState.animateScrollToItem(0) }
+                        scope.launch { listState.scrollToItem(0) }
                     },
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -453,7 +517,7 @@ fun ChatThreadScreen(
                 replyTo = null
                 feedback.messageSent()
                 vm.sendText(roomName, text, parent?.serverName, mentions)
-                scope.launch { listState.animateScrollToItem(0) }
+                scope.launch { listState.scrollToItem(0) }
             },
             onCamera = { feedback.tap(); showCamera = true },
             onAttach = {
@@ -474,7 +538,7 @@ fun ChatThreadScreen(
             onShared = {
                 pickingTicket = false
                 feedback.messageSent()
-                scope.launch { listState.animateScrollToItem(0) }
+                scope.launch { listState.scrollToItem(0) }
             },
             onError = { pickingTicket = false; rejected = it },
         )

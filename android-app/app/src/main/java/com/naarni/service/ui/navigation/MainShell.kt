@@ -9,6 +9,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.naarni.service.ui.chat.ChatLifecycle
+import com.naarni.service.ui.chat.ChatGalleryScreen
 import com.naarni.service.ui.chat.ChatListScreen
 import com.naarni.service.ui.chat.ChatThreadScreen
 import com.naarni.service.ui.chat.ChatViewModel
@@ -294,13 +295,22 @@ fun MainShell(vm: AppViewModel) {
                 )
             }
             composable("thread/{room}") { entry ->
+                val room = entry.arguments?.getString("room").orEmpty()
                 ChatThreadScreen(
                     vm = chatVm,
-                    roomName = entry.arguments?.getString("room").orEmpty(),
+                    roomName = room,
                     onBack = { nav.popBackStack() },
                     // A field observation becomes a Service Ticket without leaving
                     // the thread — the reason chat lives in this app at all.
                     onRaiseTicket = { msg -> nav.navigate("ticket/${msg.ticket ?: ""}") },
+                    onOpenGallery = { nav.navigate("gallery/$room") },
+                )
+            }
+            composable("gallery/{room}") { entry ->
+                ChatGalleryScreen(
+                    vm = chatVm,
+                    roomName = entry.arguments?.getString("room").orEmpty(),
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable(Tab.Profile.route) { ProfileScreen(vm) }

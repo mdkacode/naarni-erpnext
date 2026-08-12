@@ -113,6 +113,7 @@ fun ChatThreadScreen(
     roomName: String,
     onBack: () -> Unit,
     onRaiseTicket: (ChatMessageEntity) -> Unit,
+    onOpenGallery: () -> Unit = {},
 ) {
     // These MUST be remembered against roomName. Calling them in the composable
     // body builds a brand-new Pager on every recomposition, which tears down and
@@ -232,7 +233,15 @@ fun ChatThreadScreen(
     // thread — both own the back gesture while they are up.
     if (showCamera) {
         StampingCamera(
-            label = "Chat",
+            // Which conversation the photo was taken in, not the literal word
+            // "Chat" — that told a reviewer nothing they could act on. Truncated
+            // because the stamp's background bar is sized to its widest line, so
+            // a long group name would run off the edge of the picture.
+            label = "Conversation: " + (
+                room?.title?.trim()?.takeIf { it.isNotEmpty() }?.let { title ->
+                    if (title.length > 28) title.take(27).trimEnd() + "…" else title
+                } ?: "Unknown"
+                ),
             onClose = { showCamera = false },
             onCaptured = { file ->
                 showCamera = false
@@ -307,6 +316,7 @@ fun ChatThreadScreen(
                 muted = room?.muted == true,
                 onBack = onBack,
                 onToggleMute = { vm.setMuted(roomName, room?.muted != true) },
+                onOpenGallery = onOpenGallery,
             )
         }
 
@@ -558,6 +568,7 @@ private fun ThreadHeader(
     muted: Boolean,
     onBack: () -> Unit,
     onToggleMute: () -> Unit,
+    onOpenGallery: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -596,6 +607,10 @@ private fun ThreadHeader(
                 Text("⋮", color = Color.White, style = MaterialTheme.typography.titleLarge)
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("Media, files and links") },
+                    onClick = { onOpenGallery(); menuOpen = false },
+                )
                 DropdownMenuItem(
                     text = { Text(if (muted) "Unmute" else "Mute notifications") },
                     onClick = { onToggleMute(); menuOpen = false },

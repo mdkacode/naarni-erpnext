@@ -2,6 +2,8 @@ package com.naarni.service.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,7 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -42,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,6 +101,14 @@ fun ChatListScreen(
         if (searching) vm.contacts.query(query) else vm.contacts.clear()
     }
 
+    val listState = rememberLazyListState()
+
+    // Reveal on the way back up, hide on the way down — the pattern every
+    // messaging app uses, so the field is there the moment you reach for it and
+    // out of the way while you are reading. Held open whenever a search is
+    // actually running, or the box would vanish under the user's own thumb.
+    val searchVisible = rememberCollapsingHeaderState(listState) || searching
+
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
 
@@ -106,17 +119,23 @@ fun ChatListScreen(
                     .statusBarsPadding()
                     .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
             ) {
-                Text("Chat", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-                Spacer(Modifier.height(2.dp))
                 Text(
-                    subtitleFor(rooms),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.85f),
+                    "Conversations",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
                 )
-                Spacer(Modifier.height(11.dp))
                 // Search lives inside the header rather than as a boxed field
                 // below it: one band of chrome instead of two stacked ones.
-                SearchPill(query, onChange = { query = it }, busy = vm.contacts.busy)
+                AnimatedVisibility(
+                    visible = searchVisible,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    Column {
+                        Spacer(Modifier.height(11.dp))
+                        SearchPill(query, onChange = { query = it }, busy = vm.contacts.busy)
+                    }
+                }
             }
 
             ConnectionBanner(vm.connection, vm.connectionDetail)
@@ -134,7 +153,7 @@ fun ChatListScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     if (searching && filtered.isNotEmpty()) {
                         item(key = "hdr-chats") { SectionHeader("Chats") }
                     }
@@ -391,12 +410,64 @@ fun ConnectionBanner(state: ConnectionState, detail: String? = null) {
     }
 }
 
-private fun subtitleFor(rooms: List<ChatRoomEntity>): String {
-    val unread = rooms.sumOf { (it.lastSeq - it.lastReadSeq).coerceAtLeast(0) }
-    return when {
-        rooms.isEmpty() -> "No conversations"
-        unread == 0L -> "${rooms.size} conversations · all caught up"
-        else -> "${rooms.size} conversations · $unread unread"
+/**
+ * True while a header should be showing, given which way the list last moved.
+ *
+ * A list too short to scroll always reports visible — otherwise a two-room
+ * account could hide its search box with no way to bring it back.
+ */
+@Composable
+fun rememberCollapsingHeaderState(state: LazyListState, thresholdPx: Int = 12): Boolean {
+    var decision by remember { mutableStateOf(CollapsingHeader.initial()) }
+
+    LaunchedEffect(state, thresholdPx) {
+        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                decision = CollapsingHeader.next(decision, index, offset, thresholdPx)
+            }
+    }
+
+    val canScroll = state.canScrollForward || state.canScrollBackward
+    return decision.visible || !canScroll
+}
+
+/**
+ * The scroll-direction rule behind [rememberCollapsingHeaderState], kept pure so
+ * it can be tested without a device.
+ *
+ * Extracted deliberately: verifying this on the handset needs an account with
+ * enough conversations to overflow the screen, and the alternative — creating
+ * throwaway rooms in production to produce them — is not a trade worth making
+ * for a UI detail.
+ */
+object CollapsingHeader {
+
+    /** Visibility plus the position it was last decided against. */
+    data class State(val visible: Boolean, val index: Int, val offset: Int)
+
+    fun initial() = State(visible = true, index = 0, offset = 0)
+
+    fun next(current: State, index: Int, offset: Int, thresholdPx: Int = 12): State {
+        // Pinned to the top: always show. There is nothing above to read.
+        if (index == 0 && offset < thresholdPx) return State(true, index, offset)
+
+        // Whole items scrolled past dwarf any within-item offset, so direction
+        // is taken from the index whenever it moved. Comparing raw offsets
+        // across an item boundary is meaningless — the offset resets to zero.
+        val movedDown = when {
+            index != current.index -> index > current.index
+            else -> offset > current.offset
+        }
+
+        // Below the threshold it is noise, not a gesture. Per-frame deltas flip
+        // sign constantly during a fling and would strobe the header; the
+        // anchor is deliberately left where it was so small movements
+        // accumulate towards it rather than resetting it each frame.
+        val moved = if (index != current.index) Int.MAX_VALUE
+        else kotlin.math.abs(offset - current.offset)
+        if (moved < thresholdPx) return current
+
+        return State(visible = !movedDown, index = index, offset = offset)
     }
 }
 

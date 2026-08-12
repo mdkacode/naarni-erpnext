@@ -72,6 +72,37 @@ interface ChatDao {
     @Query("SELECT * FROM chat_message WHERE clientId = :clientId")
     suspend fun message(clientId: String): ChatMessageEntity?
 
+    /**
+     * Everything a conversation's gallery can show, in one observer.
+     *
+     * Attachments and link-bearing text come back together and are bucketed on
+     * the client rather than in four separate queries: the tabs need counts for
+     * *all* buckets to render their labels, so four queries would mean four
+     * observers running permanently to populate headers for tabs nobody opened.
+     *
+     * `LIKE '%http%'` is a coarse pre-filter — it is a plain scan, so the real
+     * URL match happens in Kotlin against rows this has already narrowed.
+     *
+     * Bounded deliberately. A depot vehicle thread accumulates thousands of
+     * photos over a year, and a gallery is a "recent things" surface, not an
+     * archive; the cap is what stops opening it from allocating the entire
+     * message history of the room.
+     */
+    @Query(
+        """
+        SELECT * FROM chat_message
+         WHERE room = :room
+           AND (
+                (kind IN ('image', 'video', 'audio', 'file')
+                 AND (fileUrl IS NOT NULL OR localPath IS NOT NULL))
+             OR (kind = 'text' AND body LIKE '%http%')
+           )
+         ORDER BY sortSeq DESC
+         LIMIT :limit
+        """
+    )
+    fun observeGallery(room: String, limit: Int = 500): Flow<List<ChatMessageEntity>>
+
     @Query("SELECT MAX(seq) FROM chat_message WHERE room = :room")
     suspend fun highestSeq(room: String): Long?
 

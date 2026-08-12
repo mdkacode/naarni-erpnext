@@ -135,6 +135,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun observeRoom(room: String) = repo.observeRoom(room)
 
+    /** Attachments and links for the conversation gallery. */
+    fun gallery(room: String) = repo.observeGallery(room)
+
     /**
      * The room's members, held for the `@` autocomplete.
      *

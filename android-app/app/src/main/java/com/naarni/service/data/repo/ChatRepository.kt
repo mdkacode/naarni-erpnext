@@ -58,6 +58,9 @@ class ChatRepository(
 
     fun observeRoom(room: String): Flow<ChatRoomEntity?> = dao.observeRoom(room)
 
+    /** Attachments and links for one conversation's gallery. */
+    fun observeGallery(room: String): Flow<List<ChatMessageEntity>> = dao.observeGallery(room)
+
     /** Drives the bottom-nav badge. Correct offline and on a cold start. */
     fun observeUnreadTotal(): Flow<Int> = dao.observeUnreadTotal()
 

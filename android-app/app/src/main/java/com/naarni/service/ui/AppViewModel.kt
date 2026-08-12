@@ -33,6 +33,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Process engine — one repository serving every configured process. */
     val processes = container.processRepo
 
+    /** Duty roster & check-in / check-out. */
+    val roster = container.rosterRepo
+
     var ui by mutableStateOf(AppUiState(loggedIn = session.isLoggedIn))
         private set
 

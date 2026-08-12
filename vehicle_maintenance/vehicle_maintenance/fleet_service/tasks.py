@@ -831,3 +831,29 @@ def expire_km_report_snapshots() -> None:
 		{"now": now_datetime()},
 	)
 	frappe.db.commit()
+
+
+# ---------------------------------------------------------------------- roster
+
+
+def close_forgotten_duty_punches() -> None:
+	"""Auto check-out anyone left open past the configured window.
+
+	A no-op unless Roster Settings has auto check-out enabled. Errors are logged
+	per engineer inside `roster.close_forgotten_punches`, so one bad row cannot
+	stop the sweep.
+	"""
+	from vehicle_maintenance.fleet_service import roster
+
+	closed = roster.close_forgotten_punches()
+	if closed:
+		frappe.logger("naarni").info(f"roster: auto checked-out {closed} forgotten punch(es)")
+
+
+def mark_duty_absentees() -> None:
+	"""Mark yesterday's rostered-but-unpunched days Absent, when the depot opts in."""
+	from vehicle_maintenance.fleet_service import roster
+
+	marked = roster.mark_absentees()
+	if marked:
+		frappe.logger("naarni").info(f"roster: marked {marked} absentee(s)")

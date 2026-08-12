@@ -71,6 +71,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_6.seed_km_report_workflow.execute",
 	"vehicle_maintenance.patches.v1_7.seed_process_engine.execute",
 	"vehicle_maintenance.patches.v1_7.seed_battery_qc_process.execute",
+	"vehicle_maintenance.patches.v1_8.seed_roster.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -157,6 +158,7 @@ doctype_js = {
 	"Alert Type": "public/js/alert_type.js",
 	"Process Definition": "public/js/process_definition.js",
 	"Process Entity Type": "public/js/process_entity_type.js",
+	"Duty Roster": "public/js/duty_roster.js",
 	"VM Chat Room": "public/js/vm_chat_room.js",
 }
 
@@ -182,6 +184,18 @@ scheduler_events = {
 		],
 		"*/15 * * * *": [
 			"vehicle_maintenance.api.crm.dispatch_due_reminders",
+		],
+		# Close duty punches nobody checked out of. Without this a forgotten
+		# check-out leaves an engineer showing "On Duty" on the board for days,
+		# which quietly makes the whole board untrustworthy. Written as
+		# source = Auto so it is never mistaken for the engineer's own punch.
+		"*/30 * * * *": [
+			"vehicle_maintenance.fleet_service.tasks.close_forgotten_duty_punches",
+		],
+		# Yesterday's rostered-but-unpunched days, once the depot opts in
+		# (Roster Settings → Mark Absent Automatically, off by default).
+		"30 5 * * *": [
+			"vehicle_maintenance.fleet_service.tasks.mark_duty_absentees",
 		],
 		# Pull the Naarni vehicle directory (operators, status, depot) every 2 hours
 		# so the app's fleet list stays current. No-op when the integration is disabled.

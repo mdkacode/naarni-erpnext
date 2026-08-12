@@ -121,6 +121,13 @@ fun ChatThreadScreen(
     // single biggest source of scroll jank here.
     val roomFlow = remember(roomName) { vm.observeRoom(roomName) }
     val messageFlow = remember(roomName) { vm.messages(roomName) }
+    // Backs the swipe run in the photo viewer. Same query the gallery uses, so
+    // the two surfaces never disagree about what "the next photo" is.
+    val galleryFlow = remember(roomName) { vm.gallery(roomName) }
+    val galleryRows by galleryFlow.collectAsStateWithLifecycle(emptyList())
+    val mediaRun = remember(galleryRows) {
+        galleryRows.filter { Gallery.tabOf(it) == Gallery.Tab.MEDIA }
+    }
     val room by roomFlow.collectAsStateWithLifecycle(null)
     val messages = messageFlow.collectAsLazyPagingItems()
     val listState = rememberLazyListState()
@@ -261,13 +268,40 @@ fun ChatThreadScreen(
     }
 
     viewing?.let { shot ->
-        MediaViewer(
-            model = shot.localPath ?: shot.fileUrl?.let { absoluteUrl(it) },
-            title = if (vm.isMine(shot)) "You" else shot.authorName,
-            subtitle = "${dayLabel(shot.createdAt)} · ${clockTime(shot.createdAt)}",
-            caption = shot.body,
-            onClose = { viewing = null },
-        )
+        // Opening a photo from the thread gives you the room's whole photo run,
+        // not just the one tapped — the same set the gallery shows, so flicking
+        // sideways lands on the same neighbours either way you got here. Taken
+        // from the gallery query rather than the paged list because paging has
+        // only loaded as far back as the user happens to have scrolled.
+        val pages = remember(mediaRun) {
+            mediaRun.map { row ->
+                MediaPage(
+                    key = row.clientId,
+                    model = row.localPath ?: row.fileUrl?.let { absoluteUrl(it) },
+                    title = if (row.author == vm.me) "You" else row.authorName,
+                    subtitle = "${dayLabel(row.createdAt)} · ${clockTime(row.createdAt)}",
+                    caption = row.body,
+                )
+            }
+        }
+        val start = pages.indexOfFirst { it.key == shot.clientId }
+        if (pages.isEmpty() || start < 0) {
+            // The tapped photo is still in the outbox and has no row in the
+            // gallery query yet; show it on its own rather than nothing.
+            MediaViewer(
+                model = shot.localPath ?: shot.fileUrl?.let { absoluteUrl(it) },
+                title = if (vm.isMine(shot)) "You" else shot.authorName,
+                subtitle = "${dayLabel(shot.createdAt)} · ${clockTime(shot.createdAt)}",
+                caption = shot.body,
+                onClose = { viewing = null },
+            )
+        } else {
+            MediaPagerViewer(
+                pages = pages,
+                startIndex = start,
+                onClose = { viewing = null },
+            )
+        }
         return
     }
 

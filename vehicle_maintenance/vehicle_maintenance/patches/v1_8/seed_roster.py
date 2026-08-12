@@ -10,6 +10,7 @@ import json
 import frappe
 
 from vehicle_maintenance.fleet_service.roster import DEFAULT_PUNCH_ROLES
+from vehicle_maintenance.utils.workspace import ensure_number_card, upsert_workspace
 
 # Indian bus-depot norms: a two-shift day is most common, with a general shift
 # for supervisors and a night shift where the depot runs round the clock.
@@ -109,22 +110,6 @@ def _seed_settings() -> None:
 # ------------------------------------------------------------------- workspace
 
 
-def _ensure_number_card(name: str, doctype: str, label: str, filters: list) -> None:
-	if not frappe.db.exists("DocType", doctype) or frappe.db.exists("Number Card", name):
-		return
-	frappe.get_doc(
-		{
-			"doctype": "Number Card",
-			"name": name,
-			"label": label,
-			"document_type": doctype,
-			"function": "Count",
-			"is_public": 1,
-			"filters_json": json.dumps(filters),
-		}
-	).insert(ignore_permissions=True, ignore_if_duplicate=True)
-
-
 def _build_workspace() -> None:
 	"""A 'Duty Roster' workspace — the admin dashboard for this module.
 
@@ -133,39 +118,42 @@ def _build_workspace() -> None:
 	it with job cards and vehicles buries exactly the numbers they came for.
 	"""
 	today = "Today"
-	_ensure_number_card(
-		"DR On Duty Now",
-		"Duty Attendance",
-		"On Duty Now",
-		[["Duty Attendance", "status", "=", "On Duty"], ["Duty Attendance", "attendance_date", "=", today]],
-	)
-	_ensure_number_card(
-		"DR Late Today",
-		"Duty Attendance",
-		"Late Today",
-		[["Duty Attendance", "is_late", "=", 1], ["Duty Attendance", "attendance_date", "=", today]],
-	)
-	_ensure_number_card(
-		"DR Not Started",
-		"Duty Attendance",
-		"Not Started",
-		[
-			["Duty Attendance", "status", "=", "Not Started"],
-			["Duty Attendance", "attendance_date", "=", today],
-		],
-	)
-	_ensure_number_card(
-		"DR Outside Geofence",
-		"Duty Punch",
-		"Outside Geofence",
-		[["Duty Punch", "outside_geofence", "=", 1]],
-	)
-
-	number_cards = [
-		lbl
-		for lbl in ("On Duty Now", "Late Today", "Not Started", "Outside Geofence")
-		if frappe.db.exists("Number Card", "DR " + lbl)
+	cards = [
+		(
+			"On Duty Now",
+			"Duty Attendance",
+			[
+				["Duty Attendance", "status", "=", "On Duty"],
+				["Duty Attendance", "attendance_date", "=", today],
+			],
+		),
+		(
+			"Late Today",
+			"Duty Attendance",
+			[
+				["Duty Attendance", "is_late", "=", 1],
+				["Duty Attendance", "attendance_date", "=", today],
+			],
+		),
+		(
+			"Not Started",
+			"Duty Attendance",
+			[
+				["Duty Attendance", "status", "=", "Not Started"],
+				["Duty Attendance", "attendance_date", "=", today],
+			],
+		),
+		("Outside Geofence", "Duty Punch", [["Duty Punch", "outside_geofence", "=", 1]]),
 	]
+
+	# Keep the card's real name: Number Card autonames from its label and ignores
+	# any name we pass, so the workspace has to reference what was actually stored
+	# or Frappe drops the row and the page renders no numbers at all.
+	nc_rows = []
+	for label, doctype, filters in cards:
+		name = ensure_number_card(label, doctype, filters)
+		if name:
+			nc_rows.append({"number_card_name": name, "label": label})
 
 	links: list = []
 
@@ -205,37 +193,27 @@ def _build_workspace() -> None:
 			)
 
 	content = [{"type": "header", "data": {"text": "Duty Roster", "col": 12}}]
-	for lbl in number_cards:
-		content.append({"type": "number_card", "data": {"number_card_name": "DR " + lbl, "col": 3}})
+	for row in nc_rows:
+		content.append(
+			{"type": "number_card", "data": {"number_card_name": row["number_card_name"], "col": 3}}
+		)
 	for sc in shortcuts:
 		content.append({"type": "shortcut", "data": {"shortcut_name": sc["label"], "col": 3}})
 	for grp in ("Plan", "Attendance", "Reports", "Setup"):
 		content.append({"type": "card", "data": {"card_name": grp, "col": 4}})
 
-	nc_rows = [{"number_card_name": "DR " + lbl, "label": lbl} for lbl in number_cards]
-
-	payload = {
-		"doctype": "Workspace",
-		"name": "Duty Roster",
-		"label": "Duty Roster",
-		"title": "Duty Roster",
-		"module": "Fleet Service",
-		"public": 1,
-		"icon": "calendar",
-		"content": json.dumps(content),
-		"links": links,
-		"shortcuts": shortcuts,
-		"number_cards": nc_rows,
-	}
-
-	if frappe.db.exists("Workspace", "Duty Roster"):
-		doc = frappe.get_doc("Workspace", "Duty Roster")
-		doc.content = payload["content"]
-		for field, rows in (("links", links), ("shortcuts", shortcuts), ("number_cards", nc_rows)):
-			doc.set(field, [])
-			for r in rows:
-				doc.append(field, r)
-		doc.public = 1
-		doc.save(ignore_permissions=True)
-	else:
-		frappe.get_doc(payload).insert(ignore_permissions=True, ignore_if_duplicate=True)
+	upsert_workspace(
+		{
+			"doctype": "Workspace",
+			"name": "Duty Roster",
+			"label": "Duty Roster",
+			"title": "Duty Roster",
+			"module": "Fleet Service",
+			"public": 1,
+			"icon": "calendar",
+			"content": json.dumps(content),
+			"links": links,
+			"shortcuts": shortcuts,
+			"number_cards": nc_rows,
+		}
+	)

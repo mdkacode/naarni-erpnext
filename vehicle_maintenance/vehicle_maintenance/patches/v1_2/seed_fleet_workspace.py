@@ -13,6 +13,8 @@ import json
 
 import frappe
 
+from vehicle_maintenance.utils.workspace import ensure_number_card, upsert_workspace
+
 JC = "Job Card"
 
 
@@ -21,24 +23,6 @@ def _safe(fn):
 		fn()
 	except Exception:
 		frappe.log_error(title="seed_fleet_workspace", message=frappe.get_traceback())
-
-
-def _ensure_number_card(name: str, document_type: str, label: str, filters: list) -> None:
-	if not frappe.db.exists("DocType", document_type):
-		return
-	if frappe.db.exists("Number Card", name):
-		return
-	frappe.get_doc(
-		{
-			"doctype": "Number Card",
-			"name": name,
-			"label": label,
-			"document_type": document_type,
-			"function": "Count",
-			"is_public": 1,
-			"filters_json": json.dumps(filters),
-		}
-	).insert(ignore_permissions=True, ignore_if_duplicate=True)
 
 
 def _master_links() -> list:
@@ -93,26 +77,16 @@ def _report_links() -> list:
 	]
 
 
-def execute() -> None:
-	_safe(
-		lambda: _ensure_number_card(
-			"FS Open Job Cards",
-			JC,
-			"Open Job Cards",
-			[[JC, "workflow_state", "not in", ["Closed", "Force Closed"]]],
-		)
-	)
-	_safe(
-		lambda: _ensure_number_card(
-			"FS Awaiting Approval",
-			JC,
-			"Awaiting Approval",
-			[[JC, "workflow_state", "=", "Awaiting Customer Approval"]],
-		)
-	)
-	_safe(lambda: _ensure_number_card("FS SLA Breached", JC, "SLA Breached", [[JC, "sla_breached", "=", 1]]))
-	_safe(lambda: _ensure_number_card("FS Vehicles", "Vehicle", "Vehicles", []))
+# (label, doctype, filters) — the four numbers the landing page leads with.
+FS_CARDS = [
+	("Open Job Cards", JC, [[JC, "workflow_state", "not in", ["Closed", "Force Closed"]]]),
+	("Awaiting Approval", JC, [[JC, "workflow_state", "=", "Awaiting Customer Approval"]]),
+	("SLA Breached", JC, [[JC, "sla_breached", "=", 1]]),
+	("Vehicles", "Vehicle", []),
+]
 
+
+def execute() -> None:
 	_safe(_build_workspace)
 
 
@@ -149,51 +123,39 @@ def _build_workspace() -> None:
 				{"type": "DocType", "label": label, "link_to": dt, "color": color, "doc_view": "List"}
 			)
 
-	number_cards = [
-		{"label": lbl}
-		for lbl in ("Open Job Cards", "Awaiting Approval", "SLA Breached", "Vehicles")
-		if frappe.db.exists("Number Card", "FS " + lbl)
-	]
+	# Number Card autonames from its label and ignores any name we pass, so the
+	# workspace must reference what was actually stored — referencing our own
+	# intended name meant Frappe dropped every row and the page showed no
+	# numbers, while each migrate quietly inserted another copy of every card.
+	nc_rows = []
+	for label, doctype, filters in FS_CARDS:
+		name = ensure_number_card(label, doctype, filters)
+		if name:
+			nc_rows.append({"number_card_name": name, "label": label})
 
 	# Page content blocks (rendered top→bottom).
 	content = [{"type": "header", "data": {"text": "Fleet Service", "col": 12}}]
-	for nc in number_cards:
-		content.append({"type": "number_card", "data": {"number_card_name": "FS " + nc["label"], "col": 3}})
+	for row in nc_rows:
+		content.append(
+			{"type": "number_card", "data": {"number_card_name": row["number_card_name"], "col": 3}}
+		)
 	for sc in shortcuts:
 		content.append({"type": "shortcut", "data": {"shortcut_name": sc["label"], "col": 3}})
 	for grp in ("Reports", "Masters", "Operations", "Setup & Mass Import"):
 		content.append({"type": "card", "data": {"card_name": grp, "col": 4}})
 
-	# Number-card child rows reference the real card name (FS <label>).
-	nc_rows = [{"number_card_name": "FS " + nc["label"], "label": nc["label"]} for nc in number_cards]
-
-	payload = {
-		"doctype": "Workspace",
-		"name": "Fleet Service",
-		"label": "Fleet Service",
-		"title": "Fleet Service",
-		"module": "Fleet Service",
-		"public": 1,
-		"icon": "service",
-		"content": json.dumps(content),
-		"links": links,
-		"shortcuts": shortcuts,
-		"number_cards": nc_rows,
-	}
-
-	if frappe.db.exists("Workspace", "Fleet Service"):
-		doc = frappe.get_doc("Workspace", "Fleet Service")
-		doc.content = payload["content"]
-		doc.set("links", [])
-		for r in links:
-			doc.append("links", r)
-		doc.set("shortcuts", [])
-		for r in shortcuts:
-			doc.append("shortcuts", r)
-		doc.set("number_cards", [])
-		for r in nc_rows:
-			doc.append("number_cards", r)
-		doc.public = 1
-		doc.save(ignore_permissions=True)
-	else:
-		frappe.get_doc(payload).insert(ignore_permissions=True, ignore_if_duplicate=True)
+	upsert_workspace(
+		{
+			"doctype": "Workspace",
+			"name": "Fleet Service",
+			"label": "Fleet Service",
+			"title": "Fleet Service",
+			"module": "Fleet Service",
+			"public": 1,
+			"icon": "service",
+			"content": json.dumps(content),
+			"links": links,
+			"shortcuts": shortcuts,
+			"number_cards": nc_rows,
+		}
+	)

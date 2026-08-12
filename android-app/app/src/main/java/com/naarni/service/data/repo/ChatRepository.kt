@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
+import com.naarni.service.core.auth.SessionManager
 import com.naarni.service.core.network.FrappeApi
 import com.naarni.service.core.network.payload
 import com.naarni.service.data.chat.ChatDao
@@ -15,6 +16,8 @@ import com.naarni.service.data.chat.SendStatus
 import com.naarni.service.data.chat.previewOf
 import com.naarni.service.data.dto.ChatMessageDto
 import com.naarni.service.data.dto.ChatRoomDto
+import com.naarni.service.data.dto.ChatTicketDto
+import com.naarni.service.data.dto.ChatUserDto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -41,6 +44,7 @@ class ChatRepository(
     private val api: FrappeApi,
     private val dao: ChatDao,
     private val context: Context,
+    private val session: SessionManager,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -174,6 +178,7 @@ class ChatRepository(
         author: String,
         authorName: String,
         replyTo: String? = null,
+        mentions: List<String> = emptyList(),
     ): String {
         val clientId = UUID.randomUUID().toString()
         dao.upsertMessage(
@@ -187,6 +192,7 @@ class ChatRepository(
                 kind = "text",
                 body = body,
                 replyTo = replyTo,
+                mentions = mentions.takeIf { it.isNotEmpty() }?.joinToString(","),
                 status = SendStatus.PENDING,
             )
         )
@@ -202,6 +208,12 @@ class ChatRepository(
             body = row.body,
             kind = "text",
             replyTo = row.replyTo,
+            // Sent as the client's own parse. Re-deriving it server-side from the
+            // text would guess wrong whenever two people share a display name.
+            mentions = row.mentions
+                ?.split(",")
+                ?.filter { it.isNotBlank() }
+                ?.let { json.encodeToString(it) },
         ).payload()
         val msg = result.message
         dao.markSent(clientId, msg.name, msg.seq, msg.file_url)
@@ -286,7 +298,61 @@ class ChatRepository(
         runCatching { api.chatSetMuted(room, if (muted) 1 else 0) }
     }
 
+    /** Directory search. Not cached — it is a live lookup, not app state. */
+    suspend fun searchUsers(query: String): List<ChatUserDto> =
+        api.chatSearchUsers(query).payload().users
+
+    /** Candidates for an `@` — the room's own members, never the whole directory. */
+    suspend fun roomMembers(room: String, query: String): List<ChatUserDto> =
+        api.chatRoomMembers(room, query).payload().users
+
+    // ---------------------------------------------------------------- tickets
+
+    suspend fun searchTickets(query: String): List<ChatTicketDto> =
+        api.chatSearchTickets(query).payload().tickets
+
+    /**
+     * Share a ticket into a thread.
+     *
+     * Unlike a text message this goes straight out rather than through the
+     * outbox: it carries no attachment and no user-typed content that would be
+     * lost, and the server response is what tells us the ticket's current status
+     * to render on the card. A failure surfaces to the caller to retry.
+     */
+    suspend fun shareTicket(room: String, ticket: String, note: String = ""): String {
+        val clientId = UUID.randomUUID().toString()
+        val sent = api.chatShareTicket(room, ticket, clientId, note).payload().message
+        dao.upsertMessage(sent.toEntity())
+        dao.touchRoom(room, sent.seq, previewOf(sent.toEntity()))
+        dao.advanceReadCursor(room, sent.seq)
+        return clientId
+    }
+
+    /** Assign a ticket. The server posts the handover notice back into the room. */
+    suspend fun assignTicket(ticket: String, user: String, room: String?) {
+        api.chatAssignTicket(ticket, user, room)
+        // The notice arrives as a normal message; pull it now rather than waiting
+        // for the socket, so the thread reflects the action immediately.
+        runCatching { sync() }
+    }
+
+    /**
+     * Open (or create) the one-to-one thread with [user] and make sure it is in
+     * Room before the caller navigates, so the thread screen never opens onto a
+     * room the local database has not heard of.
+     */
+    suspend fun openDirect(user: String): String {
+        val room = api.chatGetOrCreateDirect(user).payload().room
+        runCatching { refreshRooms() }
+        return room
+    }
+
     suspend fun outbox(): List<ChatMessageEntity> = dao.outbox()
+
+    /** Re-arm a failed send. Safe because the server is idempotent on client_id. */
+    suspend fun markStatusPending(clientId: String) {
+        dao.markStatus(clientId, SendStatus.PENDING, null)
+    }
 
     suspend fun highestSeq(room: String): Long = dao.highestSeq(room) ?: 0
 
@@ -306,6 +372,8 @@ class ChatRepository(
         lastMessagePreview = last_message_preview,
         lastMessageAt = last_message_at,
         memberCount = member_count,
+        peer = peer,
+        peerImage = peer_image,
     )
 
     private fun ChatMessageDto.toEntity() = ChatMessageEntity(
@@ -326,6 +394,10 @@ class ChatRepository(
         transcript = transcript,
         vehicle = vehicle,
         ticket = ticket,
+        alertEvent = alert_event,
+        mentions = mentions.takeIf { it.isNotEmpty() }?.joinToString(","),
+        // Resolved here, against whoever is signed in as this row is written.
+        mentionsMe = session.user?.let { it in mentions } == true,
         geotagged = geotagged,
         lat = lat,
         lon = lon,

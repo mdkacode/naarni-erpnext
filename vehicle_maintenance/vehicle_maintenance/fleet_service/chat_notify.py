@@ -34,13 +34,23 @@ KIND_PREVIEW = {
 	"video": "\U0001f3a5 Video",
 	"audio": "\U0001f3a4 Voice note",
 	"system": "",
+	"ticket": "\U0001f3ab",
+	"alert": "⚠️",
 }
+
+# Kinds whose whole point is the body text, not an attachment.
+TEXTUAL_KINDS = ("text", "system")
 
 
 def preview_for(msg) -> str:
 	"""One-line summary of a message for list rows and notification bodies."""
-	if msg.kind == "text" or msg.kind == "system":
+	if msg.kind in TEXTUAL_KINDS:
 		return (msg.body or "")[:PREVIEW_CHARS]
+	if msg.kind in ("ticket", "alert"):
+		# The body already reads as a sentence; the glyph just makes the row
+		# scannable in a list of thirty conversations.
+		first_line = (msg.body or "").split("\n", 1)[0]
+		return f"{KIND_PREVIEW[msg.kind]} {first_line}"[:PREVIEW_CHARS]
 	label = KIND_PREVIEW.get(msg.kind, "Attachment")
 	caption = (msg.body or "").strip()
 	return f"{label} · {caption}"[:PREVIEW_CHARS] if caption else label
@@ -56,10 +66,12 @@ def dispatch(msg) -> None:
 
 	preview = preview_for(msg)
 	author_name = frappe.db.get_value("User", msg.author, "full_name") or msg.author
+	mentioned = {m.user for m in (msg.mentions or [])}
 
 	_publish_doc_room(msg)
-	_publish_user_rooms(msg, room, preview, author_name)
-	_enqueue_push(msg, room, preview, author_name)
+	_publish_user_rooms(msg, room, preview, author_name, mentioned)
+	_enqueue_push(msg, room, preview, author_name, mentioned)
+	_log_mentions(msg, room, preview, author_name, mentioned)
 
 
 def _publish_doc_room(msg) -> None:
@@ -76,7 +88,7 @@ def _publish_doc_room(msg) -> None:
 		frappe.log_error(title=f"Chat doc-room publish failed ({msg.room})", message=frappe.get_traceback())
 
 
-def _publish_user_rooms(msg, room: VMChatRoom, preview: str, author_name: str) -> None:
+def _publish_user_rooms(msg, room: VMChatRoom, preview: str, author_name: str, mentioned: set[str]) -> None:
 	"""Lightweight envelope to each member, so badges stay right without a subscribe."""
 	envelope = {
 		"room": msg.room,
@@ -94,7 +106,9 @@ def _publish_user_rooms(msg, room: VMChatRoom, preview: str, author_name: str) -
 		try:
 			frappe.publish_realtime(
 				event="vm_chat_envelope",
-				message=envelope,
+				# Per-recipient, so the phone can chime differently for a mention
+				# without re-parsing the body it has not downloaded yet.
+				message={**envelope, "mentioned": member.user in mentioned},
 				user=member.user,
 				after_commit=True,
 			)
@@ -105,12 +119,34 @@ def _publish_user_rooms(msg, room: VMChatRoom, preview: str, author_name: str) -
 			)
 
 
-def _enqueue_push(msg, room: VMChatRoom, preview: str, author_name: str) -> None:
-	"""Data-only FCM to every member except the author, subject to their prefs."""
+def recipients_for_push(msg, room: VMChatRoom, mentioned: set[str]) -> list[str]:
+	"""Who should be woken up by this message.
+
+	Three rules, in order:
+
+	* never the author — their other devices sync silently over the envelope;
+	* `notify_push` off is an explicit opt-out and is always honoured;
+	* `muted` silences the room, **except** when the message names you. Muting a
+	  busy depot channel is how people cope with volume, and if a mute also
+	  swallowed "@ravi the bus at gate 3 won't start" then nobody could ever
+	  afford to mute anything.
+	"""
+	out = []
+	for m in room.members:
+		if m.user == msg.author or not m.notify_push:
+			continue
+		if m.muted and m.user not in mentioned:
+			continue
+		out.append(m.user)
+	return out
+
+
+def _enqueue_push(msg, room: VMChatRoom, preview: str, author_name: str, mentioned: set[str]) -> None:
+	"""Data-only FCM to every member who should hear about this."""
 	if not frappe.get_conf().get("notifications_push_enabled"):
 		return
 
-	recipients = [m.user for m in room.members if m.user != msg.author and m.notify_push]
+	recipients = recipients_for_push(msg, room, mentioned)
 	if not recipients:
 		return
 
@@ -121,6 +157,7 @@ def _enqueue_push(msg, room: VMChatRoom, preview: str, author_name: str) -> None
 		limit_page_length=0,
 	)
 	for row in tokens:
+		is_mention = row["user"] in mentioned
 		frappe.enqueue(
 			method="vehicle_maintenance.fleet_service.chat_notify.push_job",
 			queue="short",
@@ -133,7 +170,39 @@ def _enqueue_push(msg, room: VMChatRoom, preview: str, author_name: str) -> None
 			seq=msg.seq,
 			author_name=author_name,
 			preview=preview,
+			mention=is_mention,
 		)
+
+
+def _log_mentions(msg, room: VMChatRoom, preview: str, author_name: str, mentioned: set[str]) -> None:
+	"""A mention also lands in the notification bell.
+
+	Push is best-effort and disappears when it is swiped away; a mention is a
+	request directed at one person and needs somewhere durable to sit until they
+	deal with it. Ordinary messages deliberately do not get one — thirty depot
+	messages an hour would make the bell useless.
+	"""
+	for user in mentioned:
+		if user == msg.author:
+			continue
+		try:
+			frappe.get_doc(
+				{
+					"doctype": "Notification Log",
+					"for_user": user,
+					"type": "Mention",
+					"subject": f"{author_name} mentioned you in {room.title}",
+					"email_content": preview,
+					"document_type": "VM Chat Room",
+					"document_name": msg.room,
+					"from_user": msg.author,
+				}
+			).insert(ignore_permissions=True)
+		except Exception:
+			frappe.log_error(
+				title=f"Chat mention log failed (user={user})",
+				message=frappe.get_traceback(),
+			)
 
 
 def push_job(
@@ -143,6 +212,7 @@ def push_job(
 	seq: int,
 	author_name: str,
 	preview: str,
+	mention: bool = False,
 ) -> None:
 	"""Background worker — one data-only FCM HTTP v1 message.
 
@@ -176,15 +246,23 @@ def push_job(
 						"room": room,
 						"room_title": room_title or "",
 						"seq": str(seq),
+						"mention": "1" if mention else "0",
 						"title": room_title or "New message",
-						"body": f"{author_name}: {preview}" if preview else author_name,
+						"body": (
+							f"{author_name} mentioned you: {preview}"
+							if mention
+							else (f"{author_name}: {preview}" if preview else author_name)
+						),
 						"deeplink": f"naarni://chat/{room}?msg={seq}",
 					},
 					"android": {
 						"priority": "HIGH",
 						# Collapse a burst in one room into the latest message
 						# rather than stacking twenty trays on the lock screen.
-						"collapse_key": f"chat-{room}",
+						# A mention is exempt: it is addressed to one person, and
+						# being swallowed by the next chatty message in the room is
+						# exactly the failure that makes people stop trusting it.
+						**({} if mention else {"collapse_key": f"chat-{room}"}),
 					},
 				}
 			},

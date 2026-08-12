@@ -20,7 +20,7 @@
       "fieldname": "kind",
       "label": "Kind",
       "fieldtype": "Select",
-      "options": "Group\nDepot\nVehicle\nTicket\nJob Card\nDirect",
+      "options": "Group\nDepot\nVehicle\nTicket\nJob Card\nDirect\nAlert Channel",
       "default": "Group",
       "reqd": 1,
       "in_list_view": 1,
@@ -63,6 +63,43 @@
       "label": "Job Card",
       "fieldtype": "Link",
       "options": "Job Card"
+    },
+    {
+      "fieldname": "section_alerts",
+      "label": "Alert Feed",
+      "fieldtype": "Section Break",
+      "description": "Turn this room into a channel that fleet alerts are posted into automatically."
+    },
+    {
+      "fieldname": "broadcast_alerts",
+      "label": "Post Alerts Here",
+      "fieldtype": "Check",
+      "default": "0",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Every matching Alert Event is posted into this room as a message members can discuss and raise a ticket from."
+    },
+    {
+      "fieldname": "alert_min_severity",
+      "label": "Minimum Severity",
+      "fieldtype": "Select",
+      "options": "warning\ncritical",
+      "default": "warning",
+      "depends_on": "broadcast_alerts",
+      "description": "`critical` keeps a channel quiet enough that people still read it."
+    },
+    {
+      "fieldname": "column_break_room_alerts",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "alert_scope_note",
+      "label": "Scope",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "depends_on": "broadcast_alerts",
+      "default": "Alerts are matched on this room's Depot and Vehicle. Leave both empty to receive alerts for the whole fleet.",
+      "description": "Set Depot and/or Vehicle above to narrow what lands here."
     },
     {
       "fieldname": "section_seq",

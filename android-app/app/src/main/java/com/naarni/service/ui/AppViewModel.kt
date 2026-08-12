@@ -30,6 +30,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val auth = container.authRepo
     val jobCards = container.jobCardRepo
 
+    /** Process engine — one repository serving every configured process. */
+    val processes = container.processRepo
+
     /** Duty roster & check-in / check-out. */
     val roster = container.rosterRepo
 
@@ -78,6 +81,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui.copy(loading = false, loggedIn = true)
             } else {
                 ui.copy(loading = false, error = result.exceptionOrNull()?.message ?: "Invalid code")
+            }
+        }
+    }
+
+    /**
+     * Debug-only password sign-in.
+     *
+     * The production path is OTP, which is issued by the Naarni backend — so a
+     * debug build pointed at a local bench (`-PdevBackend=true`) has no way to
+     * authenticate against test users that only exist there. This uses the
+     * existing `login_with_phone` endpoint and is gated on BuildConfig.DEBUG at
+     * the call site, so it cannot ship.
+     */
+    fun devLogin(phone: String, password: String) {
+        viewModelScope.launch {
+            ui = ui.copy(loading = true, error = null)
+            val result = auth.login(phone, password)
+            ui = if (result.isSuccess) {
+                loadOptions()
+                ui.copy(loading = false, loggedIn = true)
+            } else {
+                ui.copy(loading = false, error = result.exceptionOrNull()?.message ?: "Sign-in failed")
             }
         }
     }

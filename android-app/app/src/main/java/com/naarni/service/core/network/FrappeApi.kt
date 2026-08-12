@@ -6,12 +6,16 @@ import com.naarni.service.data.dto.BusImage
 import com.naarni.service.data.dto.ChunkPayload
 import com.naarni.service.data.dto.ChunkStatusPayload
 import com.naarni.service.data.dto.CommitPayload
+import com.naarni.service.data.dto.ChatUserDto
 import com.naarni.service.data.dto.CreateRoomPayload
+import com.naarni.service.data.dto.DirectRoomPayload
+import com.naarni.service.data.dto.UsersPayload
 import com.naarni.service.data.dto.MarkReadPayload
 import com.naarni.service.data.dto.MessagesPayload
 import com.naarni.service.data.dto.RoomsPayload
 import com.naarni.service.data.dto.SendPayload
 import com.naarni.service.data.dto.SyncPayload
+import com.naarni.service.data.dto.TicketsPayload
 import com.naarni.service.data.dto.CreatedJobCard
 import com.naarni.service.data.dto.CustomerFeedbackData
 import com.naarni.service.data.dto.CustomerHit
@@ -615,6 +619,8 @@ interface FrappeApi {
         @Field("lon") lon: Double? = null,
         @Field("vehicle") vehicle: String? = null,
         @Field("ticket") ticket: String? = null,
+        /** JSON array of user ids named with `@`. The server drops non-members. */
+        @Field("mentions") mentions: String? = null,
     ): FrappeWrap<Envelope<SendPayload>>
 
     @FormUrlEncoded
@@ -631,6 +637,20 @@ interface FrappeApi {
         @Field("muted") muted: Int,
     ): FrappeWrap<Envelope<JsonObject>>
 
+    /** Staff directory search for starting a direct chat. */
+    @GET("api/method/vehicle_maintenance.api.chat.search_users")
+    suspend fun chatSearchUsers(
+        @Query("query") query: String = "",
+        @Query("limit") limit: Int = 25,
+    ): FrappeWrap<Envelope<UsersPayload>>
+
+    /** Idempotent: returns the existing one-to-one thread if there is one. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.get_or_create_direct")
+    suspend fun chatGetOrCreateDirect(
+        @Field("user") user: String,
+    ): FrappeWrap<Envelope<DirectRoomPayload>>
+
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.create_room")
     suspend fun chatCreateRoom(
@@ -642,6 +662,38 @@ interface FrappeApi {
         @Field("ticket") ticket: String? = null,
         @Field("job_card") jobCard: String? = null,
     ): FrappeWrap<Envelope<CreateRoomPayload>>
+
+    /** Room members only — an `@` must name someone who can actually see the thread. */
+    @GET("api/method/vehicle_maintenance.api.chat.list_members")
+    suspend fun chatRoomMembers(
+        @Query("room") room: String,
+        @Query("query") query: String = "",
+        @Query("limit") limit: Int = 30,
+    ): FrappeWrap<Envelope<UsersPayload>>
+
+    @GET("api/method/vehicle_maintenance.api.chat.search_tickets")
+    suspend fun chatSearchTickets(
+        @Query("query") query: String = "",
+        @Query("limit") limit: Int = 20,
+    ): FrappeWrap<Envelope<TicketsPayload>>
+
+    /** Idempotent on `client_id`, like every other send. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.share_ticket")
+    suspend fun chatShareTicket(
+        @Field("room") room: String,
+        @Field("ticket") ticket: String,
+        @Field("client_id") clientId: String,
+        @Field("note") note: String = "",
+    ): FrappeWrap<Envelope<SendPayload>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.assign_ticket")
+    suspend fun chatAssignTicket(
+        @Field("ticket") ticket: String,
+        @Field("user") user: String,
+        @Field("room") room: String? = null,
+    ): FrappeWrap<Envelope<JsonObject>>
 
     // ── Resumable chunked upload (core upload_file buffers whole files in RAM) ──
 

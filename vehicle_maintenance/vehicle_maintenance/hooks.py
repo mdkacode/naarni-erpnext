@@ -16,6 +16,25 @@ doc_events: dict = {
 	"KM Report Snapshot": {
 		"on_update": "vehicle_maintenance.fleet_service.monthly_km_report.send_on_approval",
 	},
+	# Fan a new alert into every chat channel an admin has opted in. Enqueued
+	# inside the hook, so alert ingest never pays for chat fan-out.
+	"Alert Event": {
+		"after_insert": "vehicle_maintenance.fleet_service.chat_feed.on_alert_event",
+	},
+}
+
+# Chat access control. DocType role permissions decide who may use chat at all;
+# these decide *which rooms* — membership, not role, is the real boundary. Wiring
+# both hooks means the generic /api/resource endpoints are covered too, not just
+# our own whitelisted methods.
+permission_query_conditions = {
+	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.get_permission_query_conditions",
+	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.get_permission_query_conditions",
+}
+
+has_permission = {
+	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.has_permission",
+	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.has_permission",
 }
 
 # Chat access control. DocType role permissions decide who may use chat at all;
@@ -140,6 +159,7 @@ doctype_js = {
 	"Process Definition": "public/js/process_definition.js",
 	"Process Entity Type": "public/js/process_entity_type.js",
 	"Duty Roster": "public/js/duty_roster.js",
+	"VM Chat Room": "public/js/vm_chat_room.js",
 }
 
 # Scheduled tasks

@@ -26,7 +26,24 @@ data class ChatRoomDto(
     val last_message_preview: String? = null,
     val last_message_at: String? = null,
     val member_count: Int = 0,
+    /** Direct rooms only: the other participant, resolved per-viewer. */
+    val peer: String? = null,
+    val peer_image: String? = null,
 )
+
+@Serializable
+data class ChatUserDto(
+    val name: String,
+    val full_name: String? = null,
+    val mobile_no: String? = null,
+    val user_image: String? = null,
+)
+
+@Serializable
+data class UsersPayload(val users: List<ChatUserDto> = emptyList())
+
+@Serializable
+data class DirectRoomPayload(val room: String, val created: Boolean = false)
 
 @Serializable
 data class ChatMessageDto(
@@ -46,12 +63,32 @@ data class ChatMessageDto(
     val reply_to: String? = null,
     val vehicle: String? = null,
     val ticket: String? = null,
+    val alert_event: String? = null,
+    /** User ids named with `@`. Already filtered to room members by the server. */
+    val mentions: List<String> = emptyList(),
     val geotagged: Boolean = false,
     val lat: Double? = null,
     val lon: Double? = null,
     val deleted: Boolean = false,
     val created_at: String = "",
 )
+
+/** A Service Ticket as it appears in the in-chat picker and on a shared card. */
+@Serializable
+data class ChatTicketDto(
+    val name: String,
+    val title: String? = null,
+    val status: String = "",
+    val severity: String? = null,
+    val registration_number: String? = null,
+    val vehicle: String? = null,
+    val depot: String? = null,
+    val assigned_to: String? = null,
+    val assigned_to_name: String? = null,
+)
+
+@Serializable
+data class TicketsPayload(val tickets: List<ChatTicketDto> = emptyList())
 
 @Serializable
 data class RoomsPayload(val rooms: List<ChatRoomDto> = emptyList())

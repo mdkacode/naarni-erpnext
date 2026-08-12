@@ -7,6 +7,10 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.naarni.service.core.auth.SessionManager
 import com.naarni.service.core.chat.FrappeSocket
 import com.naarni.service.core.network.Network
@@ -24,9 +28,39 @@ import kotlinx.coroutines.SupervisorJob
  * Application + manual DI container. We avoid an annotation-processor DI framework
  * to keep the APK small and the build fast (plan §2) — the graph is tiny.
  */
-class App : Application() {
+class App : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
         private set
+
+    /**
+     * Coil must use the app's OkHttp client, not its own.
+     *
+     * Chat attachments are private Frappe files (`/private/files/...`) and the
+     * session `sid` cookie lives in [SessionCookieJar] on that client. With a
+     * default loader every photo in every thread renders as a 403 placeholder.
+     *
+     * The memory cache is capped rather than left to Coil's default so a long
+     * image-heavy thread has a fixed ceiling on a 2 GB field handset, and
+     * thumbnails decode as RGB_565 — half the bytes of ARGB_8888, and the
+     * difference is invisible on a photo of a battery terminal.
+     */
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            .okHttpClient { container.httpClient }
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.20)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("chat_images"))
+                    .maxSizeBytes(256L * 1024 * 1024)
+                    .build()
+            }
+            .allowRgb565(true)
+            .crossfade(true)
+            .build()
 
     override fun onCreate() {
         super.onCreate()
@@ -110,7 +144,7 @@ class AppContainer(context: Context) {
     // ---- Chat ----
     val chatDb by lazy { ChatDatabase.build(appContext) }
     val chatDao by lazy { chatDb.chatDao() }
-    val chatRepo by lazy { ChatRepository(api, chatDao, appContext) }
+    val chatRepo by lazy { ChatRepository(api, chatDao, appContext, session) }
 
     /**
      * One socket for the process, bound to the app lifecycle rather than to any
@@ -120,6 +154,7 @@ class AppContainer(context: Context) {
         FrappeSocket(
             client = httpClient,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            session = session,
         )
     }
 }

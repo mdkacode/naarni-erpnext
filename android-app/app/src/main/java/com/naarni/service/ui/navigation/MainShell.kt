@@ -3,6 +3,17 @@ package com.naarni.service.ui.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.naarni.service.ui.chat.ChatLifecycle
+import com.naarni.service.ui.chat.ChatListScreen
+import com.naarni.service.ui.chat.ChatThreadScreen
+import com.naarni.service.ui.chat.ChatViewModel
+import com.naarni.service.ui.chat.NewChatScreen
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Home
@@ -33,24 +44,51 @@ import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardDetailScreen
 import com.naarni.service.ui.screens.JobCardsScreen
 import com.naarni.service.ui.screens.NotificationsScreen
+import com.naarni.service.ui.screens.ProcessListScreen
+import com.naarni.service.ui.screens.ProcessRunnerScreen
+import com.naarni.service.ui.screens.ProcessStartScreen
 import com.naarni.service.ui.screens.ProfileScreen
 import com.naarni.service.ui.screens.TicketsScreen
 import com.naarni.service.ui.screens.VehicleDetailScreen
 import com.naarni.service.ui.screens.VehiclesScreen
 
+/**
+ * Bottom-nav destinations.
+ *
+ * Trimmed to Home, Alerts and Battery for this release. Jobs, Fleet and Tickets
+ * still exist as routes below — deep links from notifications keep working, and
+ * the Home screen can still open a job card — they simply have no tab. Profile
+ * stays because logout, the depot picker and account deletion live there.
+ *
+ * [Battery] points at the generic process engine; it is called Battery because
+ * that is the only published process today, and renaming it is a one-line change
+ * when a second process ships.
+ */
 enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Home("home", "Home", Icons.Default.Home),
-    JobCards("jobcards", "Jobs", Icons.AutoMirrored.Filled.Assignment),
-    Fleet("fleet", "Fleet", Icons.Default.DirectionsBus),
+    Chat("chat", "Chat", Icons.AutoMirrored.Filled.Chat),
     Alerts("alerts", "Alerts", Icons.Default.Notifications),
-    Tickets("tickets", "Tickets", Icons.Default.ConfirmationNumber),
+    Battery("processes", "Battery", Icons.Default.BatteryChargingFull),
     Profile("profile", "Profile", Icons.Default.Person),
+}
+
+/** Routes that still exist for deep links but are no longer tabs. */
+private object HiddenRoute {
+    const val JOB_CARDS = "jobcards"
+    const val FLEET = "fleet"
+    const val TICKETS = "tickets"
 }
 
 @Composable
 fun MainShell(vm: AppViewModel) {
     val nav = rememberNavController()
     val tabs = Tab.entries
+
+    // Hoisted to the shell so the tab badge stays live regardless of which tab is
+    // showing, and so the socket is owned by the shell rather than by a screen.
+    val chatVm: ChatViewModel = viewModel()
+    val unreadChats by chatVm.unreadTotal.collectAsStateWithLifecycle()
+    ChatLifecycle(chatVm)
 
     // Consume a deep link from a tapped notification (naarni://alert|ticket|jobcard|vehicle/{id}).
     LaunchedEffect(DeepLinkBus.pending) {
@@ -63,6 +101,8 @@ fun MainShell(vm: AppViewModel) {
             "ticket" -> "ticket/$id"
             "jobcard" -> "jobcard/$id"
             "vehicle" -> "vehicle/$id"
+            // naarni://chat/{room}?msg={seq} — from a chat push notification.
+            "chat" -> "thread/$id"
             else -> return@LaunchedEffect
         }
         runCatching { nav.navigate(route) { launchSingleTop = true } }
@@ -72,7 +112,9 @@ fun MainShell(vm: AppViewModel) {
     // both for a focused, full-height view (fixes the double-footer + whitespace).
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
-    val isTopLevel = current == null || tabs.any { it.route == current }
+    val isTopLevel = current == null ||
+        tabs.any { it.route == current } ||
+        current in setOf(HiddenRoute.JOB_CARDS, HiddenRoute.FLEET, HiddenRoute.TICKETS)
 
     val view = LocalView.current
     LaunchedEffect(isTopLevel) {
@@ -98,7 +140,17 @@ fun MainShell(vm: AppViewModel) {
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            icon = {
+                                // Badge reads a single Room-backed Flow, so it is
+                                // correct offline and on a cold start with no network.
+                                if (tab == Tab.Chat && unreadChats > 0) {
+                                    BadgedBox(badge = {
+                                        Badge { Text(if (unreadChats > 99) "99+" else "$unreadChats") }
+                                    }) { Icon(tab.icon, contentDescription = tab.label) }
+                                } else {
+                                    Icon(tab.icon, contentDescription = tab.label)
+                                }
+                            },
                             label = { Text(tab.label) },
                         )
                     }
@@ -139,10 +191,10 @@ fun MainShell(vm: AppViewModel) {
                     onBack = { nav.popBackStack() },
                 )
             }
-            composable(Tab.JobCards.route) {
+            composable(HiddenRoute.JOB_CARDS) {
                 JobCardsScreen(vm, onOpenJobCard = { name -> nav.navigate("jobcard/$name") })
             }
-            composable(Tab.Fleet.route) {
+            composable(HiddenRoute.FLEET) {
                 VehiclesScreen(vm, onOpenVehicle = { name -> nav.navigate("vehicle/$name") })
             }
             composable("vehicle/{name}") { entry ->
@@ -174,8 +226,44 @@ fun MainShell(vm: AppViewModel) {
                     onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
                 )
             }
-            composable(Tab.Tickets.route) {
+            composable(HiddenRoute.TICKETS) {
                 TicketsScreen(vm, onOpenTicket = { name -> nav.navigate("ticket/$name") })
+            }
+
+            // ---- Process engine: one list, one start screen, one generic runner.
+            composable(Tab.Battery.route) {
+                ProcessListScreen(
+                    vm,
+                    onOpenProcess = { family -> nav.navigate("process/$family") },
+                    onResumeRun = { run -> nav.navigate("run/$run") },
+                )
+            }
+            composable("process/{family}") { entry ->
+                ProcessStartScreen(
+                    vm,
+                    processFamily = entry.arguments?.getString("family").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onRunStarted = { run ->
+                        nav.navigate("run/$run") {
+                            // Drop the start screen so Back returns to the list,
+                            // not into a run the operator already began.
+                            popUpTo(Tab.Battery.route)
+                        }
+                    },
+                )
+            }
+            composable("run/{name}") { entry ->
+                ProcessRunnerScreen(
+                    vm,
+                    runName = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onFinished = {
+                        nav.navigate(Tab.Battery.route) {
+                            popUpTo(Tab.Battery.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                )
             }
             composable("ticket/{name}") { entry ->
                 TicketDetailScreen(
@@ -186,6 +274,35 @@ fun MainShell(vm: AppViewModel) {
                     onOpenVehicle = { name -> nav.navigate("vehicle/$name") },
                 )
             }
+            // ---- Chat: list + one generic thread screen.
+            composable(Tab.Chat.route) {
+                ChatListScreen(
+                    chatVm,
+                    onOpenRoom = { room -> nav.navigate("thread/$room") },
+                    onNewChat = { nav.navigate("newchat") },
+                )
+            }
+            composable("newchat") {
+                NewChatScreen(
+                    chatVm,
+                    onBack = { nav.popBackStack() },
+                    onOpenRoom = { room ->
+                        // Replace the picker in the back stack: coming back from a
+                        // thread should land on the chat list, not the directory.
+                        nav.navigate("thread/$room") { popUpTo("newchat") { inclusive = true } }
+                    },
+                )
+            }
+            composable("thread/{room}") { entry ->
+                ChatThreadScreen(
+                    vm = chatVm,
+                    roomName = entry.arguments?.getString("room").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    // A field observation becomes a Service Ticket without leaving
+                    // the thread — the reason chat lives in this app at all.
+                    onRaiseTicket = { msg -> nav.navigate("ticket/${msg.ticket ?: ""}") },
+                )
+            }
             composable(Tab.Profile.route) { ProfileScreen(vm) }
             composable("create") {
                 CreateJobCardScreen(
@@ -193,7 +310,7 @@ fun MainShell(vm: AppViewModel) {
                     onDone = {
                         // Land on the Jobs tab so the freshly-created card is visible
                         // immediately (JobCardsScreen reloads on entry).
-                        nav.navigate(Tab.JobCards.route) {
+                        nav.navigate(HiddenRoute.JOB_CARDS) {
                             popUpTo(Tab.Home.route) { saveState = false }
                             launchSingleTop = true
                         }

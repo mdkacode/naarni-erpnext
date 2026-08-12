@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -8,6 +9,14 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Chat attachment uploads run as a dataSync foreground service so a 500 MB
+         video survives backgrounding and Doze. Android 14+ requires the typed
+         permission as well as the type on the service itself (below). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Audio for voice notes. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
@@ -43,8 +52,20 @@
                 <data android:scheme="naarni" android:host="ticket" />
                 <data android:scheme="naarni" android:host="jobcard" />
                 <data android:scheme="naarni" android:host="alert" />
+                <data android:scheme="naarni" android:host="chat" />
+                <!-- Handled in MainShell but was missing here, so an external
+                     naarni://vehicle/... link never resolved. -->
+                <data android:scheme="naarni" android:host="vehicle" />
             </intent-filter>
         </activity>
+
+        <!-- WorkManager's own service, retyped so chunked uploads may run in the
+             foreground. tools:node="merge" edits the library's declaration
+             rather than replacing it. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <!-- FCM push -->
         <service

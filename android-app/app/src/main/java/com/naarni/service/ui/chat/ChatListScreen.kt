@@ -112,27 +112,24 @@ fun ChatListScreen(
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
 
+            // Search *is* the header. A title bar that only ever said the same
+            // word as the tab you pressed to get here was costing a strip of
+            // screen on a device that is mostly used one-handed outdoors.
             Column(
                 Modifier
                     .fillMaxWidth()
                     .background(Brush.horizontalGradient(BrandGradient))
-                    .statusBarsPadding()
-                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
+                    // Outside the animated child, so the status bar keeps its
+                    // brand ground when the field is away and the list does not
+                    // slide up underneath the clock.
+                    .statusBarsPadding(),
             ) {
-                Text(
-                    "Conversations",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
-                )
-                // Search lives inside the header rather than as a boxed field
-                // below it: one band of chrome instead of two stacked ones.
                 AnimatedVisibility(
                     visible = searchVisible,
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut(),
                 ) {
-                    Column {
-                        Spacer(Modifier.height(11.dp))
+                    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)) {
                         SearchPill(query, onChange = { query = it }, busy = vm.contacts.busy)
                     }
                 }

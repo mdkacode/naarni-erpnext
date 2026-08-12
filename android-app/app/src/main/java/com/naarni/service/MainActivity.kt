@@ -12,13 +12,19 @@ import android.content.Intent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.naarni.service.ui.navigation.DeepLinkBus
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.naarni.service.core.feedback.LocalFeedback
 import com.naarni.service.core.feedback.rememberFeedback
 import com.naarni.service.core.push.registerFcmToken
@@ -48,9 +54,28 @@ class MainActivity : ComponentActivity() {
                     // failure returns no-update, so it can never lock users out.
                     var update by remember { mutableStateOf<AppUpdateInfo?>(null) }
                     var optionalDismissed by remember { mutableStateOf(false) }
-                    LaunchedEffect(Unit) {
-                        runCatching { vm.jobCards.appUpdate(BuildConfig.VERSION_CODE) }
-                            .onSuccess { update = it }
+
+                    // Re-checked every time the app comes back to the foreground,
+                    // not just on a cold start. A depot handset can sit in the
+                    // app for days; if a build is withdrawn because it corrupts
+                    // data or talks to an endpoint that no longer exists, waiting
+                    // for the user to happen to swipe it away is not a gate.
+                    //
+                    // Only a successful answer is applied, so a lost connection
+                    // can neither impose a gate nor lift one that is already up.
+                    val lifecycleOwner = LocalLifecycleOwner.current
+                    val updateScope = rememberCoroutineScope()
+                    DisposableEffect(lifecycleOwner) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) {
+                                updateScope.launch {
+                                    runCatching { vm.jobCards.appUpdate(BuildConfig.VERSION_CODE) }
+                                        .onSuccess { update = it }
+                                }
+                            }
+                        }
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                     }
 
                     if (update?.force_update == true) {

@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Send
@@ -133,6 +134,12 @@ fun ChatThreadScreen(
     var pickingTicket by remember { mutableStateOf(false) }
     var assigning by remember { mutableStateOf<String?>(null) }
     var assigningTo by remember { mutableStateOf<String?>(null) }
+    // The client id of the attachment currently being fetched, so its card can
+              // show a spinner. Not a LaunchedEffect key: clearing that key is what
+              // cancels the very coroutine doing the download, which cost a
+              // "coroutine scope left the composition" on the first device run.
+    var openingFile by remember { mutableStateOf<String?>(null) }
+    var openError by remember { mutableStateOf<String?>(null) }
 
     // user id → display name, for rendering the `@`s inside a received message.
     // The member list is already loaded for the composer's picker, so this costs
@@ -164,6 +171,34 @@ fun ChatThreadScreen(
                     file = picked.file,
                     contentType = picked.contentType,
                     kind = picked.kind,
+                    replyTo = replyTo?.serverName,
+                )
+                replyTo = null
+                listState.animateScrollToItem(0)
+            }
+        }
+    }
+
+    // Any file at all. OpenDocument rather than GetContent: it returns a stable,
+    // re-openable Uri from the system picker (including Drive and other
+    // providers), which is what a 400 MB upload sitting in a queue needs.
+    val documentPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val picked = Attachments.copyToOutbox(context, uri)
+            if (picked == null) {
+                rejected = "Installable and executable files can't be sent in chat."
+                feedback.error()
+            } else {
+                feedback.messageSent()
+                vm.sendAttachment(
+                    room = roomName,
+                    file = picked.file,
+                    contentType = picked.contentType,
+                    kind = picked.kind,
+                    fileName = picked.displayName,
                     replyTo = replyTo?.serverName,
                 )
                 replyTo = null
@@ -236,6 +271,15 @@ fun ChatThreadScreen(
         )
     }
 
+    openError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { openError = null },
+            title = { Text("Couldn't open that") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { openError = null }) { Text("OK") } },
+        )
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -273,7 +317,7 @@ fun ChatThreadScreen(
                 state = listState,
                 reverseLayout = true,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 6.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 10.dp, bottom = 6.dp),
             ) {
                 items(
                     count = messages.itemCount,
@@ -303,7 +347,19 @@ fun ChatThreadScreen(
                             selected = message
                         },
                         onRetry = { vm.retry(message) },
-                        onOpenMedia = { viewing = message },
+                        onOpenMedia = {
+                            if (message.kind != "file") {
+                                viewing = message
+                            } else if (openingFile == null) {
+                                openingFile = message.clientId
+                                scope.launch {
+                                    val result = FileOpener.open(context, message)
+                                    openingFile = null
+                                    if (result is FileOpener.Result.Failed) openError = result.reason
+                                }
+                            }
+                        },
+                        isOpening = openingFile == message.clientId,
                         mentionLabels = message.mentions
                             ?.split(",")
                             ?.mapNotNull { nameOf[it] }
@@ -361,6 +417,7 @@ fun ChatThreadScreen(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
                 )
             },
+            onAttachFile = { documentPicker.launch(arrayOf("*/*")) },
             onShareTicket = { pickingTicket = true },
         )
     }
@@ -427,6 +484,7 @@ private fun SwipeableMessage(
     onOpenMedia: () -> Unit,
     mentionLabels: List<String>,
     onAssignTicket: (String) -> Unit,
+    isOpening: Boolean,
 ) {
     var dragX by remember { mutableFloatStateOf(0f) }
     val triggerPx = with(LocalDensity.current) { REPLY_TRIGGER_DP.dp.toPx() }
@@ -483,6 +541,7 @@ private fun SwipeableMessage(
                 onOpenMedia = onOpenMedia,
                 mentionLabels = mentionLabels,
                 onAssignTicket = onAssignTicket,
+                isOpening = isOpening,
             )
         }
     }
@@ -514,7 +573,7 @@ private fun ThreadHeader(
         }
         // Who you are talking to, not just their name. On a handset held at
         // arm's length in a depot, the face is the faster identifier.
-        Avatar(title, avatarImage, avatarSeed, size = 36)
+        Avatar(title, avatarImage, avatarSeed, size = 36, onDark = true)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -657,6 +716,7 @@ private fun Composer(
     onSend: (String, List<String>) -> Unit,
     onCamera: () -> Unit,
     onAttach: () -> Unit,
+    onAttachFile: () -> Unit,
     onShareTicket: () -> Unit,
 ) {
     var draft by remember { mutableStateOf(TextFieldValue("")) }
@@ -692,17 +752,25 @@ private fun Composer(
         }
 
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
             verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Surface(
                 color = ChatTokens.field,
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(26.dp),
                 tonalElevation = 0.dp,
-                shadowElevation = 1.dp,
+                // A hairline rather than a drop shadow: the pill sits on a tinted
+                // canvas where a shadow just muddies the edge, and an outline is
+                // one draw instead of a separate render pass.
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                shadowElevation = 0.dp,
                 modifier = Modifier.weight(1f),
             ) {
-                Row(verticalAlignment = Alignment.Bottom) {
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     BasicTextField(
                         value = draft,
                         onValueChange = { draft = it },
@@ -714,7 +782,7 @@ private fun Composer(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .padding(start = 16.dp, end = 4.dp, top = 13.dp, bottom = 13.dp),
+                            .padding(start = 18.dp, end = 2.dp, top = 14.dp, bottom = 14.dp),
                         decorationBox = { inner ->
                             Box {
                                 if (draft.text.isEmpty()) {
@@ -747,6 +815,11 @@ private fun Composer(
                             // The reason chat lives in this app rather than in
                             // WhatsApp: the work item comes with it.
                             DropdownMenuItem(
+                                text = { Text("Document") },
+                                leadingIcon = { Icon(Icons.Default.InsertDriveFile, null) },
+                                onClick = { menuOpen = false; onAttachFile() },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Service ticket") },
                                 leadingIcon = { Icon(Icons.Default.ConfirmationNumber, null) },
                                 onClick = { menuOpen = false; onShareTicket() },
@@ -754,19 +827,19 @@ private fun Composer(
                         }
                     }
                     ComposerAction(Icons.Default.PhotoCamera, "Take a stamped photo", onCamera)
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(6.dp))
                 }
             }
 
-            Spacer(Modifier.width(6.dp))
-
-            // Always present, dimmed when there is nothing to send. Showing and
-            // hiding it shifts the pill's width mid-sentence, which is worse.
+            // Always present, greyed when there is nothing to send. Showing and
+            // hiding it shifts the pill's width mid-sentence, which is worse. A
+            // neutral disabled state rather than a translucent brand colour —
+            // a faded indigo disc reads as a rendering fault, not as "not yet".
             Box(
                 Modifier
-                    .size(46.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
-                    .background(if (canSend) scheme.primary else scheme.primary.copy(alpha = 0.35f))
+                    .background(if (canSend) scheme.primary else scheme.surfaceVariant)
                     .clickable(enabled = canSend) {
                         onSend(draft.text, Mentions.survivingMentions(draft.text, picked))
                         draft = TextFieldValue("")
@@ -777,7 +850,7 @@ private fun Composer(
                 Icon(
                     Icons.Default.Send,
                     contentDescription = "Send",
-                    tint = Color.White,
+                    tint = if (canSend) Color.White else scheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                 )
             }

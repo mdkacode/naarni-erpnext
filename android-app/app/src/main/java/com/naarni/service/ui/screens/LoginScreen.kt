@@ -89,7 +89,7 @@ fun LoginScreen(vm: AppViewModel) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 BrandLogo(icon = Icons.Filled.DirectionsBus, size = 84)
                 Spacer(Modifier.height(18.dp))
-                Text("Naarni Service", style = MaterialTheme.typography.headlineLarge, color = Color.White)
+                Text("NaArNi Care", style = MaterialTheme.typography.headlineLarge, color = Color.White)
                 Text(
                     "Field service, simplified",
                     style = MaterialTheme.typography.bodyLarge,

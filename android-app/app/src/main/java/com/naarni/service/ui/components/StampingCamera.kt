@@ -94,7 +94,7 @@ fun StampingCamera(
             title = { Text("Camera & location") },
             text = {
                 Text(
-                    "Naarni Service uses your camera to capture job photos and your " +
+                    "NaArNi Care uses your camera to capture job photos and your " +
                         "location to stamp each photo with the place and time it was taken, " +
                         "so office staff can verify field work. Location is read only at the " +
                         "moment you take a photo — never in the background — and is not shared " +

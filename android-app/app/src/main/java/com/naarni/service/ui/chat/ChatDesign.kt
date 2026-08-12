@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -64,21 +66,36 @@ object ChatTokens {
         get() = if (isSystemInDarkTheme()) Color(0xFF60C5FF) else Color(0xFF1DA1F2)
 
     /** Bubble corner radius, and the tighter radius on the tail corner. */
-    val bubbleRadius = 16.dp
-    val tailRadius = 5.dp
+    val bubbleRadius = 18.dp
+    val tailRadius = 6.dp
 
     /** Gap between two messages from the same author, versus a new run. */
-    val gapWithinRun = 2.dp
-    val gapBetweenRuns = 8.dp
+    val gapWithinRun = 3.dp
+    val gapBetweenRuns = 10.dp
 
-    /**
-     * Bubbles stop here rather than at a fraction of the screen: a fixed cap
-     * keeps line length readable on a tablet, and the ragged right edge is the
-     * cue that tells you at a glance where one message ends.
-     */
-    val bubbleMaxWidth = 292.dp
+    /** Space between the bubble column and the edge of the screen. */
+    val threadGutter = 10.dp
+
+    /** Inside a bubble. Generous enough that the text is not touching the edge. */
+    val bubblePadH = 13.dp
+    val bubblePadV = 8.dp
+
     val mediaWidth = 250.dp
 }
+
+/**
+ * How wide a bubble may get.
+ *
+ * A share of the screen rather than a fixed dp, so there is always a visible
+ * gutter on the opposite side — that gutter is what tells you at a glance which
+ * side a message came from, and a fixed 292dp cap swallowed it on a 360dp-wide
+ * handset. Capped in absolute terms as well, because a full-width line of text
+ * on a tablet is miserable to read.
+ */
+val bubbleMaxWidth: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = minOf(LocalConfiguration.current.screenWidthDp * 0.78f, 340f).dp
 
 /** The meta line (time + ticks) at 55% of whatever the bubble's text colour is. */
 @Composable

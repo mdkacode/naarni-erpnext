@@ -210,15 +210,28 @@ fun ContactRow(user: ChatUserDto, busy: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Profile photo when the user has one, initials on a stable colour otherwise. */
+/**
+ * Profile photo when the user has one, initials on a stable colour otherwise.
+ *
+ * [onDark] is for the brand gradient in a thread header, where the usual
+ * 16%-tint-plus-coloured-initials disappears almost entirely: both the tint and
+ * the letters are mid-tone indigo sitting on mid-tone indigo. There it needs a
+ * translucent white disc and white letters instead.
+ */
 @Composable
-fun Avatar(displayName: String, imageUrl: String?, seed: String, size: Int = 48) {
-    val tint = authorColor(seed)
+fun Avatar(
+    displayName: String,
+    imageUrl: String?,
+    seed: String,
+    size: Int = 48,
+    onDark: Boolean = false,
+) {
+    val tint = if (onDark) Color.White else authorColor(seed)
     Box(
         Modifier
             .size(size.dp)
             .clip(CircleShape)
-            .background(tint.copy(alpha = 0.16f)),
+            .background(if (onDark) Color.White.copy(alpha = 0.25f) else tint.copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center,
     ) {
         if (!imageUrl.isNullOrBlank()) {

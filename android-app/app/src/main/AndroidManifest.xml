@@ -32,6 +32,19 @@
         android:theme="@style/Theme.NaarniService"
         android:usesCleartextTraffic="false">
 
+        <!-- Hands a downloaded chat attachment to whatever app can open it.
+             A file:// Uri would throw FileUriExposedException on anything
+             modern, so the bytes are shared through a content:// grant. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

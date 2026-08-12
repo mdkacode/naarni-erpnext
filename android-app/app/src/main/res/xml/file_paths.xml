@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Downloaded chat attachments, staged for handing to another app. Scoped
+         to this one directory so a content:// grant can never reach the
+         session store or the outbox. -->
+    <cache-path name="chat_downloads" path="chat_downloads/" />
+</paths>

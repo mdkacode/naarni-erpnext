@@ -236,6 +236,7 @@ class ChatRepository(
         kind: String,
         author: String,
         authorName: String,
+        fileName: String? = null,
         caption: String = "",
         durationMs: Long? = null,
         lat: Double? = null,
@@ -243,6 +244,8 @@ class ChatRepository(
         replyTo: String? = null,
     ): String {
         val clientId = UUID.randomUUID().toString()
+        // What the user will see on the card and what the server publishes under.
+        val shownName = fileName?.takeIf { it.isNotBlank() } ?: source.name
         val dest = File(outboxDir, "${clientId}_${source.name}")
         if (source.absolutePath != dest.absolutePath) source.copyTo(dest, overwrite = true)
 
@@ -257,7 +260,7 @@ class ChatRepository(
                 kind = kind,
                 body = caption,
                 localPath = dest.absolutePath,
-                fileName = source.name,
+                fileName = shownName,
                 fileSize = dest.length(),
                 durationMs = durationMs,
                 geotagged = lat != null && lon != null,
@@ -272,7 +275,7 @@ class ChatRepository(
                 clientId = clientId,
                 room = room,
                 path = dest.absolutePath,
-                fileName = source.name,
+                fileName = shownName,
                 contentType = contentType,
                 totalSize = dest.length(),
                 sha256 = sha256Of(dest),

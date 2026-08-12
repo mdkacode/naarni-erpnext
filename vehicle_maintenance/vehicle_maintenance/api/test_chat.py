@@ -907,3 +907,71 @@ class TestChatDepotEnrolment(ChatTestBase):
 		from vehicle_maintenance import hooks
 
 		self.assertEqual(hooks.doctype_js["VM Chat Room"], "public/js/vm_chat_room.js")
+
+
+class TestChatFileUploads(ChatTestBase):
+	"""Any working document, but nothing a handset could be told to run."""
+
+	def test_ordinary_documents_are_accepted(self):
+		from vehicle_maintenance.api import chat_upload
+
+		for content_type, name in [
+			("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "readings.xlsx"),
+			("text/csv", "km-dump.csv"),
+			("application/zip", "diagnostics.zip"),
+			("text/plain", "can-bus.log"),
+			("application/octet-stream", "controller.bin"),
+			("application/pdf", "invoice.pdf"),
+		]:
+			# Must not raise.
+			chat_upload._reject_if_executable(content_type, name)
+
+	def test_an_apk_is_refused_by_type(self):
+		from vehicle_maintenance.api import chat_upload
+
+		with self.assertRaises(frappe.ValidationError):
+			chat_upload._reject_if_executable("application/vnd.android.package-archive", "app.apk")
+
+	def test_an_executable_is_refused_by_extension_even_when_the_type_lies(self):
+		from vehicle_maintenance.api import chat_upload
+
+		# A picker that reports octet-stream must not become a way in.
+		with self.assertRaises(frappe.ValidationError):
+			chat_upload._reject_if_executable("application/octet-stream", "totally-safe.apk")
+
+	def test_a_shell_script_is_refused(self):
+		from vehicle_maintenance.api import chat_upload
+
+		with self.assertRaises(frappe.ValidationError):
+			chat_upload._reject_if_executable("text/plain", "wipe.sh")
+
+	def test_publish_extension_prefers_the_known_type(self):
+		from vehicle_maintenance.api import chat_upload
+
+		self.assertEqual(chat_upload._publish_extension("image/jpeg", "photo.jfif"), ".jpg")
+
+	def test_publish_extension_falls_back_to_the_original_name(self):
+		from vehicle_maintenance.api import chat_upload
+
+		self.assertEqual(chat_upload._publish_extension("text/csv", "km-dump.csv"), ".csv")
+
+	def test_a_hostile_extension_is_dropped_rather_than_cleaned(self):
+		from vehicle_maintenance.api import chat_upload
+
+		# The value is concatenated into a filesystem path, so anything with a
+		# separator in it must yield nothing at all.
+		self.assertEqual(chat_upload._extension_of("evil.tar/../../etc/passwd"), "")
+		self.assertEqual(chat_upload._extension_of("no-extension"), "")
+		self.assertEqual(chat_upload._extension_of("trailing."), "")
+
+	def test_unknown_types_render_as_a_document_card(self):
+		from vehicle_maintenance.api import chat_upload
+
+		self.assertEqual(chat_upload._kind_for("application/zip"), "file")
+		self.assertEqual(chat_upload._kind_for("text/csv"), "file")
+
+	def test_new_media_subtypes_still_render_inline(self):
+		from vehicle_maintenance.api import chat_upload
+
+		self.assertEqual(chat_upload._kind_for("image/avif"), "image")
+		self.assertEqual(chat_upload._kind_for("video/webm"), "video")

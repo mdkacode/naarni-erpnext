@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
@@ -78,6 +79,7 @@ fun MessageBubble(
     modifier: Modifier = Modifier,
     mentionLabels: List<String> = emptyList(),
     onAssignTicket: (String) -> Unit = {},
+    isOpening: Boolean = false,
 ) {
     // A server-authored notice is about the conversation, not part of it, so it
     // gets no bubble and no side — the same treatment WhatsApp gives "you were
@@ -93,6 +95,9 @@ fun MessageBubble(
     val isMedia = message.kind == "image" || message.kind == "video"
     // No caption → the meta line floats over the photo instead of below it.
     val bare = isMedia && message.body.isBlank()
+    // Plain text can carry the stamp on its last line. A card or an attachment
+    // cannot: the meta would end up beside the card instead of under it.
+    val inlineMeta = message.kind == "text" && message.body.isNotBlank()
 
     // A tail on the outer corner only: cheaper and steadier than drawing a real
     // tail path, and it reads the same at a glance.
@@ -116,7 +121,7 @@ fun MessageBubble(
         modifier = modifier
             .fillMaxWidth()
             .background(selectionBg)
-            .padding(horizontal = 8.dp, vertical = 1.dp),
+            .padding(horizontal = ChatTokens.threadGutter, vertical = 1.dp),
         contentAlignment = if (isMine) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Surface(
@@ -134,12 +139,12 @@ fun MessageBubble(
             // pass per row, and flat bubbles read fine against a tinted canvas.
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
-            modifier = Modifier.widthIn(max = ChatTokens.bubbleMaxWidth),
+            modifier = Modifier.widthIn(max = bubbleMaxWidth),
         ) {
             Column(
                 Modifier.padding(
-                    horizontal = if (bare) 3.dp else 9.dp,
-                    vertical = if (bare) 3.dp else 6.dp,
+                    horizontal = if (bare) 3.dp else ChatTokens.bubblePadH,
+                    vertical = if (bare) 3.dp else ChatTokens.bubblePadV,
                 ),
             ) {
                 if (showAuthor && !isMine) {
@@ -165,6 +170,7 @@ fun MessageBubble(
                     }
 
                     "audio" -> AudioContent(message, textColor)
+                    "file" -> FileCard(message, textColor, isOpening, onOpenMedia)
                     "ticket" -> TicketCard(message, textColor, onAssignTicket)
                     "alert" -> AlertCard(message)
                 }
@@ -172,17 +178,35 @@ fun MessageBubble(
                 // A ticket or alert card already renders its own body.
                 if (message.body.isNotBlank() && message.kind != "ticket" && message.kind != "alert") {
                     if (message.kind != "text") Spacer(Modifier.height(5.dp))
-                    Text(
+                    val rendered =
                         // Only pay for the scan when the message actually names
                         // somebody; the overwhelming majority do not.
                         if (mentionLabels.isEmpty()) {
                             androidx.compose.ui.text.AnnotatedString(message.body)
                         } else {
                             Mentions.annotate(message.body, mentionLabels, mentionTint(isMine))
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = textColor,
-                    )
+                        }
+
+                    if (inlineMeta) {
+                        // Time and ticks tuck in beside the last line rather than
+                        // claiming a line of their own. Weighting the text without
+                        // filling reserves just enough room for the stamp, so it
+                        // lands to the right of the final line whether the message
+                        // is two words or two paragraphs — and a two-word message
+                        // stops being two storeys tall.
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                rendered,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = textColor,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            MetaRow(message, isMine, textColor, onRetry)
+                        }
+                    } else {
+                        Text(rendered, style = MaterialTheme.typography.bodyLarge, color = textColor)
+                    }
                 }
 
                 // Tags a technician attached via long-press.
@@ -191,7 +215,7 @@ fun MessageBubble(
                     TagChip(Icons.Default.DirectionsBus, it)
                 }
 
-                if (!bare) {
+                if (!bare && !inlineMeta) {
                     // align(End) rather than fillMaxWidth: filling stretches the
                     // bubble to its full width even for a two-letter message,
                     // which is the least conversational thing a bubble can do.
@@ -217,7 +241,7 @@ private fun MetaRow(
     val stamp = remember(message.createdAt) { timeFmt.format(Date(message.createdAt)) }
 
     Row(
-        modifier.padding(top = 2.dp),
+        modifier,
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -397,6 +421,76 @@ private fun MediaContent(
 }
 
 /**
+ * A document attachment — anything that is not a photo, video or voice note.
+ *
+ * Name and size only: there is no thumbnail to show and no honest way to
+ * preview a spreadsheet in a bubble, so the card's job is to be unambiguous
+ * about what it is and obviously tappable.
+ */
+@Composable
+private fun FileCard(
+    message: ChatMessageEntity,
+    textColor: Color,
+    isOpening: Boolean,
+    onOpen: () -> Unit,
+) {
+    val meta = listOfNotNull(
+        humanSize(message.fileSize).ifBlank { null },
+        message.fileName?.substringAfterLast('.', "")?.takeIf { it.isNotBlank() }?.uppercase(),
+    ).joinToString(" · ")
+
+    Row(
+        Modifier
+            .widthIn(max = bubbleMaxWidth)
+            .clip(RoundedCornerShape(11.dp))
+            .background(textColor.copy(alpha = 0.06f))
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            // A depot's link can take a while to pull a 40 MB export; without
+            // this the card looks inert and gets tapped again.
+            if (isOpening) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            } else {
+                Icon(
+                    Icons.Default.InsertDriveFile,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f, fill = false)) {
+            Text(
+                message.fileName ?: "Attachment",
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (meta.isNotBlank()) {
+                Spacer(Modifier.height(1.dp))
+                Text(meta, style = MaterialTheme.typography.labelSmall, color = mutedOn(textColor))
+            }
+        }
+    }
+}
+
+/**
  * A shared Service Ticket.
  *
  * The point of sharing one into a thread is that the next action happens here
@@ -411,7 +505,7 @@ private fun TicketCard(message: ChatMessageEntity, textColor: Color, onAssign: (
 
     Column(
         Modifier
-            .widthIn(max = ChatTokens.mediaWidth)
+            .widthIn(max = bubbleMaxWidth)
             .clip(RoundedCornerShape(11.dp))
             .background(textColor.copy(alpha = 0.06f))
             .padding(9.dp),
@@ -478,7 +572,7 @@ private fun AlertCard(message: ChatMessageEntity) {
     val critical = head.startsWith("CRITICAL")
     val accent = if (critical) MaterialTheme.colorScheme.error else Color(0xFFF59E0B)
 
-    Row(Modifier.widthIn(max = ChatTokens.mediaWidth).clip(RoundedCornerShape(11.dp))) {
+    Row(Modifier.widthIn(max = bubbleMaxWidth).clip(RoundedCornerShape(11.dp))) {
         Box(Modifier.width(4.dp).heightIn(min = 48.dp).background(accent))
         Column(
             Modifier

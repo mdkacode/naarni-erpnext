@@ -59,7 +59,7 @@ object Network {
             .pingInterval(30, TimeUnit.SECONDS)
             .addInterceptor(DevHostInterceptor())
             .addInterceptor(logging)
-            .addInterceptor(FrappeErrorInterceptor())
+            .addInterceptor(FrappeErrorInterceptor(session))
             .build()
     }
 

@@ -6,8 +6,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.work.WorkManager
 import com.naarni.service.App
+import com.naarni.service.core.chat.ChatWork
+import com.naarni.service.core.network.SESSION_EXPIRED_MESSAGE
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class AppUiState(
     val loggedIn: Boolean = false,
@@ -53,6 +58,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         if (session.isLoggedIn) loadOptions()
+        // The server is the only thing that knows a session has died, and it
+        // says so on whichever request happens to be in flight. Collected once
+        // here rather than handled at each call site, because the twenty
+        // repositories that make requests must not each remember to.
+        viewModelScope.launch {
+            session.expired.collect { signOut(SESSION_EXPIRED_MESSAGE) }
+        }
     }
 
     /** Step 1: request an OTP for [phone]. On success the screen reveals the code field. */
@@ -109,9 +121,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(otpSent = false, otpPhone = "", error = null)
     }
 
-    fun logout() {
+    fun logout() = signOut(null)
+
+    /**
+     * End the session and leave nothing of it behind.
+     *
+     * Used by the Sign out button and by an expiry the server reported. Both
+     * must clear the same things: until now neither dropped the chat database,
+     * so the next person to sign in on a shared depot handset inherited the
+     * previous technician's threads — and their unsent outbox.
+     *
+     * [reason] is null for a deliberate sign-out and carries an explanation
+     * when the app did this on the user's behalf, so the login screen can say
+     * why they are suddenly looking at it.
+     */
+    private fun signOut(reason: String?) {
+        runCatching { container.chatSocket.disconnect() }
+        // Cancel queued sends before the rows go, so a worker cannot wake up
+        // mid-wipe and re-insert what it was holding.
+        runCatching { WorkManager.getInstance(getApplication()).cancelAllWorkByTag(ChatWork.TAG) }
         auth.logout()
-        ui = AppUiState(loggedIn = false)
+        ui = AppUiState(loggedIn = false, error = reason)
+
+        // Off the main thread, and deliberately not awaited: the user is already
+        // on the login screen and must never wait on a disk wipe to get there.
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { container.chatDao.wipeEverything() } }
+        }
     }
 
     /**

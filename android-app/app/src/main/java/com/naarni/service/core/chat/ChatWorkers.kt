@@ -213,8 +213,18 @@ const val KEY_PROGRESS = "progress"
 /** Enqueue helpers. Unique work per client_id, so a double-tap cannot double-send. */
 object ChatWork {
 
+    /**
+     * Tags every chat job, so signing out can cancel the lot in one call.
+     *
+     * Without it a queued send belonging to the previous user wakes up after
+     * the next person has signed in on the same depot handset, and posts their
+     * predecessor's message under whatever session is current.
+     */
+    const val TAG = "chat"
+
     fun enqueueText(context: Context, clientId: String) {
         val request = OneTimeWorkRequestBuilder<ChatSendWorker>()
+            .addTag(TAG)
             .setInputData(workDataOf(KEY_CLIENT_ID to clientId))
             .setConstraints(
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -227,6 +237,7 @@ object ChatWork {
 
     fun enqueueUpload(context: Context, clientId: String, bytes: Long) {
         val request = OneTimeWorkRequestBuilder<ChunkUploadWorker>()
+            .addTag(TAG)
             // Never the bytes: Data is capped at 10 KB. Only the id travels.
             .setInputData(workDataOf(KEY_CLIENT_ID to clientId))
             .setConstraints(

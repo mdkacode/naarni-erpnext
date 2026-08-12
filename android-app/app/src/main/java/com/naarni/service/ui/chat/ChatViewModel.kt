@@ -98,6 +98,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     is FrappeSocket.Event.Fatal -> {
                         connection = ConnectionState.Rejected
                         connectionDetail = event.reason
+                        // The socket is a poor judge of whether the *session* is
+                        // dead — a namespace or origin mistake looks identical to
+                        // an expiry from here, and signing someone out over that
+                        // would be unforgivable. So ask REST, which answers with
+                        // Frappe's explicit `session_expired` flag; if the session
+                        // really is gone, the interceptor signs the user out.
+                        runCatching { repo.refreshRooms() }
                     }
 
                     is FrappeSocket.Event.Message -> {

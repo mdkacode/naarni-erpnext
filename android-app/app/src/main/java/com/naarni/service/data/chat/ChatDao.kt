@@ -141,6 +141,33 @@ interface ChatDao {
      * room cursor has not moved yet — Paging would emit the row, the badge would
      * disagree, and a sync interrupted midway would leave a permanent gap.
      */
+    /**
+     * Wipe every trace of the signed-out user's chat.
+     *
+     * Rows rather than the database file: the Room instance is a process-wide
+     * lazy that cannot be rebuilt, and deleting the file out from under an open
+     * connection leaves the next user's session talking to a handle that no
+     * longer has a file behind it. This leaves the schema intact and usable.
+     *
+     * The outbox goes too. A queued message belongs to whoever wrote it, and on
+     * a shared depot handset the next person to sign in must not send it.
+     */
+    @Transaction
+    suspend fun wipeEverything() {
+        deleteAllMessages()
+        deleteAllUploads()
+        deleteAllRooms()
+    }
+
+    @Query("DELETE FROM chat_message")
+    suspend fun deleteAllMessages()
+
+    @Query("DELETE FROM chat_upload")
+    suspend fun deleteAllUploads()
+
+    @Query("DELETE FROM chat_room")
+    suspend fun deleteAllRooms()
+
     @Transaction
     suspend fun applyDelta(room: String, messages: List<ChatMessageEntity>, lastSeq: Long) {
         if (messages.isNotEmpty()) upsertMessages(messages)

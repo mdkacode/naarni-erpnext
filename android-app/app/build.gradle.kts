@@ -182,6 +182,11 @@ dependencies {
     // survival across edits — is pure string work, and pinning it here is far
     // cheaper than discovering a regression on a handset in a depot.
     testImplementation(libs.junit)
+    // android.jar's org.json is a stub that throws "not mocked" in unit tests.
+    // The session-expiry check parses a JSON body, so without a real
+    // implementation on the test classpath its positive cases silently fail and
+    // its negative cases pass for the wrong reason.
+    testImplementation(libs.json.jvm)
 }
 
 // Room schema export: lets a future migration be written against a real

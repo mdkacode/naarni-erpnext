@@ -187,3 +187,52 @@ composer, FCM chat handler, TC01–TC06.
 - `adb` is not on PATH; the bench is not auto-started (`bench start` needed).
 - Working tree carried uncommitted process-engine work from the previous branch —
   only chat paths are being committed here.
+
+---
+
+## Cycle 4 — 2026-08-12: collaboration features + the UI rebuild (PR #51)
+
+Shipped on `feat/chat-module`, merged with develop, **PR #51 open — not merged**.
+
+### Backend (77 tests, `bench migrate` clean on dev)
+
+- `VM Chat Mention` child table on `VM Chat Message`; `send_message(mentions=[...])`
+  filters to room members. `list_members` backs the picker.
+- `broadcast_alerts` / `alert_min_severity` on `VM Chat Room`; `Alert Event
+  after_insert` → `chat_feed.on_alert_event` → enqueued `broadcast_alert`.
+- `search_tickets` / `share_ticket` / `assign_ticket`; assignment writes the field
+  *and* the ToDo, then posts a `system` notice into the thread.
+- `search_users` no longer filters `user_type = "System User"` — everyone enabled
+  except `NON_HUMAN_USERS` is reachable.
+- Push: muted rooms are now genuinely silent, **except** for a mention. Mentions are
+  the only chat event that writes a Notification Log entry.
+- `system` and `alert` kinds skip the author-membership check (no human author).
+
+### App (compiles; 21 JVM tests over `Mentions`)
+
+- Composer gap was `imePadding()` + `navigationBarsPadding()` summing. Now one
+  `WindowInsets.ime.union(navigationBars)`.
+- `MediaViewer.kt` — the photo viewer that did not exist. `ChatDesign.kt` — chat's
+  own three grounds, because scheme `background` and `surface` are 2% apart.
+- `Mentions.kt` is pure and tested; the picker filters `vm.members` on-device.
+- Room v2 (`mentions`, `mentionsMe`, `alertEvent`), destructive fallback as before.
+
+### Verified beyond unit tests
+
+`.chat-build/` has no runner for this; it was done by hand and is worth repeating:
+
+1. Unauthenticated probe of each new endpoint returns `PermissionError`, not
+   "not whitelisted" / "has no attribute" (control: a fake method name).
+2. `scratchpad/smoke.py` — authenticated HTTP round-trip via api_key over
+   search → DM → members → mention (posted as a JSON array, as the app does) →
+   read-back → idempotency → ticket search → share → assign. All pass.
+3. Alert path end-to-end on the running bench with a real worker: inserting an
+   Alert Event produced `CRITICAL · … / SMOKE-TEST-01 / Pack 2 at 61C` in the
+   channel with `alert_event` set.
+
+### Blocked on Mayank
+
+- **PR #51 merge** → production deploy. `gh pr merge` is refused by the sandbox
+  classifier in this session.
+- **Device verification** — `adb` is refused by the same classifier now, so
+  nothing in this cycle has run on the handset.

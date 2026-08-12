@@ -1,0 +1,674 @@
+package com.naarni.service.ui.chat
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ConfirmationNumber
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.naarni.service.data.chat.ChatMessageEntity
+import com.naarni.service.data.chat.SendStatus
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+/**
+ * One message row.
+ *
+ * The grammar is the one everybody already knows from WhatsApp — side-anchored
+ * bubbles, a tail corner on the outer edge, time and delivery state tucked into
+ * the bubble's bottom-right, author name only on the first message of a run.
+ * The palette is Naarni's: indigo where WhatsApp is green, on a tinted canvas
+ * chosen so that a white incoming bubble actually reads (see [ChatTokens]).
+ *
+ * A media message with no caption gets no bubble chrome at all — the photo *is*
+ * the bubble, with the timestamp floated over a gradient in its corner. Wrapping
+ * a photo in a coloured box the same width is the thing that made this screen
+ * look like a form rather than a conversation.
+ */
+@Composable
+fun MessageBubble(
+    message: ChatMessageEntity,
+    isMine: Boolean,
+    showAuthor: Boolean,
+    isSelected: Boolean,
+    replyPreview: ChatMessageEntity?,
+    onRetry: () -> Unit,
+    onOpenMedia: () -> Unit,
+    modifier: Modifier = Modifier,
+    mentionLabels: List<String> = emptyList(),
+    onAssignTicket: (String) -> Unit = {},
+) {
+    // A server-authored notice is about the conversation, not part of it, so it
+    // gets no bubble and no side — the same treatment WhatsApp gives "you were
+    // added to this group".
+    if (message.kind == "system") {
+        SystemNotice(message.body)
+        return
+    }
+
+    val bubbleColor = if (isMine) ChatTokens.outgoing else ChatTokens.incoming
+    val textColor = if (isMine) ChatTokens.onOutgoing else ChatTokens.onIncoming
+
+    val isMedia = message.kind == "image" || message.kind == "video"
+    // No caption → the meta line floats over the photo instead of below it.
+    val bare = isMedia && message.body.isBlank()
+
+    // A tail on the outer corner only: cheaper and steadier than drawing a real
+    // tail path, and it reads the same at a glance.
+    val shape = RoundedCornerShape(
+        topStart = ChatTokens.bubbleRadius,
+        topEnd = ChatTokens.bubbleRadius,
+        bottomEnd = if (isMine) ChatTokens.tailRadius else ChatTokens.bubbleRadius,
+        bottomStart = if (isMine) ChatTokens.bubbleRadius else ChatTokens.tailRadius,
+    )
+
+    // No animateFloatAsState here on purpose: it allocates an animation object
+    // per row, and across a few hundred messages that is a measurable slice of
+    // the frame budget for an effect nobody notices.
+    val selectionBg = if (isSelected) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+    } else {
+        Color.Transparent
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(selectionBg)
+            .padding(horizontal = 8.dp, vertical = 1.dp),
+        contentAlignment = if (isMine) Alignment.CenterEnd else Alignment.CenterStart,
+    ) {
+        Surface(
+            color = bubbleColor,
+            shape = shape,
+            // A message that names you is the one you must not scroll past, so
+            // it carries a border rather than only a tinted word inside it —
+            // visible while the thread is moving, not only once it has stopped.
+            border = if (message.mentionsMe) {
+                androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+            } else {
+                null
+            },
+            // Both elevations zero deliberately: a shadow is a separate render
+            // pass per row, and flat bubbles read fine against a tinted canvas.
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier.widthIn(max = ChatTokens.bubbleMaxWidth),
+        ) {
+            Column(
+                Modifier.padding(
+                    horizontal = if (bare) 3.dp else 9.dp,
+                    vertical = if (bare) 3.dp else 6.dp,
+                ),
+            ) {
+                if (showAuthor && !isMine) {
+                    Text(
+                        message.authorName,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = authorColor(message.author),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 2.dp, start = if (bare) 5.dp else 0.dp),
+                    )
+                }
+
+                replyPreview?.let { ReplyQuote(it, textColor) }
+
+                when (message.kind) {
+                    "image" -> MediaContent(message, isVideo = false, overlayMeta = bare, onOpen = onOpenMedia) {
+                        MetaRow(message, isMine, Color.White, onRetry)
+                    }
+
+                    "video" -> MediaContent(message, isVideo = true, overlayMeta = bare, onOpen = onOpenMedia) {
+                        MetaRow(message, isMine, Color.White, onRetry)
+                    }
+
+                    "audio" -> AudioContent(message, textColor)
+                    "ticket" -> TicketCard(message, textColor, onAssignTicket)
+                    "alert" -> AlertCard(message)
+                }
+
+                // A ticket or alert card already renders its own body.
+                if (message.body.isNotBlank() && message.kind != "ticket" && message.kind != "alert") {
+                    if (message.kind != "text") Spacer(Modifier.height(5.dp))
+                    Text(
+                        // Only pay for the scan when the message actually names
+                        // somebody; the overwhelming majority do not.
+                        if (mentionLabels.isEmpty()) {
+                            androidx.compose.ui.text.AnnotatedString(message.body)
+                        } else {
+                            Mentions.annotate(message.body, mentionLabels, mentionTint(isMine))
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = textColor,
+                    )
+                }
+
+                // Tags a technician attached via long-press.
+                message.vehicle?.let {
+                    Spacer(Modifier.height(5.dp))
+                    TagChip(Icons.Default.DirectionsBus, it)
+                }
+
+                if (!bare) {
+                    // align(End) rather than fillMaxWidth: filling stretches the
+                    // bubble to its full width even for a two-letter message,
+                    // which is the least conversational thing a bubble can do.
+                    MetaRow(message, isMine, textColor, onRetry, Modifier.align(Alignment.End))
+                }
+            }
+        }
+    }
+}
+
+/** Time, geotag marker and delivery state — the bubble's footer. */
+@Composable
+private fun MetaRow(
+    message: ChatMessageEntity,
+    isMine: Boolean,
+    textColor: Color,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val muted = mutedOn(textColor)
+    // Formatting is not free, and without this it re-runs for every visible row
+    // on every recomposition of the thread.
+    val stamp = remember(message.createdAt) { timeFmt.format(Date(message.createdAt)) }
+
+    Row(
+        modifier.padding(top = 2.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (message.geotagged) {
+            Icon(
+                Icons.Default.LocationOn,
+                contentDescription = "Location attached",
+                tint = muted,
+                modifier = Modifier.size(11.dp),
+            )
+            Spacer(Modifier.width(3.dp))
+        }
+        Text(stamp, style = MaterialTheme.typography.labelSmall, color = muted)
+        if (isMine) {
+            Spacer(Modifier.width(4.dp))
+            DeliveryTick(message, muted, onRetry)
+        }
+    }
+}
+
+/**
+ * Delivery state. Familiar tick grammar, but honest about what we actually
+ * know: one tick means the server allocated a seq, two mean every member's read
+ * cursor has passed it. There is no "delivered to device" state because nothing
+ * in the protocol reports that, and inventing one would be a lie a dispatcher
+ * would act on.
+ */
+@Composable
+private fun DeliveryTick(message: ChatMessageEntity, muted: Color, onRetry: () -> Unit) {
+    when (message.status) {
+        SendStatus.PENDING -> Icon(
+            Icons.Default.Schedule,
+            contentDescription = "Waiting to send",
+            tint = muted,
+            modifier = Modifier.size(12.dp),
+        )
+
+        SendStatus.UPLOADING -> CircularProgressIndicator(
+            progress = { message.uploadPct / 100f },
+            strokeWidth = 1.5.dp,
+            color = muted,
+            modifier = Modifier.size(12.dp),
+        )
+
+        SendStatus.SENT -> Icon(
+            Icons.Default.Check,
+            contentDescription = "Sent",
+            tint = muted,
+            modifier = Modifier.size(13.dp),
+        )
+
+        SendStatus.FAILED -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickableNoRipple(onRetry),
+        ) {
+            Icon(
+                Icons.Default.ErrorOutline,
+                contentDescription = "Failed to send",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(13.dp),
+            )
+            Spacer(Modifier.width(3.dp))
+            Text(
+                "Tap to retry",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        else -> Icon(
+            Icons.Default.DoneAll,
+            contentDescription = "Read",
+            tint = ChatTokens.readTick,
+            modifier = Modifier.size(13.dp),
+        )
+    }
+}
+
+@Composable
+private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color) {
+    val accent = authorColor(source.author)
+    Row(
+        Modifier
+            .padding(bottom = 4.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(onBubble.copy(alpha = 0.07f))
+            .heightIn(min = 34.dp),
+    ) {
+        Box(Modifier.width(3.dp).heightIn(min = 34.dp).background(accent))
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Text(
+                source.authorName,
+                style = MaterialTheme.typography.labelSmall,
+                color = accent,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                source.body.ifBlank { source.kind.replaceFirstChar { it.uppercase() } },
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedOn(onBubble),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * A photo or a video still.
+ *
+ * When there is no caption the timestamp is floated over the bottom of the
+ * image on a short gradient — a solid chip would sit as a hard rectangle on the
+ * photo, and plain white text is unreadable over a bright one.
+ */
+@Composable
+private fun MediaContent(
+    message: ChatMessageEntity,
+    isVideo: Boolean,
+    overlayMeta: Boolean,
+    onOpen: () -> Unit,
+    meta: @Composable () -> Unit,
+) {
+    Box(
+        Modifier
+            .width(ChatTokens.mediaWidth)
+            .clip(RoundedCornerShape(13.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onOpen),
+    ) {
+        AsyncImage(
+            // The local file while queued, so the photo is visible the instant
+            // it is picked, and the server URL once committed.
+            model = message.localPath ?: message.fileUrl?.let { absoluteUrl(it) },
+            contentDescription = message.body.ifBlank { if (isVideo) "Video" else "Photo" },
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .width(ChatTokens.mediaWidth)
+                .heightIn(min = 140.dp, max = 300.dp),
+        )
+
+        if (isVideo) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+        }
+
+        if (overlayMeta) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)),
+                        ),
+                    )
+                    .padding(start = 24.dp, end = 8.dp, top = 18.dp, bottom = 5.dp),
+            ) {
+                meta()
+            }
+        }
+
+        if (message.status == SendStatus.UPLOADING) UploadScrim(message.uploadPct)
+    }
+}
+
+/**
+ * A shared Service Ticket.
+ *
+ * The point of sharing one into a thread is that the next action happens here
+ * rather than in another app, so Assign is on the card itself. The body is the
+ * server's own one-line rendering, which is also what a push notification and
+ * the Desk timeline show — one description of the ticket, not three that drift.
+ */
+@Composable
+private fun TicketCard(message: ChatMessageEntity, textColor: Color, onAssign: (String) -> Unit) {
+    val ticket = message.ticket ?: return
+    val lines = message.body.split("\n")
+
+    Column(
+        Modifier
+            .widthIn(max = ChatTokens.mediaWidth)
+            .clip(RoundedCornerShape(11.dp))
+            .background(textColor.copy(alpha = 0.06f))
+            .padding(9.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.ConfirmationNumber,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(15.dp),
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                ticket,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            lines.first(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = textColor,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (lines.size > 1) {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                lines.drop(1).joinToString("\n"),
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedOn(textColor),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.height(7.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(7.dp),
+            modifier = Modifier.clickable { onAssign(ticket) },
+        ) {
+            Text(
+                "Assign to someone",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
+    }
+}
+
+/**
+ * An alert posted automatically into a channel.
+ *
+ * Severity leads, because in a channel that receives a hundred of these a day
+ * the only question being asked while scrolling is "does this one need me now".
+ */
+@Composable
+private fun AlertCard(message: ChatMessageEntity) {
+    val lines = message.body.split("\n").filter { it.isNotBlank() }
+    val head = lines.firstOrNull().orEmpty()
+    val critical = head.startsWith("CRITICAL")
+    val accent = if (critical) MaterialTheme.colorScheme.error else Color(0xFFF59E0B)
+
+    Row(Modifier.widthIn(max = ChatTokens.mediaWidth).clip(RoundedCornerShape(11.dp))) {
+        Box(Modifier.width(4.dp).heightIn(min = 48.dp).background(accent))
+        Column(
+            Modifier
+                .background(accent.copy(alpha = 0.09f))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(15.dp),
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    head,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = accent,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            lines.drop(1).take(4).forEach { line ->
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    line,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ChatTokens.onIncoming.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** A centred chip for things the server said about the conversation. */
+@Composable
+private fun SystemNotice(body: String) {
+    if (body.isBlank()) return
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(color = ChatTokens.chip, shape = RoundedCornerShape(9.dp)) {
+            Text(
+                body,
+                style = MaterialTheme.typography.labelMedium,
+                color = ChatTokens.onChip,
+                modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+            )
+        }
+    }
+}
+
+/** Mentions have to read on both bubble grounds, so the tint differs by side. */
+@Composable
+private fun mentionTint(isMine: Boolean): Color =
+    if (isMine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+
+@Composable
+private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+        Icon(Icons.Default.Mic, contentDescription = null, tint = textColor, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            formatDuration(message.durationMs),
+            style = MaterialTheme.typography.bodyMedium,
+            color = textColor,
+        )
+        // Transcript arrives later from speech-to-text; shown inline when present.
+        message.transcript?.takeIf { it.isNotBlank() }?.let {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedOn(textColor),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.UploadScrim(pct: Int) {
+    Box(
+        Modifier
+            .matchParentSize()
+            .background(Color.Black.copy(alpha = 0.35f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$pct%", color = Color.White, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { pct / 100f },
+                color = Color.White,
+                trackColor = Color.White.copy(alpha = 0.3f),
+                modifier = Modifier.width(120.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TagChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(7.dp),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(12.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
+}
+
+/** Floating day divider over the canvas. */
+@Composable
+fun DayDivider(label: String) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+        Surface(color = ChatTokens.chip, shape = RoundedCornerShape(10.dp)) {
+            Text(
+                label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = ChatTokens.onChip,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 11.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/** "Unread messages" separator. */
+@Composable
+fun UnreadDivider(count: Int) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (count == 1) "1 unread message" else "$count unread messages",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+}
+
+// A stable per-author colour so a busy depot thread stays scannable. Drawn from
+// the brand family rather than random hues, so it still looks like Naarni.
+private val authorPalette = listOf(
+    Color(0xFF6D5AE6), Color(0xFF0EA5E9), Color(0xFF10B981),
+    Color(0xFFF59E0B), Color(0xFFEC4899), Color(0xFF8B5CF6),
+)
+
+fun authorColor(user: String): Color =
+    authorPalette[(user.hashCode().and(Int.MAX_VALUE)) % authorPalette.size]
+
+fun formatDuration(ms: Long?): String {
+    val total = (ms ?: 0) / 1000
+    return "%d:%02d".format(total / 60, total % 60)
+}
+
+/** Resolve a Frappe `/private/files/...` path against the configured backend. */
+fun absoluteUrl(path: String): String =
+    if (path.startsWith("http")) path
+    else com.naarni.service.BuildConfig.BASE_URL.trimEnd('/') + path
+
+@Composable
+private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier {
+    // Unremembered, this allocated a fresh interaction source on every
+    // recomposition of every failed row.
+    val source = remember { MutableInteractionSource() }
+    return this.clickable(interactionSource = source, indication = null, onClick = onClick)
+}

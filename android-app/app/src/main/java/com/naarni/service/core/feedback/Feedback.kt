@@ -81,6 +81,46 @@ class Feedback(context: Context) {
     fun error() {
         vibratePattern(longArrayOf(0, 35, 80, 35))
     }
+
+    // ── Chat ──────────────────────────────────────────────────────────────
+    // Deliberately built from the two existing samples at different playback
+    // rates rather than shipping new audio: chat feedback fires far more often
+    // than anything else in the app, so it has to stay light on the APK and
+    // instantly familiar. Rate shifts read as "related but distinct".
+
+    /** Outgoing message committed to the outbox — a crisp upward tick. */
+    fun messageSent() {
+        soundPool.play(tapId, 0.30f, 0.30f, 1, 0, 1.45f)
+        vibrate(10, 60)
+    }
+
+    /** A message arrived while the thread is open — softer, lower, unobtrusive. */
+    fun messageReceived() {
+        soundPool.play(tapId, 0.22f, 0.22f, 0, 0, 0.75f)
+        vibrate(14, 55)
+    }
+
+    /**
+     * The swipe-to-reply gesture passing its trigger threshold.
+     *
+     * Silent on purpose. This fires mid-gesture, and a sound here would be
+     * intolerable in a busy thread — the haptic alone is what confirms the
+     * threshold, exactly as it does elsewhere in the app.
+     */
+    fun replyTriggered() {
+        vibrate(16, 110)
+    }
+
+    /** Long-press entering selection mode — a deliberate, heavier press. */
+    fun selectionEntered() {
+        vibrate(22, 140)
+    }
+
+    /** Attachment finished uploading. */
+    fun uploadComplete() {
+        soundPool.play(successId, 0.4f, 0.4f, 0, 0, 1.15f)
+        vibrate(12, 70)
+    }
 }
 
 val LocalFeedback = staticCompositionLocalOf<Feedback> {

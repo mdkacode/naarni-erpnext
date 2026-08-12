@@ -41,6 +41,9 @@ android {
             "\"wss://service.naarni.com/socket.io/?EIO=4&transport=websocket\"",
         )
         buildConfigField("String", "ORIGIN_URL", "\"https://service.naarni.com\"")
+        // HTTP base for the Engine.IO long-polling fallback, used when a proxy
+        // or carrier refuses the WebSocket upgrade.
+        buildConfigField("String", "SOCKET_HTTP_URL", "\"https://service.naarni.com/socket.io/\"")
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -77,6 +80,7 @@ android {
                     "\"ws://localhost:9000/socket.io/?EIO=4&transport=websocket\"",
                 )
                 buildConfigField("String", "ORIGIN_URL", "\"http://dev.localhost:8000\"")
+                buildConfigField("String", "SOCKET_HTTP_URL", "\"http://localhost:9000/socket.io/\"")
             }
         }
         release {
@@ -170,6 +174,14 @@ dependencies {
 
     // collectAsStateWithLifecycle — stops chat Flows collecting while backgrounded.
     implementation(libs.androidx.lifecycle.runtime.compose)
+    // ProcessLifecycleOwner — one app-wide foreground/background signal for the
+    // socket, so screen-lock and backgrounding are not two separate code paths.
+    implementation(libs.androidx.lifecycle.process)
+
+    // Local JVM tests. Chat's fiddliest logic — @-token scanning, mention
+    // survival across edits — is pure string work, and pinning it here is far
+    // cheaper than discovering a regression on a handset in a depot.
+    testImplementation(libs.junit)
 }
 
 // Room schema export: lets a future migration be written against a real

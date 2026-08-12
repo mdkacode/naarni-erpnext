@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.naarni.service.ui.AppViewModel
@@ -131,6 +132,10 @@ fun LoginScreen(vm: AppViewModel) {
                         onChangeNumber = { otp = ""; vm.resetOtp() },
                     )
                 }
+
+                // Debug builds only — OTP is issued by the Naarni backend, so a
+                // build pointed at a local bench has no other way in.
+                if (com.naarni.service.BuildConfig.DEBUG) DevSignIn(vm)
             }
         }
 
@@ -311,5 +316,48 @@ private fun ErrorBox(error: String?) {
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.fillMaxWidth().padding(12.dp),
         )
+    }
+}
+
+/**
+ * Debug-only password sign-in.
+ *
+ * Collapsed behind a text button so it never competes with the real OTP flow.
+ * Gated on BuildConfig.DEBUG at the call site, so it is absent from release.
+ */
+@Composable
+private fun DevSignIn(vm: AppViewModel) {
+    var open by remember { mutableStateOf(false) }
+    var phone by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    if (!open) {
+        TextButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Dev sign-in", style = MaterialTheme.typography.labelSmall)
+        }
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = phone,
+            onValueChange = { phone = it },
+            label = { Text("Phone") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+            onClick = { vm.devLogin(phone, password) },
+            enabled = phone.isNotBlank() && password.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Sign in") }
     }
 }

@@ -20,6 +20,13 @@ class FrappeErrorInterceptor : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())
+
+        // A WebSocket upgrade answers 101 Switching Protocols, which is not
+        // "successful" by OkHttp's 200..299 definition. The chat socket shares
+        // this client (so the session cookie is attached), so without this the
+        // interceptor throws on every upgrade and the socket can never connect.
+        if (response.code == HTTP_SWITCHING_PROTOCOLS) return response
+
         if (response.isSuccessful) return response
 
         val body = runCatching { response.peekBody(MAX_PEEK).string() }.getOrNull()
@@ -63,6 +70,7 @@ class FrappeErrorInterceptor : Interceptor {
 
     private companion object {
         const val MAX_PEEK = 1L * 1024 * 1024
+        const val HTTP_SWITCHING_PROTOCOLS = 101
     }
 }
 

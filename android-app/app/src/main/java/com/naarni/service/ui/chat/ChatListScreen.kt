@@ -221,7 +221,7 @@ private fun SearchPill(value: String, onChange: (String) -> Unit, busy: Boolean)
                     Box {
                         if (value.isEmpty()) {
                             Text(
-                                "Search people, depots, vehicles",
+                                "messages, search contacts, open threads",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = Color.White.copy(alpha = 0.7f),
                             )

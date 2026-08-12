@@ -1,5 +1,6 @@
 package com.naarni.service.ui.navigation
 
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
@@ -162,7 +163,16 @@ fun MainShell(vm: AppViewModel) {
         NavHost(
             navController = nav,
             startDestination = Tab.Home.route,
-            modifier = Modifier.padding(padding),
+            // `padding` alone insets the content but does not tell anything
+            // inside that the insets are already paid for, so a screen that
+            // handles its own — the chat thread, which must track the keyboard —
+            // applies the navigation bar a second time and leaves a dead band of
+            // canvas under its composer. Consuming it makes the inner
+            // `windowInsetsPadding` subtract what has already been applied and
+            // add only the remainder, which is what it is designed to do.
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding),
         ) {
             composable(Tab.Home.route) {
                 HomeScreen(

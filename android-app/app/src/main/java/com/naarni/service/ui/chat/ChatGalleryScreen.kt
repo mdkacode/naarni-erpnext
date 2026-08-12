@@ -92,17 +92,31 @@ fun ChatGalleryScreen(
     val feedback = LocalFeedback.current
     val uriHandler = LocalUriHandler.current
 
-    var viewing by remember { mutableStateOf<ChatMessageEntity?>(null) }
+    var viewingIndex by remember { mutableStateOf<Int?>(null) }
     var opening by remember { mutableStateOf<String?>(null) }
     var openError by remember { mutableStateOf<String?>(null) }
 
-    viewing?.let { shot ->
-        MediaViewer(
-            model = shot.localPath ?: shot.fileUrl?.let { absoluteUrl(it) },
-            title = if (vm.isMine(shot)) "You" else shot.authorName,
-            subtitle = "${dayLabel(shot.createdAt)} · ${clockTime(shot.createdAt)}",
-            caption = shot.body,
-            onClose = { viewing = null },
+    val mediaRows = buckets[Gallery.Tab.MEDIA].orEmpty()
+
+    // The whole media run is handed to the viewer, not just the tapped photo, so
+    // it can be flicked through. Rebuilt only when the rows change.
+    val mediaPages = remember(mediaRows) {
+        mediaRows.map { shot ->
+            MediaPage(
+                key = shot.clientId,
+                model = shot.localPath ?: shot.fileUrl?.let { absoluteUrl(it) },
+                title = if (shot.author == vm.me) "You" else shot.authorName,
+                subtitle = "${dayLabel(shot.createdAt)} · ${clockTime(shot.createdAt)}",
+                caption = shot.body,
+            )
+        }
+    }
+
+    viewingIndex?.let { index ->
+        MediaPagerViewer(
+            pages = mediaPages,
+            startIndex = index,
+            onClose = { viewingIndex = null },
         )
         return
     }
@@ -204,7 +218,10 @@ fun ChatGalleryScreen(
         }
 
         when (tab) {
-            Gallery.Tab.MEDIA -> MediaGrid(rowsForTab) { viewing = it }
+            Gallery.Tab.MEDIA -> MediaGrid(rowsForTab) { tapped ->
+                viewingIndex = rowsForTab.indexOfFirst { it.clientId == tapped.clientId }
+                    .takeIf { it >= 0 } ?: 0
+            }
             Gallery.Tab.DOCUMENTS -> LazyColumn(Modifier.fillMaxSize()) {
                 items(rowsForTab, key = { it.clientId }) { row ->
                     DocumentRow(

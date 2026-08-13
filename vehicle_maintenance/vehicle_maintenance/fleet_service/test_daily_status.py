@@ -23,16 +23,16 @@ class DailyStatusTestBase(FrappeTestCase):
 		frappe.set_user("Administrator")
 		self.user = self._ensure_user("status-tech@test.localhost", "9990300001", ["Technician"])
 		self._configure()
-		self._orig_commit = frappe.db.commit
-		frappe.db.commit = lambda *a, **k: None
-		self._orig_complete = onyx_client.complete
-		self._orig_enabled = onyx_client.is_enabled
 
-	def tearDown(self):
-		frappe.set_user("Administrator")
-		frappe.db.commit = self._orig_commit
-		onyx_client.complete = self._orig_complete
-		onyx_client.is_enabled = self._orig_enabled
+		# addCleanup rather than a tearDown override: the base suite's tearDown is
+		# what forces the rollback that keeps these tests idempotent, and replacing
+		# it would quietly take that away.
+		orig_commit = frappe.db.commit
+		frappe.db.commit = lambda *a, **k: None
+		self.addCleanup(setattr, frappe.db, "commit", orig_commit)
+		self.addCleanup(setattr, onyx_client, "complete", onyx_client.complete)
+		self.addCleanup(setattr, onyx_client, "is_enabled", onyx_client.is_enabled)
+		self.addCleanup(frappe.set_user, "Administrator")
 
 	# ---------------------------------------------------------------- fixtures
 
@@ -270,11 +270,13 @@ class TestOnyxConfig(FrappeTestCase):
 	"""site_config arrives as strings, and "0" is a truthy string."""
 
 	def setUp(self):
-		self._orig = dict(frappe.conf)
+		original = dict(frappe.conf)
 
-	def tearDown(self):
-		frappe.conf.clear()
-		frappe.conf.update(self._orig)
+		def restore():
+			frappe.conf.clear()
+			frappe.conf.update(original)
+
+		self.addCleanup(restore)
 
 	def test_string_zero_does_not_enable_the_integration(self):
 		frappe.conf["onyx_enabled"] = "0"

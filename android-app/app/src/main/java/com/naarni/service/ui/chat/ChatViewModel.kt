@@ -274,6 +274,25 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Backs the people results inlined under the chat list's search box. */
     val contacts = PeopleSearch()
 
+    /**
+     * Create a group. [onResult] carries the room name, or null with a reason.
+     *
+     * The server restricts this to the roles that can run a depot; a Technician
+     * gets a PermissionError, which is surfaced verbatim rather than as a dead
+     * button, so it is clear the app is not broken.
+     */
+    fun createGroup(
+        title: String,
+        members: List<String>,
+        onResult: (String?, String?) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching { repo.createGroup(title.trim(), members) }
+                .onSuccess { onResult(it, null) }
+                .onFailure { onResult(null, it.message ?: "Couldn't create that group.") }
+        }
+    }
+
     /** Open (or create) a DM and hand the room name back for navigation. */
     fun openDirect(user: String, onReady: (String) -> Unit) {
         viewModelScope.launch {

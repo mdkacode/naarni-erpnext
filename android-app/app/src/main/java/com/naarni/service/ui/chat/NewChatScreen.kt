@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -64,6 +65,7 @@ fun NewChatScreen(
     vm: ChatViewModel,
     onBack: () -> Unit,
     onOpenRoom: (String) -> Unit,
+    onNewGroup: () -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     val feedback = LocalFeedback.current
@@ -157,6 +159,38 @@ fun NewChatScreen(
             )
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
+                // Where WhatsApp puts it, because that is where people look for
+                // it — above the contacts, not behind another menu.
+                item(key = "new-group") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { feedback.tap(); onNewGroup() }
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(46.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Groups,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(23.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "New group",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
                 items(people, key = { it.name }) { user ->
                     ContactRow(
                         user = user,

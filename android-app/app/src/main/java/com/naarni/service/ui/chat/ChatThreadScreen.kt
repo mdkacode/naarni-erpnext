@@ -1,5 +1,7 @@
 package com.naarni.service.ui.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -16,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +54,7 @@ import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
@@ -80,6 +84,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -88,10 +93,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.ContextCompat
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import com.naarni.service.core.feedback.LocalFeedback
+import com.naarni.service.core.audio.VoiceRecorder
 import com.naarni.service.core.push.ChatNotifications
 import com.naarni.service.data.chat.ChatMessageEntity
 import com.naarni.service.data.chat.SendStatus
@@ -124,11 +131,12 @@ fun ChatThreadScreen(
     val messageFlow = remember(roomName) { vm.messages(roomName) }
     // Backs the swipe run in the photo viewer. Same query the gallery uses, so
     // the two surfaces never disagree about what "the next photo" is.
+    //
+    // Deliberately NOT collected here: subscribing at the top of the screen ran
+    // a 500-row query again on every single message that arrived, for a list
+    // that is only read once someone opens a photo. It is collected inside the
+    // viewer branch instead, so an ordinary thread pays nothing for it.
     val galleryFlow = remember(roomName) { vm.gallery(roomName) }
-    val galleryRows by galleryFlow.collectAsStateWithLifecycle(emptyList())
-    val mediaRun = remember(galleryRows) {
-        galleryRows.filter { Gallery.tabOf(it) == Gallery.Tab.MEDIA }
-    }
     val room by roomFlow.collectAsStateWithLifecycle(null)
     val messages = messageFlow.collectAsLazyPagingItems()
     val listState = rememberLazyListState()
@@ -323,6 +331,10 @@ fun ChatThreadScreen(
         // sideways lands on the same neighbours either way you got here. Taken
         // from the gallery query rather than the paged list because paging has
         // only loaded as far back as the user happens to have scrolled.
+        val galleryRows by galleryFlow.collectAsStateWithLifecycle(emptyList())
+        val mediaRun = remember(galleryRows) {
+            galleryRows.filter { Gallery.tabOf(it) == Gallery.Tab.MEDIA }
+        }
         val pages = remember(mediaRun) {
             mediaRun.map { row ->
                 MediaPage(
@@ -483,19 +495,18 @@ fun ChatThreadScreen(
             }
 
             // Jump-to-latest, only once the user has scrolled meaningfully away.
-            androidx.compose.animation.AnimatedVisibility(
-                visible = !atBottom,
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut(),
-                modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
-            ) {
+            // No scale/fade: the button is either needed or it is not, and an
+            // animation on it is 200ms of the frame budget spent on furniture.
+            if (!atBottom) {
                 Surface(
                     color = ChatTokens.field,
                     shape = CircleShape,
                     shadowElevation = 3.dp,
-                    modifier = Modifier.size(40.dp).clickable {
-                        scope.launch { listState.scrollToItem(0) }
-                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(14.dp)
+                        .size(40.dp)
+                        .clickable { scope.launch { listState.scrollToItem(0) } },
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -527,6 +538,18 @@ fun ChatThreadScreen(
             },
             onAttachFile = { documentPicker.launch(arrayOf("*/*")) },
             onShareTicket = { pickingTicket = true },
+            onVoice = { file, durationMs ->
+                vm.sendAttachment(
+                    room = roomName,
+                    file = file,
+                    contentType = "audio/mp4",
+                    kind = "audio",
+                    fileName = file.name,
+                    durationMs = durationMs,
+                    replyTo = replyTo?.serverName,
+                )
+                replyTo = null
+            },
         )
     }
 
@@ -831,6 +854,7 @@ private fun Composer(
     onAttach: () -> Unit,
     onAttachFile: () -> Unit,
     onShareTicket: () -> Unit,
+    onVoice: (java.io.File, Long) -> Unit,
 ) {
     var draft by remember { mutableStateOf(TextFieldValue("")) }
     // Display name → user id, for everyone picked from the dropdown while this
@@ -948,26 +972,119 @@ private fun Composer(
             // hiding it shifts the pill's width mid-sentence, which is worse. A
             // neutral disabled state rather than a translucent brand colour —
             // a faded indigo disc reads as a rendering fault, not as "not yet".
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(if (canSend) scheme.primary else scheme.surfaceVariant)
-                    .clickable(enabled = canSend) {
-                        onSend(draft.text, Mentions.survivingMentions(draft.text, picked))
-                        draft = TextFieldValue("")
-                        picked.clear()
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Default.Send,
-                    contentDescription = "Send",
-                    tint = if (canSend) Color.White else scheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
+            if (canSend) {
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(scheme.primary)
+                        .clickable {
+                            onSend(draft.text, Mentions.survivingMentions(draft.text, picked))
+                            draft = TextFieldValue("")
+                            picked.clear()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Send,
+                        contentDescription = "Send",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            } else {
+                // With nothing typed the button is a microphone, exactly where
+                // the send button was. Hold to record, release to send — the
+                // gesture is already muscle memory, and it means a voice note
+                // costs one press rather than a trip through the attach menu.
+                VoiceButton(onRecorded = onVoice)
             }
         }
+    }
+}
+
+/**
+ * Hold-to-record microphone.
+ *
+ * Release sends; a press shorter than the recorder's floor is discarded as a
+ * mis-tap rather than sent as a half-second of nothing. The permission is
+ * requested on first press — asking for a microphone during onboarding, before
+ * anyone has tried to record, is the request people refuse.
+ */
+@Composable
+private fun VoiceButton(onRecorded: (java.io.File, Long) -> Unit) {
+    val context = LocalContext.current
+    val scheme = MaterialTheme.colorScheme
+    val feedback = LocalFeedback.current
+    val recorder = remember { VoiceRecorder(context) }
+    var recording by remember { mutableStateOf(false) }
+    var elapsed by remember { mutableStateOf(0L) }
+
+    var hasMic by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { hasMic = it }
+
+    // Releases the microphone if the screen goes away mid-recording; a
+    // MediaRecorder left running holds the mic for the whole device.
+    DisposableEffect(Unit) { onDispose { recorder.cancel() } }
+
+    LaunchedEffect(recording) {
+        while (recording) {
+            elapsed = recorder.elapsedMs()
+            kotlinx.coroutines.delay(100)
+        }
+    }
+
+    if (recording) {
+        Text(
+            "● ${formatDuration(elapsed)}",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+    }
+
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(if (recording) MaterialTheme.colorScheme.error else scheme.surfaceVariant)
+            .pointerInput(hasMic) {
+                detectTapGestures(
+                    onPress = {
+                        if (!hasMic) {
+                            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            return@detectTapGestures
+                        }
+                        if (!recorder.start()) return@detectTapGestures
+                        recording = true
+                        feedback.tap()
+                        // Suspends until the finger lifts, which is what makes
+                        // this hold-to-record rather than tap-to-toggle.
+                        tryAwaitRelease()
+                        recording = false
+                        val note = recorder.stop()
+                        if (note != null) {
+                            feedback.messageSent()
+                            onRecorded(note.file, note.durationMs)
+                        }
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Default.Mic,
+            contentDescription = "Hold to record a voice note",
+            tint = if (recording) Color.White else scheme.onSurfaceVariant,
+            modifier = Modifier.size(21.dp),
+        )
     }
 }
 

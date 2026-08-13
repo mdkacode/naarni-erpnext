@@ -15,6 +15,7 @@ import com.naarni.service.ui.chat.ChatListScreen
 import com.naarni.service.ui.chat.ChatThreadScreen
 import com.naarni.service.ui.chat.ChatViewModel
 import com.naarni.service.ui.chat.NewChatScreen
+import com.naarni.service.ui.chat.NewGroupScreen
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -293,10 +294,23 @@ fun MainShell(vm: AppViewModel) {
                     onNewChat = { nav.navigate("newchat") },
                 )
             }
+            composable("newgroup") {
+                NewGroupScreen(
+                    chatVm,
+                    onBack = { nav.popBackStack() },
+                    onCreated = { room ->
+                        // Replace both pickers in the back stack: leaving a new
+                        // group should land on the list, not back in the form
+                        // that would create a second one.
+                        nav.navigate("thread/$room") { popUpTo("newchat") { inclusive = true } }
+                    },
+                )
+            }
             composable("newchat") {
                 NewChatScreen(
                     chatVm,
                     onBack = { nav.popBackStack() },
+                    onNewGroup = { nav.navigate("newgroup") },
                     onOpenRoom = { room ->
                         // Replace the picker in the back stack: coming back from a
                         // thread should land on the chat list, not the directory.

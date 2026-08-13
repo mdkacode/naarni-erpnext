@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.WarningAmber
@@ -35,16 +37,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.naarni.service.core.audio.VoicePlayer
 import com.naarni.service.data.chat.ChatMessageEntity
 import com.naarni.service.data.chat.SendStatus
 import java.text.SimpleDateFormat
@@ -636,14 +641,56 @@ private fun mentionTint(isMine: Boolean): Color =
 
 @Composable
 private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
+    val context = LocalContext.current
+    val source = message.localPath ?: message.fileUrl?.let { absoluteUrl(it) }
+    val isPlaying = VoicePlayer.playingId == message.clientId
+
+    // Only ticks while this note is the one playing, so an idle thread of forty
+    // voice notes is not running forty timers.
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            VoicePlayer.tick()
+            kotlinx.coroutines.delay(120)
+        }
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-        Icon(Icons.Default.Mic, contentDescription = null, tint = textColor, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(
-            formatDuration(message.durationMs),
-            style = MaterialTheme.typography.bodyMedium,
-            color = textColor,
-        )
+        Box(
+            Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(textColor.copy(alpha = 0.14f))
+                .clickable(enabled = source != null) {
+                    source?.let { VoicePlayer.toggle(context, message.clientId, it) }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play voice note",
+                tint = textColor,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+
+        Column {
+            // A plain progress line rather than a waveform: a waveform has to be
+            // decoded from the audio before it can be drawn, which is real work
+            // per bubble for decoration that tells the listener nothing.
+            LinearProgressIndicator(
+                progress = { if (isPlaying) VoicePlayer.progress else 0f },
+                color = textColor,
+                trackColor = textColor.copy(alpha = 0.22f),
+                modifier = Modifier.width(120.dp).height(3.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                formatDuration(message.durationMs),
+                style = MaterialTheme.typography.labelSmall,
+                color = mutedOn(textColor),
+            )
+        }
         // Transcript arrives later from speech-to-text; shown inline when present.
         message.transcript?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.width(8.dp))

@@ -26,6 +26,7 @@ import kotlinx.serialization.json.long
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.security.MessageDigest
+import org.json.JSONArray
 import java.util.UUID
 
 /**
@@ -353,6 +354,24 @@ class ChatRepository(
     suspend fun openDirect(user: String): String {
         val room = api.chatGetOrCreateDirect(user).payload().room
         runCatching { refreshRooms() }
+        return room
+    }
+
+    /**
+     * Create a group and return its room name.
+     *
+     * The room list is refreshed before returning so the caller can navigate
+     * straight into the thread — without it the screen opens against a room
+     * Room has never heard of and renders empty until the next sync.
+     */
+    suspend fun createGroup(title: String, members: List<String>): String {
+        val room = api.chatCreateRoom(
+            title = title,
+            kind = "Group",
+            members = JSONArray(members).toString(),
+        ).payload().room
+        runCatching { refreshRooms() }
+        runCatching { sync() }
         return room
     }
 

@@ -119,14 +119,34 @@ fun MainShell(vm: AppViewModel) {
         tabs.any { it.route == current } ||
         current in setOf(HiddenRoute.JOB_CARDS, HiddenRoute.FLEET, HiddenRoute.TICKETS)
 
+    /**
+     * Chat keeps the status bar.
+     *
+     * Hiding it suits a screen you look at once — a job card, a report. A
+     * conversation is not that: people sit in it, and taking away the clock,
+     * the battery and the signal bars for the whole time they are messaging is
+     * a real cost for a strip of screen. Every messaging app keeps it, which is
+     * also what makes its absence feel like a fault rather than a choice.
+     */
+    val isChatRoute = current != null && (
+        current == Tab.Chat.route ||
+            current.startsWith("thread/") ||
+            current.startsWith("gallery/") ||
+            current == "newchat" ||
+            current == "newgroup"
+        )
+
     val view = LocalView.current
-    LaunchedEffect(isTopLevel) {
+    LaunchedEffect(isTopLevel, isChatRoute) {
         val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
         val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
         controller.systemBarsBehavior =
             androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        if (isTopLevel) controller.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
-        else controller.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        if (isTopLevel || isChatRoute) {
+            controller.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        } else {
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        }
     }
 
     Scaffold(

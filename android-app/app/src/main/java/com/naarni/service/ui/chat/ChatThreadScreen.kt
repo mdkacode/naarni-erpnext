@@ -1054,7 +1054,11 @@ private fun VoiceButton(onRecorded: (java.io.File, Long) -> Unit) {
         Modifier
             .size(48.dp)
             .clip(CircleShape)
-            .background(if (recording) MaterialTheme.colorScheme.error else scheme.surfaceVariant)
+            // Solid, like the send button it replaces. On surfaceVariant it read
+            // as an empty placeholder next to the white pill rather than
+            // something you press; red while recording, so the state is obvious
+            // without looking at the timer.
+            .background(if (recording) MaterialTheme.colorScheme.error else scheme.primary)
             .pointerInput(hasMic) {
                 detectTapGestures(
                     onPress = {
@@ -1082,7 +1086,7 @@ private fun VoiceButton(onRecorded: (java.io.File, Long) -> Unit) {
         Icon(
             Icons.Default.Mic,
             contentDescription = "Hold to record a voice note",
-            tint = if (recording) Color.White else scheme.onSurfaceVariant,
+            tint = Color.White,
             modifier = Modifier.size(21.dp),
         )
     }

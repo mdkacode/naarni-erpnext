@@ -249,6 +249,12 @@ fun ChatThreadScreen(
 
     val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex <= 2 } }
 
+    // One object per room update rather than two Longs down every call site, and
+    // stable enough that unchanged rows are not recomposed when it is rebuilt.
+    val receipts = remember(room?.deliveredUpto, room?.readUpto) {
+        Receipts(room?.deliveredUpto ?: 0L, room?.readUpto ?: 0L)
+    }
+
     /**
      * Follow the conversation as it grows.
      *
@@ -471,6 +477,7 @@ fun ChatThreadScreen(
                             ?.mapNotNull { nameOf[it] }
                             .orEmpty(),
                         onAssignTicket = { assigning = it },
+                        receipts = receipts,
                     )
 
                     // Breathing room above a new speaker, so a busy depot thread
@@ -616,6 +623,7 @@ private fun SwipeableMessage(
     mentionLabels: List<String>,
     onAssignTicket: (String) -> Unit,
     isOpening: Boolean,
+    receipts: Receipts,
 ) {
     var dragX by remember { mutableFloatStateOf(0f) }
     val triggerPx = with(LocalDensity.current) { REPLY_TRIGGER_DP.dp.toPx() }

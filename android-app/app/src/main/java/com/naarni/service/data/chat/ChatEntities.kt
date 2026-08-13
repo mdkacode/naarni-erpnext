@@ -48,6 +48,15 @@ data class ChatRoomEntity(
     val lastSeq: Long = 0,
     /** Highest seq this user has read. Unread is the difference. */
     val lastReadSeq: Long = 0,
+    /**
+     * Receipt marks for **my** messages in this room: the lowest seq every
+     * other member has had delivered / has read. Held on the room rather than
+     * per message because the server tracks one cursor per member — storing it
+     * per message would mean rewriting every row in the thread each time
+     * somebody scrolled to the bottom.
+     */
+    val deliveredUpto: Long = 0,
+    val readUpto: Long = 0,
     val muted: Boolean = false,
     val lastMessagePreview: String? = null,
     val lastMessageAt: String? = null,

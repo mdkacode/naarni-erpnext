@@ -975,3 +975,102 @@ class TestChatFileUploads(ChatTestBase):
 
 		self.assertEqual(chat_upload._kind_for("image/avif"), "image")
 		self.assertEqual(chat_upload._kind_for("video/webm"), "video")
+
+
+class TestChatReceipts(ChatTestBase):
+	"""Delivered and read marks.
+
+	These drive the ticks, and a tick that overstates what happened is worse
+	than no tick at all — a dispatcher reads two blue ones as "they have seen
+	it" and stops chasing.
+	"""
+
+	def _room_row(self, user):
+		frappe.set_user(user)
+		rooms = chat.list_rooms()["data"]["rooms"]
+		return next(r for r in rooms if r["name"] == self.room)
+
+	def test_nothing_is_delivered_or_read_before_the_other_side_syncs(self):
+		self._send(self.alice, "hello")
+		row = self._room_row(self.alice)
+		self.assertEqual(row["delivered_upto"], 0)
+		self.assertEqual(row["read_upto"], 0)
+
+	def test_sync_marks_delivered_but_not_read(self):
+		self._send(self.alice, "hello")
+
+		# Bob's device pulls it — delivered, but he has not opened the thread.
+		frappe.set_user(self.bob)
+		chat.sync(cursors={self.room: 0})
+
+		row = self._room_row(self.alice)
+		self.assertEqual(row["delivered_upto"], 1)
+		self.assertEqual(row["read_upto"], 0)
+
+	def test_reading_advances_both(self):
+		self._send(self.alice, "hello")
+		frappe.set_user(self.bob)
+		chat.sync(cursors={self.room: 0})
+		chat.mark_read(room=self.room, seq=1)
+
+		row = self._room_row(self.alice)
+		self.assertEqual(row["read_upto"], 1)
+		self.assertEqual(row["delivered_upto"], 1)
+
+	def test_read_implies_delivered_even_if_the_cursor_lagged(self):
+		"""A read mark alone must never render as "read but not delivered"."""
+		self._send(self.alice, "hello")
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=1)
+
+		row = self._room_row(self.alice)
+		self.assertEqual(row["read_upto"], 1)
+		self.assertEqual(row["delivered_upto"], 1)
+
+	def test_delivery_cursor_never_walks_backwards(self):
+		"""A replayed or out-of-order sync must not un-deliver a message."""
+		self._send(self.alice, "one")
+		self._send(self.alice, "two")
+		frappe.set_user(self.bob)
+		chat.sync(cursors={self.room: 0})
+		# An older cursor arrives late — it returns nothing, and must not lower
+		# the mark that is already at 2.
+		chat.sync(cursors={self.room: 0})
+
+		row = self._room_row(self.alice)
+		self.assertEqual(row["delivered_upto"], 2)
+
+	def test_a_group_waits_for_the_slowest_member(self):
+		"""Two ticks mean everyone, not somebody."""
+		frappe.set_user("Administrator")
+		room = frappe.get_doc(
+			{
+				"doctype": "VM Chat Room",
+				"title": "Receipts group",
+				"kind": "Group",
+				"members": [
+					{"user": self.alice, "member_role": "Admin"},
+					{"user": self.bob, "member_role": "Member"},
+					{"user": self.mallory, "member_role": "Member"},
+				],
+			}
+		).insert(ignore_permissions=True)
+
+		frappe.set_user(self.alice)
+		chat.send_message(room=room.name, client_id=frappe.generate_hash(length=20), body="all hands")
+
+		# Only Bob pulls it.
+		frappe.set_user(self.bob)
+		chat.sync(cursors={room.name: 0})
+
+		frappe.set_user(self.alice)
+		row = next(r for r in chat.list_rooms()["data"]["rooms"] if r["name"] == room.name)
+		self.assertEqual(row["delivered_upto"], 0, "one member is not everyone")
+
+		# Now Mallory does too.
+		frappe.set_user(self.mallory)
+		chat.sync(cursors={room.name: 0})
+
+		frappe.set_user(self.alice)
+		row = next(r for r in chat.list_rooms()["data"]["rooms"] if r["name"] == room.name)
+		self.assertEqual(row["delivered_upto"], 1)

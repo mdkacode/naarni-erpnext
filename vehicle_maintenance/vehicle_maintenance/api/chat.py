@@ -213,24 +213,35 @@ def list_rooms() -> dict:
 		limit_page_length=0,
 	)
 
-	cursors = {
-		r["parent"]: r
-		for r in frappe.get_all(
-			"VM Chat Member",
-			filters={"user": user, "parent": ["in", names], "parenttype": "VM Chat Room"},
-			fields=["parent", "last_read_seq", "muted"],
-			limit_page_length=0,
-		)
-	}
-	counts = {}
-	for r in frappe.get_all(
+	# One pass over the member rows instead of three queries.
+	#
+	# The caller's own cursor, the member count, and the receipt marks all come
+	# from the same small set of rows — a room has tens of members, not
+	# thousands — so fetching them once and folding in Python costs one round
+	# trip where separate COUNT and per-user queries cost three.
+	cursors: dict[str, dict] = {}
+	counts: dict[str, int] = {}
+	others_read: dict[str, int] = {}
+	others_delivered: dict[str, int] = {}
+
+	for m in frappe.get_all(
 		"VM Chat Member",
 		filters={"parent": ["in", names], "parenttype": "VM Chat Room"},
-		fields=["parent", "count(name) as n"],
-		group_by="parent",
+		fields=["parent", "user", "last_read_seq", "last_delivered_seq", "muted"],
 		limit_page_length=0,
 	):
-		counts[r["parent"]] = r["n"]
+		parent = m["parent"]
+		counts[parent] = counts.get(parent, 0) + 1
+		if m["user"] == user:
+			cursors[parent] = m
+			continue
+		# The *minimum* across everyone else: a group message is only "read"
+		# once the last person has read it, which is what the two blue ticks
+		# claim. Taking the maximum would turn one reader into "everyone".
+		read = cint(m.get("last_read_seq"))
+		delivered = cint(m.get("last_delivered_seq"))
+		others_read[parent] = min(others_read.get(parent, read), read)
+		others_delivered[parent] = min(others_delivered.get(parent, delivered), delivered)
 
 	# A Direct room's stored title is whatever the creator saw — i.e. the other
 	# person's name from *their* side. Rendering that verbatim would show the
@@ -266,6 +277,15 @@ def list_rooms() -> dict:
 				"last_seq": last_seq,
 				"last_read_seq": last_read,
 				"unread": max(0, last_seq - last_read),
+				# Receipt marks for the caller's *own* messages. Read implies
+				# delivered, so delivered is floored at read: a member whose
+				# delivery cursor lagged would otherwise show a message as read
+				# but not delivered, which the UI would have to special-case.
+				"read_upto": others_read.get(room["name"], 0),
+				"delivered_upto": max(
+					others_delivered.get(room["name"], 0),
+					others_read.get(room["name"], 0),
+				),
 				"muted": bool(cur.get("muted")),
 				"member_count": counts.get(room["name"], 0),
 				"last_message_at": str(room["last_message_at"]) if room.get("last_message_at") else None,
@@ -319,6 +339,7 @@ def sync(cursors=None) -> dict:
 		return {"success": True, "data": {"rooms": {}, "server_time": str(now_datetime())}}
 
 	out: dict[str, dict] = {}
+	delivered: dict[str, int] = {}
 	for room in mine:
 		since = cint(cursors.get(room))
 		last_seq = cint(frappe.db.get_value("VM Chat Room", room, "last_seq"))
@@ -338,8 +359,45 @@ def sync(cursors=None) -> dict:
 			"last_seq": last_seq,
 			"more": bool(rows) and rows[-1]["seq"] < last_seq,
 		}
+		if rows:
+			delivered[room] = cint(rows[-1]["seq"])
 
+	_mark_delivered(user, delivered)
 	return {"success": True, "data": {"rooms": out, "server_time": str(now_datetime())}}
+
+
+def _mark_delivered(user: str, upto: dict[str, int]) -> None:
+	"""Advance the caller's delivery cursor for the rooms just handed over.
+
+	This is the honest definition of "delivered": the device asked for these
+	messages and we returned them. Marking on push would only prove that *we*
+	sent a notification, which says nothing about whether it arrived — and a
+	second tick that appears when the recipient's phone is off is a lie.
+
+	One statement for every room rather than a document write each. These rows
+	are cursors, not records anybody audits, so `update_modified` stays off:
+	touching the parent's timestamp on every sync would invalidate the room
+	cache for all its members every time any one of them polled.
+
+	`GREATEST` keeps it monotonic, so an out-of-order or replayed sync can
+	never walk the cursor backwards and un-deliver a message.
+	"""
+	if not upto:
+		return
+	for room, seq in upto.items():
+		if seq <= 0:
+			continue
+		frappe.db.sql(
+			"""
+			UPDATE `tabVM Chat Member`
+			   SET last_delivered_seq = GREATEST(COALESCE(last_delivered_seq, 0), %(seq)s)
+			 WHERE parenttype = 'VM Chat Room'
+			   AND parent = %(room)s
+			   AND user = %(user)s
+			   AND COALESCE(last_delivered_seq, 0) < %(seq)s
+			""",
+			{"seq": seq, "room": room, "user": user},
+		)
 
 
 # -------------------------------------------------------------------- sending

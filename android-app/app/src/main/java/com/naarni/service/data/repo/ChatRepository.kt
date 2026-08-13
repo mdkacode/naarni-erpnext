@@ -396,6 +396,8 @@ class ChatRepository(
         jobCard = job_card,
         lastSeq = last_seq,
         lastReadSeq = last_read_seq,
+        deliveredUpto = delivered_upto,
+        readUpto = read_upto,
         muted = muted,
         lastMessagePreview = last_message_preview,
         lastMessageAt = last_message_at,

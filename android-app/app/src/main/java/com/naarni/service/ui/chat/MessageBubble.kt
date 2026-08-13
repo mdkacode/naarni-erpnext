@@ -59,6 +59,16 @@ import java.util.Locale
 private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
 /**
+ * How far every *other* member of the room has got through my messages.
+ *
+ * Room-level rather than per-message because the server keeps one cursor per
+ * member: a message is delivered when everyone's delivery cursor has passed its
+ * seq, and read when everyone's read cursor has. Carrying it per row would mean
+ * rewriting the whole thread every time somebody opened it.
+ */
+data class Receipts(val deliveredUpto: Long = 0, val readUpto: Long = 0)
+
+/**
  * One message row.
  *
  * The grammar is the one everybody already knows from WhatsApp — side-anchored
@@ -85,6 +95,7 @@ fun MessageBubble(
     mentionLabels: List<String> = emptyList(),
     onAssignTicket: (String) -> Unit = {},
     isOpening: Boolean = false,
+    receipts: Receipts = Receipts(),
 ) {
     // A server-authored notice is about the conversation, not part of it, so it
     // gets no bubble and no side — the same treatment WhatsApp gives "you were
@@ -167,11 +178,11 @@ fun MessageBubble(
 
                 when (message.kind) {
                     "image" -> MediaContent(message, isVideo = false, overlayMeta = bare, onOpen = onOpenMedia) {
-                        MetaRow(message, isMine, Color.White, onRetry)
+                        MetaRow(message, isMine, Color.White, onRetry, receipts = receipts)
                     }
 
                     "video" -> MediaContent(message, isVideo = true, overlayMeta = bare, onOpen = onOpenMedia) {
-                        MetaRow(message, isMine, Color.White, onRetry)
+                        MetaRow(message, isMine, Color.White, onRetry, receipts = receipts)
                     }
 
                     "audio" -> AudioContent(message, textColor)
@@ -207,7 +218,7 @@ fun MessageBubble(
                                 modifier = Modifier.weight(1f, fill = false),
                             )
                             Spacer(Modifier.width(7.dp))
-                            MetaRow(message, isMine, textColor, onRetry)
+                            MetaRow(message, isMine, textColor, onRetry, receipts = receipts)
                         }
                     } else {
                         Text(rendered, style = MaterialTheme.typography.bodyLarge, color = textColor)
@@ -224,7 +235,7 @@ fun MessageBubble(
                     // align(End) rather than fillMaxWidth: filling stretches the
                     // bubble to its full width even for a two-letter message,
                     // which is the least conversational thing a bubble can do.
-                    MetaRow(message, isMine, textColor, onRetry, Modifier.align(Alignment.End))
+                    MetaRow(message, isMine, textColor, onRetry, Modifier.align(Alignment.End), receipts)
                 }
             }
         }
@@ -239,6 +250,7 @@ private fun MetaRow(
     textColor: Color,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    receipts: Receipts = Receipts(),
 ) {
     val muted = mutedOn(textColor)
     // Formatting is not free, and without this it re-runs for every visible row
@@ -262,20 +274,27 @@ private fun MetaRow(
         Text(stamp, style = MaterialTheme.typography.labelSmall, color = muted)
         if (isMine) {
             Spacer(Modifier.width(4.dp))
-            DeliveryTick(message, muted, onRetry)
+            DeliveryTick(message, muted, onRetry, receipts)
         }
     }
 }
 
 /**
- * Delivery state. Familiar tick grammar, but honest about what we actually
- * know: one tick means the server allocated a seq, two mean every member's read
- * cursor has passed it. There is no "delivered to device" state because nothing
- * in the protocol reports that, and inventing one would be a lie a dispatcher
- * would act on.
+ * Delivery state, in the tick grammar everyone already reads.
+ *
+ * One tick: the server allocated a seq. Two grey: every other member's device
+ * has actually pulled it. Two blue: every one of them has opened the thread
+ * past it. In a group that means the *slowest* member, not the fastest —
+ * otherwise "read" would mean "somebody read it", which is not what a
+ * dispatcher chasing an unanswered instruction needs it to mean.
  */
 @Composable
-private fun DeliveryTick(message: ChatMessageEntity, muted: Color, onRetry: () -> Unit) {
+private fun DeliveryTick(
+    message: ChatMessageEntity,
+    muted: Color,
+    onRetry: () -> Unit,
+    receipts: Receipts,
+) {
     when (message.status) {
         SendStatus.PENDING -> Icon(
             Icons.Default.Schedule,
@@ -291,12 +310,31 @@ private fun DeliveryTick(message: ChatMessageEntity, muted: Color, onRetry: () -
             modifier = Modifier.size(12.dp),
         )
 
-        SendStatus.SENT -> Icon(
-            Icons.Default.Check,
-            contentDescription = "Sent",
-            tint = muted,
-            modifier = Modifier.size(13.dp),
-        )
+        SendStatus.SENT -> {
+            val seq = message.seq ?: 0L
+            when {
+                seq > 0 && seq <= receipts.readUpto -> Icon(
+                    Icons.Default.DoneAll,
+                    contentDescription = "Read",
+                    tint = ChatTokens.readTick,
+                    modifier = Modifier.size(14.dp),
+                )
+
+                seq > 0 && seq <= receipts.deliveredUpto -> Icon(
+                    Icons.Default.DoneAll,
+                    contentDescription = "Delivered",
+                    tint = muted,
+                    modifier = Modifier.size(14.dp),
+                )
+
+                else -> Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Sent",
+                    tint = muted,
+                    modifier = Modifier.size(13.dp),
+                )
+            }
+        }
 
         SendStatus.FAILED -> Row(
             verticalAlignment = Alignment.CenterVertically,

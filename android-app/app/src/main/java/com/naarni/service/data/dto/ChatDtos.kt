@@ -21,6 +21,8 @@ data class ChatRoomDto(
     val job_card: String? = null,
     val last_seq: Long = 0,
     val last_read_seq: Long = 0,
+    val delivered_upto: Long = 0,
+    val read_upto: Long = 0,
     val unread: Int = 0,
     val muted: Boolean = false,
     val last_message_preview: String? = null,

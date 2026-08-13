@@ -44,11 +44,15 @@ has_permission = {
 permission_query_conditions = {
 	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.get_permission_query_conditions",
 	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.get_permission_query_conditions",
+	# A daily status is readable by its author and by a supervisor, nobody else —
+	# the whole point of the DocType is who can see it.
+	"VM Daily Status": "vehicle_maintenance.fleet_service.doctype.vm_daily_status.vm_daily_status.get_permission_query_conditions",
 }
 
 has_permission = {
 	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.has_permission",
 	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.has_permission",
+	"VM Daily Status": "vehicle_maintenance.fleet_service.doctype.vm_daily_status.vm_daily_status.has_permission",
 }
 
 # Idempotent seeders run after every migrate. Each function checks existence
@@ -73,6 +77,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_7.seed_battery_qc_process.execute",
 	"vehicle_maintenance.patches.v1_9.seed_battery_qc_v2.execute",
 	"vehicle_maintenance.patches.v1_8.seed_roster.execute",
+	"vehicle_maintenance.patches.v2_0.seed_daily_status.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -222,6 +227,27 @@ scheduler_events = {
 		# the target month from the IST date and is idempotent per (customer, month).
 		"0 10 1 * *": [
 			"vehicle_maintenance.fleet_service.tasks.send_monthly_km_reports",
+		],
+		# Daily status. Same site-timezone caveat as the KM report above — these
+		# times are written for Asia/Kolkata. All three are no-ops until Daily
+		# Status Settings is enabled.
+		#
+		# 18:45 — remind anyone on duty who has not said anything yet, in their own
+		# status room, while they are still at the depot.
+		"45 18 * * *": [
+			"vehicle_maintenance.fleet_service.daily_status.nudge_missing",
+		],
+		# 20:00 — organise the day into VM Daily Status rows, one background job
+		# per person so one bad room cannot cost everyone else their record.
+		"0 20 * * *": [
+			"vehicle_maintenance.fleet_service.daily_status.generate_all",
+		],
+		# 20:20 — email one rollup per depot, and file the day in ONYX search when
+		# that is switched on. Deliberately 20 minutes after generation rather than
+		# chained to it: a slow summary must delay the email, not cancel it.
+		"20 20 * * *": [
+			"vehicle_maintenance.fleet_service.daily_status_digest.send_digests",
+			"vehicle_maintenance.fleet_service.daily_status_digest.index_day",
 		],
 	},
 	# Feedback requests trickle out hourly — a 5-minute cadence is overkill

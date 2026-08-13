@@ -25,11 +25,16 @@ jobs:
           # Pull the secret via the env block (handles multi-line safely), then
           # flatten to a single line so it can be passed on the ssh command line.
           FCM_SA_RAW: ${{ secrets.FCM_SERVICE_ACCOUNT_B64 }}
+          # ONYX (ai.naarni.com) credential for the AI-assisted features. Same
+          # shape as FCM above: held as a CI secret, applied to site_config on
+          # every deploy, and a no-op when the secret is unset.
+          ONYX_KEY_RAW: ${{ secrets.ONYX_API_KEY }}
         run: |
           FCM_SA_B64=$(printf '%s' "$FCM_SA_RAW" | tr -d '\n\r ')
+          ONYX_KEY=$(printf '%s' "$ONYX_KEY_RAW" | tr -d '\n\r ')
           ssh -i ~/.ssh/id_ed25519 frappe@${{ secrets.VM_HOST }} \
             SITE="${{ secrets.SITE_NAME }}" BRANCH="$BRANCH" \
-            FCM_SA_B64="$FCM_SA_B64" bash <<'EOF'
+            FCM_SA_B64="$FCM_SA_B64" ONYX_KEY="$ONYX_KEY" bash <<'EOF'
             set -e
             export PATH="$HOME/.local/bin:$PATH"
             cd ~/frappe-bench
@@ -68,6 +73,18 @@ jobs:
               bench --site "$SITE" set-config notifications_push_enabled 1
               rm -f /tmp/_fcm_sa.json
               echo "[deploy] FCM push credentials applied."
+            fi
+
+            # ONYX credential. Enabling the *connection* is safe on its own: it
+            # only means AI-assisted features may call ai.naarni.com. Nothing
+            # user-facing turns on here — Daily Status Settings is a separate,
+            # deliberate switch, and every feature that uses ONYX falls back to
+            # a plain deterministic output when it is unreachable.
+            if [ -n "$ONYX_KEY" ]; then
+              bench --site "$SITE" set-config onyx_api_key "$ONYX_KEY"
+              bench --site "$SITE" set-config onyx_base_url "https://ai.naarni.com"
+              bench --site "$SITE" set-config onyx_enabled 1 --parse
+              echo "[deploy] ONYX credentials applied."
             fi
 
             # Build the Vite/Vue SPA (bench build doesn't touch the frontend dir).

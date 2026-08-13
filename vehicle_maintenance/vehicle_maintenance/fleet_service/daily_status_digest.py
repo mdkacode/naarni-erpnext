@@ -142,6 +142,22 @@ def _ref(item) -> str:
 	return f'<span style="color:{TEXT_MUTED};font-size:12px;"> · {escape(" · ".join(parts))}</span>'
 
 
+def _item_row(item: dict) -> str:
+	"""One `<tr>` of a person's item table.
+
+	A named builder rather than a multi-line f-string inside the `join` that calls
+	it: implicitly concatenated strings in a comprehension are indistinguishable
+	from a list that lost a comma, which is exactly what the correctness linter
+	flags — and it is right to.
+	"""
+	pill_cell = f'<td style="padding:3px 8px 3px 0;vertical-align:top;white-space:nowrap;">{_pill(item["bucket"])}</td>'
+	text_cell = (
+		f'<td style="padding:3px 0;font-size:13px;color:{TEXT_PRIMARY};">'
+		+ f"{escape(item['text'])}{_ref(item)}</td>"
+	)
+	return f"<tr>{pill_cell}{text_cell}</tr>"
+
+
 def _person_card(row: dict) -> str:
 	"""One person's day."""
 	name = escape(row["user_name"] or row["user"])
@@ -171,13 +187,7 @@ def _person_card(row: dict) -> str:
 		key=lambda i: BUCKET_ORDER.index(i["bucket"]) if i["bucket"] in BUCKET_ORDER else 99,
 	)
 	if ordered:
-		lis = "".join(
-			f'<tr><td style="padding:3px 8px 3px 0;vertical-align:top;white-space:nowrap;">'
-			f"{_pill(i['bucket'])}</td>"
-			f'<td style="padding:3px 0;font-size:13px;color:{TEXT_PRIMARY};">'
-			f"{escape(i['text'])}{_ref(i)}</td></tr>"
-			for i in ordered
-		)
+		lis = "".join(_item_row(i) for i in ordered)
 		items_html = f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">{lis}</table>'
 
 	# When the AI was not available there are no organised items — show what they
@@ -196,17 +206,22 @@ def _person_card(row: dict) -> str:
 	)
 
 
+def _blocker_line(row: dict, item: dict) -> str:
+	"""One `<li>` of the blocked banner. Named for the same reason as `_item_row`."""
+	who = escape(row["user_name"] or row["user"])
+	return (
+		f'<li style="margin-bottom:4px;font-size:13px;color:{TEXT_PRIMARY};">'
+		+ f"<b>{who}</b> — {escape(item['text'])}{_ref(item)}</li>"
+	)
+
+
 def _blocker_banner(rows: list[dict]) -> str:
 	blockers = [
 		(row, item) for row in rows for item in (row.get("items") or []) if item["bucket"] == "Blocker"
 	]
 	if not blockers:
 		return ""
-	lis = "".join(
-		f'<li style="margin-bottom:4px;font-size:13px;color:{TEXT_PRIMARY};">'
-		f'<b>{escape(row["user_name"] or row["user"])}</b> — {escape(item["text"])}{_ref(item)}</li>'
-		for row, item in blockers[:15]
-	)
+	lis = "".join(_blocker_line(row, item) for row, item in blockers[:15])
 	return (
 		f'<div style="background:#FEF2F2;border-left:4px solid #DC2626;padding:12px 14px;'
 		f'border-radius:6px;margin-bottom:18px;">'

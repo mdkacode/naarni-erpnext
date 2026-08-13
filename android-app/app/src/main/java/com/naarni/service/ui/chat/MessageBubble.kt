@@ -665,12 +665,20 @@ private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play voice note",
-                tint = textColor,
-                modifier = Modifier.size(19.dp),
-            )
+            if (VoicePlayer.loadingId == message.clientId) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = textColor,
+                    modifier = Modifier.size(17.dp),
+                )
+            } else {
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play voice note",
+                    tint = textColor,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
 

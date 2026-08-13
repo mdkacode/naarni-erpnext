@@ -6,6 +6,15 @@ import android.media.MediaPlayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.naarni.service.appContainer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.Request
+import java.io.File
 
 /**
  * Plays voice notes, one at a time.
@@ -24,20 +33,50 @@ object VoicePlayer {
     var playingId by mutableStateOf<String?>(null)
         private set
 
+    /** Client id of the note being fetched, so its bubble can show a spinner. */
+    var loadingId by mutableStateOf<String?>(null)
+        private set
+
     /** 0f..1f through the current note. */
     var progress by mutableStateOf(0f)
         private set
 
     private var player: MediaPlayer? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var job: Job? = null
 
     /** Toggle: playing the note that is already playing stops it. */
     fun toggle(context: Context, id: String, source: String) {
-        if (playingId == id) {
+        if (playingId == id || loadingId == id) {
             stop()
             return
         }
         stop()
 
+        loadingId = id
+        job = scope.launch {
+            // A note on the server lives under /private/files/ and needs the
+            // session cookie. MediaPlayer has its own HTTP stack that knows
+            // nothing about our cookie jar, so pointing it at the URL fetched
+            // Frappe's error page instead — it arrived as application/octet-
+            // stream and died with "error (-38, 0)". Fetching it through the
+            // app's authenticated client first is the only reliable route, and
+            // it leaves the note cached for the next play.
+            val file = if (source.startsWith("http")) {
+                withContext(Dispatchers.IO) { cache(context, source) }
+            } else {
+                File(source).takeIf { it.exists() }
+            }
+
+            if (file == null) {
+                loadingId = null
+                return@launch
+            }
+            start(context, id, file)
+        }
+    }
+
+    private fun start(context: Context, id: String, file: File) {
         val mp = MediaPlayer().apply {
             setAudioAttributes(
                 AudioAttributes.Builder()
@@ -46,26 +85,53 @@ object VoicePlayer {
                     .build(),
             )
         }
-
-        val started = runCatching {
-            if (source.startsWith("http")) mp.setDataSource(source)
-            else mp.setDataSource(context, android.net.Uri.parse("file://$source"))
+        val ok = runCatching {
+            mp.setDataSource(file.absolutePath)
             mp.setOnCompletionListener { stop() }
             mp.setOnErrorListener { _, _, _ -> stop(); true }
-            // Prepared asynchronously: a note streamed from the server over a
-            // depot link would otherwise block the main thread until it buffers.
             mp.setOnPreparedListener { it.start() }
             mp.prepareAsync()
             true
         }.getOrDefault(false)
 
-        if (!started) {
+        loadingId = null
+        if (!ok) {
             runCatching { mp.release() }
             return
         }
         player = mp
         playingId = id
         progress = 0f
+    }
+
+    /**
+     * Downloads a note into the cache, once.
+     *
+     * Streamed to a `.part` file and renamed only when complete, so an
+     * interrupted download can never be mistaken for a playable cache entry —
+     * a truncated m4a fails in exactly the confusing way this method exists to
+     * prevent.
+     */
+    private fun cache(context: Context, url: String): File? {
+        val dir = File(context.cacheDir, "voice_cache").apply { mkdirs() }
+        val dest = File(dir, url.substringAfterLast('/').take(64).ifBlank { "note.m4a" })
+        if (dest.exists() && dest.length() > 0) return dest
+
+        return runCatching {
+            val response = context.appContainer.httpClient
+                .newCall(Request.Builder().url(url).build())
+                .execute()
+            response.use {
+                if (!it.isSuccessful) return null
+                val body = it.body ?: return null
+                val partial = File(dest.absolutePath + ".part")
+                body.byteStream().use { input ->
+                    partial.outputStream().use { out -> input.copyTo(out) }
+                }
+                partial.renameTo(dest)
+            }
+            dest.takeIf { it.exists() && it.length() > 0 }
+        }.getOrNull()
     }
 
     /** Called on a ticker while something is playing. */
@@ -78,9 +144,12 @@ object VoicePlayer {
     }
 
     fun stop() {
+        job?.cancel()
+        job = null
         val mp = player
         player = null
         playingId = null
+        loadingId = null
         progress = 0f
         runCatching { mp?.stop() }
         runCatching { mp?.release() }

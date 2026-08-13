@@ -1,0 +1,78 @@
+{
+  "name": "Onyx Settings",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "issingle": 1,
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "description": "Connection to ONYX, our self-hosted AI at ai.naarni.com. Nothing here changes what the platform records — AI only rewrites text that has already been captured, and every feature that uses it keeps working when this is off.",
+  "fields": [
+    {
+      "fieldname": "sb_connection",
+      "label": "Connection",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "enabled",
+      "label": "Enabled",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Off by default. With this off, every AI-assisted feature falls back to its plain deterministic output instead of failing."
+    },
+    {
+      "fieldname": "base_url",
+      "label": "Base URL",
+      "fieldtype": "Data",
+      "default": "https://ai.naarni.com",
+      "description": "Host only. The /api prefix is added automatically."
+    },
+    {
+      "fieldname": "api_key",
+      "label": "API Key or Token",
+      "fieldtype": "Password",
+      "description": "Either an ONYX API key (on_...) or a personal access token (onyx_pat_...). Prefer an API key created for this integration alone: a personal token carries one person's identity and dies with their account. Making days searchable in ONYX additionally needs curator rights, which a scoped token will not have."
+    },
+    {
+      "fieldname": "col_break_conn",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "persona_id",
+      "label": "Assistant ID",
+      "fieldtype": "Int",
+      "default": "0",
+      "description": "0 is the ONYX default assistant. Every call disables tools and search, so the assistant acts as a plain language model — the instructions come from this app, not from the assistant's prompt."
+    },
+    {
+      "fieldname": "timeout_seconds",
+      "label": "Timeout (seconds)",
+      "fieldtype": "Int",
+      "default": "45",
+      "description": "Calls only ever run in background jobs, never in a request a person is waiting on."
+    },
+    {
+      "fieldname": "api_prefix",
+      "label": "API Path Prefix",
+      "fieldtype": "Data",
+      "default": "/api",
+      "description": "Leave as /api unless the ONYX ingress is configured to serve the backend at the root."
+    },
+    {
+      "fieldname": "sb_note",
+      "label": "Notes",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "note",
+      "label": "How this is used",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "default": "ONYX cannot guarantee JSON output on its chat endpoint, so every caller validates the reply and falls back to a plain rendering if it does not parse. After three consecutive failures the client stops calling for 15 minutes and everything runs on the fallback.",
+      "description": "Test the connection with vehicle_maintenance.integrations.onyx_client.ping"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Central Ops", "read": 1}
+  ]
+}

@@ -20,7 +20,7 @@
       "fieldname": "kind",
       "label": "Kind",
       "fieldtype": "Select",
-      "options": "Group\nDepot\nVehicle\nTicket\nJob Card\nDirect\nAlert Channel",
+      "options": "Group\nDepot\nVehicle\nTicket\nJob Card\nDirect\nAlert Channel\nStatus",
       "default": "Group",
       "reqd": 1,
       "in_list_view": 1,

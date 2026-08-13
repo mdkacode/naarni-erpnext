@@ -889,9 +889,14 @@ private fun Composer(
         }
 
         Row(
-            Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
+            // Wider margins than the thread's own gutter, and a real gap before
+            // the mic. At 8dp the pill ran almost to the glass and the mic sat
+            // against it, so the two read as one strip of controls rather than
+            // a field and a button — and the mic was easy to catch with the
+            // side of a thumb while reaching for the text.
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 8.dp),
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Surface(
                 color = ChatTokens.field,

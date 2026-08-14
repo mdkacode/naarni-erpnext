@@ -77,6 +77,7 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_7.seed_battery_qc_process.execute",
 	"vehicle_maintenance.patches.v1_9.seed_battery_qc_v2.execute",
 	"vehicle_maintenance.patches.v1_8.seed_roster.execute",
+	"vehicle_maintenance.patches.v2_1.publish_battery_qc.execute",
 	"vehicle_maintenance.patches.v2_0.seed_daily_status.execute",
 ]
 

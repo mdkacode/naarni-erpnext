@@ -1061,3 +1061,273 @@ def my_open_runs(limit: int = 20) -> dict:
 		limit_page_length=cint(limit) or 20,
 	)
 	return _ok(runs)
+
+
+# ------------------------------------------------------------- operator history
+
+
+#: Statuses that mean the operator is done with the run, whatever the verdict.
+#: Quarantined counts as finished work — the operator did the inspection; it was
+#: the pack that failed. Leaving it out of the history would hide exactly the
+#: inspections that matter most.
+_FINISHED_STATUSES = (
+	C.STATUS_PASSED,
+	C.STATUS_QUARANTINED,
+	C.STATUS_AWAITING_VERIFICATION,
+)
+
+
+@frappe.whitelist()
+def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dict:
+	"""This operator's own inspection record.
+
+	Answers the two questions an operator actually has about their own work —
+	*how many have I done* and *what did I put on that one* — without giving them
+	a report builder. Deliberately scoped to `started_by = session.user`: this is
+	a personal record, not a supervisor's console, so it needs no role gate and
+	leaks nothing about anyone else's work.
+
+	`scope` is "finished" (the default), "open", or "all".
+
+	Returns ``{stats, runs}``. Each run carries a `thumb` — the first photo taken
+	on it — because a wall of identical serial numbers is unreadable, and the
+	photo is the one thing that makes a row recognisable at a glance.
+	"""
+	user = frappe.session.user
+	limit = min(max(cint(limit) or 30, 1), 100)
+	offset = max(cint(offset), 0)
+
+	status_filter = {
+		"finished": ["in", _FINISHED_STATUSES],
+		"open": ["in", [C.STATUS_IN_PROGRESS, C.STATUS_DRAFT, C.STATUS_IN_REWORK]],
+	}.get(scope)
+
+	filters: dict = {"started_by": user, "is_test_run": 0}
+	if status_filter:
+		filters["status"] = status_filter
+
+	runs = frappe.get_all(
+		"Process Run",
+		filters=filters,
+		fields=[
+			"name",
+			"process_definition",
+			"process_name",
+			"run_identifier",
+			"status",
+			"result",
+			"score_pct",
+			"pass_count",
+			"fail_count",
+			"skip_count",
+			"critical_count",
+			"answered_count",
+			"trace_completeness_pct",
+			"started_at",
+			"completed_at",
+		],
+		order_by="ifnull(completed_at, started_at) desc, modified desc",
+		limit_page_length=limit,
+		limit_start=offset,
+	)
+
+	_attach_photo_summary(runs)
+
+	return _ok({"stats": _history_stats(user), "runs": runs})
+
+
+def _attach_photo_summary(runs: list[dict]) -> None:
+	"""Add `photo_count` and `thumb` to each row, in one query for the page.
+
+	One query for the whole page rather than one per run: a history screen is the
+	easiest place in the app to write an N+1, and thirty runs would mean thirty
+	round trips before the list could draw.
+	"""
+	for row in runs:
+		row["photo_count"] = 0
+		row["thumb"] = None
+	if not runs:
+		return
+
+	names = [r["name"] for r in runs]
+	photos = frappe.get_all(
+		"Process Run Photo",
+		filters={"parent": ["in", names], "parenttype": "Process Run"},
+		fields=["parent", "file_url", "creation"],
+		order_by="parent asc, idx asc",
+		limit_page_length=0,
+	)
+	by_run: dict[str, list] = {}
+	for p in photos:
+		by_run.setdefault(p.parent, []).append(p)
+	for row in runs:
+		shots = by_run.get(row["name"]) or []
+		row["photo_count"] = len(shots)
+		row["thumb"] = shots[0].file_url if shots else None
+
+
+def _history_stats(user: str) -> dict:
+	"""Headline counts for the operator's own work.
+
+	Counted server-side rather than derived from the returned page — the page is
+	thirty rows and the totals are about a career, so a client-side tally would
+	silently under-report the moment the list paginated.
+
+	Dated on ``COALESCE(completed_at, started_at)``. A quarantined run never gets
+	a completion time, so dating on `completed_at` alone reported "0 inspections
+	today" to an operator looking at a list of three runs they had just finished
+	— and the ones it dropped were exactly the ones that found a fault.
+
+	One aggregate rather than six counts: these are six slices of the same rows,
+	and the whole point of the header is that it draws before the list does.
+	"""
+	from frappe.utils import add_days, today
+
+	row = frappe.db.sql(
+		"""
+		SELECT
+			SUM(CASE WHEN status IN %(finished)s THEN 1 ELSE 0 END) AS total,
+			SUM(CASE WHEN status IN %(finished)s
+				AND DATE(COALESCE(completed_at, started_at)) = %(day)s THEN 1 ELSE 0 END) AS today,
+			SUM(CASE WHEN status IN %(finished)s
+				AND DATE(COALESCE(completed_at, started_at)) >= %(week_start)s THEN 1 ELSE 0 END) AS week,
+			SUM(CASE WHEN status = %(passed)s THEN 1 ELSE 0 END) AS passed,
+			SUM(CASE WHEN status = %(quarantined)s THEN 1 ELSE 0 END) AS quarantined,
+			SUM(CASE WHEN status IN %(open_statuses)s THEN 1 ELSE 0 END) AS open_runs
+		FROM `tabProcess Run`
+		WHERE started_by = %(user)s AND IFNULL(is_test_run, 0) = 0
+		""",
+		{
+			"user": user,
+			"finished": _FINISHED_STATUSES,
+			"open_statuses": (C.STATUS_IN_PROGRESS, C.STATUS_DRAFT, C.STATUS_IN_REWORK),
+			"passed": C.STATUS_PASSED,
+			"quarantined": C.STATUS_QUARANTINED,
+			"day": today(),
+			"week_start": add_days(today(), -6),
+		},
+		as_dict=True,
+	)[0]
+
+	return {
+		"total": cint(row.total),
+		"today": cint(row.today),
+		"week": cint(row.week),
+		"passed": cint(row.passed),
+		"quarantined": cint(row.quarantined),
+		"open": cint(row.open_runs),
+	}
+
+
+@frappe.whitelist()
+def run_report(name: str) -> dict:
+	"""One finished run, as the operator filled it in.
+
+	Reads entirely from the run's own result rows, never from the live
+	definition: results carry the label, section and spec that were in force at
+	the time, so re-publishing a process cannot rewrite the history of an
+	inspection that has already happened.
+
+	Photos are grouped onto their step rather than listed separately — "what did
+	I see at the cooling plate" is the question, and a flat photo strip cannot
+	answer it.
+	"""
+	doc = frappe.get_doc("Process Run", name)
+	frappe.has_permission("Process Run", doc=doc, throw=True)
+
+	shots: dict[str, list] = {}
+	for p in doc.photos or []:
+		shots.setdefault(p.step_code or "", []).append(
+			{
+				"file_url": p.file_url,
+				"caption": p.caption,
+				"captured_at": str(p.captured_at) if p.captured_at else None,
+				"captured_by": p.captured_by,
+				"latitude": flt(p.latitude) if p.latitude else None,
+				"longitude": flt(p.longitude) if p.longitude else None,
+				"accuracy_m": flt(p.accuracy_m) if p.accuracy_m else None,
+				"location_source": p.location_source,
+				"geofence_status": p.geofence_status,
+			}
+		)
+
+	stage_labels = {}
+	definition = frappe.db.exists("Process Definition", doc.process_definition)
+	if definition:
+		for row in frappe.get_all(
+			"Process Stage",
+			filters={"parent": doc.process_definition},
+			fields=["stage_code", "label"],
+			order_by="idx asc",
+			limit_page_length=0,
+		):
+			stage_labels[row.stage_code] = row.label
+
+	# Grouped by stage, in the order the stages were worked — which is the order
+	# the operator remembers doing them in.
+	groups: dict[str, dict] = {}
+	for r in doc.results or []:
+		stage = r.stage or ""
+		group = groups.setdefault(
+			stage,
+			{"stage": stage, "label": stage_labels.get(stage, stage or "Checks"), "steps": []},
+		)
+		group["steps"].append(
+			{
+				"step_code": r.step_code,
+				"display_no": r.display_no,
+				"section": r.section,
+				"label": r.label,
+				"response_type": r.response_type,
+				"response": r.response,
+				"value_numeric": flt(r.value_numeric) if r.value_numeric is not None else None,
+				"value_text": r.value_text,
+				"unit": r.unit,
+				"spec_summary": r.spec_summary,
+				"is_pass": cint(r.is_pass),
+				"is_deviation": cint(r.is_deviation),
+				"is_critical": cint(r.is_critical),
+				"is_skipped": cint(r.is_skipped),
+				"skip_reason": r.skip_reason,
+				"remark": r.remark,
+				"answered_at": str(r.answered_at) if r.answered_at else None,
+				"photos": shots.get(r.step_code or "", []),
+			}
+		)
+
+	# Photos taken against a step that has no answer row must still surface —
+	# an unanswered step with a photo on it is evidence someone looked.
+	answered_codes = {r.step_code for r in doc.results or []}
+	orphans = [
+		{"step_code": code, "label": code or "Other photos", "photos": items}
+		for code, items in shots.items()
+		if code not in answered_codes
+	]
+
+	return _ok(
+		{
+			"name": doc.name,
+			"process_name": doc.process_name,
+			"run_identifier": doc.run_identifier,
+			"status": doc.status,
+			"result": doc.result,
+			"score_pct": flt(doc.score_pct),
+			"pass_count": cint(doc.pass_count),
+			"fail_count": cint(doc.fail_count),
+			"skip_count": cint(doc.skip_count),
+			"critical_count": cint(doc.critical_count),
+			"answered_count": cint(doc.answered_count),
+			"trace_completeness_pct": flt(doc.trace_completeness_pct),
+			"quarantine_reason": doc.quarantine_reason,
+			"station": doc.station,
+			"started_by": doc.started_by,
+			"started_by_name": frappe.db.get_value("User", doc.started_by, "full_name")
+			if doc.started_by
+			else None,
+			"started_at": str(doc.started_at) if doc.started_at else None,
+			"completed_at": str(doc.completed_at) if doc.completed_at else None,
+			"photo_count": len(doc.photos or []),
+			"stages": list(groups.values()),
+			"unmatched_photos": orphans,
+		}
+	)

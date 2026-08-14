@@ -58,6 +58,11 @@ def execute() -> None:
 	except Exception:
 		frappe.log_error(title="publish_battery_qc", message=frappe.get_traceback())
 
+	try:
+		_enforce_screen_grouping()
+	except Exception:
+		frappe.log_error(title="publish_battery_qc:grouping", message=frappe.get_traceback())
+
 	# Unconditional, because the first production run of this patch printed
 	# nothing at all: one branch returned silently and there was no way to tell
 	# that apart from the patch not running. A migration that cannot be read
@@ -114,15 +119,11 @@ def _publish() -> None:
 	name = draft.name
 
 	doc = frappe.get_doc("Process Definition", name)
-	for stage in doc.stages or []:
-		stage.screen_grouping = SCREEN_GROUPING
-	doc.save(ignore_permissions=True)
-
 	# `publish()` lints first and throws on any Error-severity finding, which is
 	# the behaviour we want: a broken definition should stay a draft.
 	doc.publish()
 	frappe.db.commit()
-	_note(f"published {name} (v{draft.version}), stages set to {SCREEN_GROUPING}")
+	_note(f"published {name} (v{draft.version})")
 
 
 def _grant_operator_role() -> None:
@@ -222,3 +223,65 @@ def _report_state() -> None:
 		limit_page_length=0,
 	)
 	_note("live stages: " + ", ".join(f"{g.stage_code}={g.screen_grouping}" for g in groupings))
+
+
+def _enforce_screen_grouping() -> None:
+	"""One check to a screen, on whichever definition is currently live.
+
+	Split out from publishing because coupling the two is what put production
+	wrong: v2 was already Published there, so the publish branch was skipped and
+	the grouping — the entire point of the redesign — was never touched. The
+	plant kept getting five checks to a screen from a patch whose name says it
+	fixed exactly that.
+
+	**This edits a Published definition, deliberately.** The immutability guard
+	exists so that runs stay reproducible: what was asked, and how it was judged,
+	must not change under a run that already happened. `screen_grouping` is
+	pagination. It changes no question, no option, no tolerance band and no
+	verdict — a completed run's results are identical whether the operator saw
+	one check per screen or five. That is the same test the doctype itself
+	applies to `status` / `effective_from` / `default_brand` in
+	`_MUTABLE_WHEN_PUBLISHED`. Written through `db.set_value` on the child rows
+	so the parent's guard is not tripped, with both caches cleared by hand
+	because `on_update` will not fire for us.
+	"""
+	live = frappe.db.get_value(
+		"Process Definition",
+		{"family": FAMILY, "status": C.DEF_PUBLISHED},
+		"name",
+		order_by="version desc",
+	)
+	if not live:
+		return
+
+	stale = frappe.get_all(
+		"Process Stage",
+		filters={
+			"parent": live,
+			"parenttype": "Process Definition",
+			"screen_grouping": ["!=", SCREEN_GROUPING],
+		},
+		fields=["name", "stage_code", "screen_grouping"],
+		limit_page_length=0,
+	)
+	if not stale:
+		_note(f"{live} already renders one check per screen")
+		return
+
+	for row in stale:
+		frappe.db.set_value(
+			"Process Stage",
+			row.name,
+			{"screen_grouping": SCREEN_GROUPING, "steps_per_screen": 1},
+			update_modified=False,
+		)
+
+	# `get_cached_doc` in `_live_definition` and the engine's own key both hold
+	# the old stages; a child-row write fires neither invalidation.
+	frappe.clear_document_cache("Process Definition", live)
+	frappe.cache().delete_key(f"process_engine:def:{live}")
+	frappe.db.commit()
+	_note(
+		f"{live}: set {len(stale)} stage(s) to {SCREEN_GROUPING} — "
+		+ ", ".join(f"{r.stage_code} was {r.screen_grouping}" for r in stale)
+	)

@@ -58,6 +58,15 @@ def execute() -> None:
 	except Exception:
 		frappe.log_error(title="publish_battery_qc", message=frappe.get_traceback())
 
+	# Unconditional, because the first production run of this patch printed
+	# nothing at all: one branch returned silently and there was no way to tell
+	# that apart from the patch not running. A migration that cannot be read
+	# afterwards is a migration nobody can trust.
+	try:
+		_report_state()
+	except Exception:
+		frappe.log_error(title="publish_battery_qc:state", message=frappe.get_traceback())
+
 	try:
 		_grant_operator_role()
 	except Exception:
@@ -97,6 +106,9 @@ def _publish() -> None:
 	# An older draft sitting behind the live version is somebody's abandoned
 	# work, not a release. Publishing it would roll the plant backwards.
 	if live_version and cint(draft.version) <= cint(live_version):
+		_note(
+			f"newest draft is v{draft.version} but v{live_version} is already live; nothing to publish"
+		)
 		return
 
 	name = draft.name
@@ -120,6 +132,7 @@ def _grant_operator_role() -> None:
 	revoked it for one person does not get overruled on the next migration.
 	"""
 	if not frappe.db.exists("Role", OPERATOR_ROLE):
+		_note(f"role {OPERATOR_ROLE} does not exist on this site")
 		return
 
 	holders = set(
@@ -131,6 +144,7 @@ def _grant_operator_role() -> None:
 		)
 	)
 	if not holders:
+		_note(f"nobody holds any of {', '.join(OPERATOR_SOURCE_ROLES)}")
 		return
 
 	already = set(
@@ -181,3 +195,30 @@ def _note(message: str) -> None:
 	"""
 	print(f"publish_battery_qc: {message}")
 	frappe.log_error(title="publish_battery_qc", message=message)
+
+
+def _report_state() -> None:
+	"""Print where the family stands, on every run."""
+	rows = frappe.get_all(
+		"Process Definition",
+		filters={"family": FAMILY},
+		fields=["name", "version", "status"],
+		order_by="version asc",
+		limit_page_length=0,
+	)
+	if not rows:
+		_note(f"family {FAMILY} has no definitions on this site")
+		return
+	_note("state: " + ", ".join(f"{r.name}=v{r.version}/{r.status}" for r in rows))
+
+	live = next((r for r in rows if r.status == C.DEF_PUBLISHED), None)
+	if not live:
+		_note("NOTHING PUBLISHED — operators will see an empty process list")
+		return
+	groupings = frappe.get_all(
+		"Process Stage",
+		filters={"parent": live.name},
+		fields=["stage_code", "screen_grouping"],
+		limit_page_length=0,
+	)
+	_note("live stages: " + ", ".join(f"{g.stage_code}={g.screen_grouping}" for g in groupings))

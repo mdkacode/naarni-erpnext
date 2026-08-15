@@ -17,6 +17,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from vehicle_maintenance.api import process
 from vehicle_maintenance.process_engine import constants as C
+from vehicle_maintenance.process_engine.doctype.process_run import process_run as run_perms
 
 CODE = "TEST-HIST-PROC"
 
@@ -300,7 +301,7 @@ def _free_mobile_no() -> str:
 	raise RuntimeError("Could not allocate a free test mobile number.")
 
 
-def _ensure_user(email: str, full_name: str) -> str:
+def _ensure_user(email: str, full_name: str, role: str = "Process Operator") -> str:
 	if not frappe.db.exists("User", email):
 		first, _sep, last = full_name.partition(" ")
 		user = frappe.get_doc(
@@ -315,7 +316,7 @@ def _ensure_user(email: str, full_name: str) -> str:
 				# genuine one already on the site.
 				"mobile_no": _free_mobile_no(),
 				"send_welcome_email": 0,
-				"roles": [{"role": "Process Operator"}],
+				"roles": [{"role": role}],
 			}
 		)
 		user.flags.ignore_phone_requirement = True
@@ -339,3 +340,201 @@ def _ensure_definition() -> str:
 	)
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+class TestRunIsolation(ProcessHistoryTestBase):
+	"""One operator must not be able to read or edit another's inspection.
+
+	The DocType grants `Process Operator` read *and write* on Process Run with
+	`if_owner = 0`, so before the permission hooks existed any operator could
+	open — and answer into — a colleague's run. These tests pin the hooks rather
+	than the role table, because the role genuinely has to stay broad: a
+	supervisor needs to read every run in order to verify one.
+	"""
+
+	def test_an_operator_cannot_read_another_operators_run(self):
+		theirs = self._run(user=self.other, identifier="THEIRS")
+
+		self.assertFalse(
+			frappe.has_permission("Process Run", doc=theirs, user=self.operator)
+		)
+
+	def test_an_operator_cannot_write_to_another_operators_run(self):
+		# The one that matters most: reading someone's inspection is a privacy
+		# problem, writing to it corrupts the plant's record of a battery.
+		theirs = self._run(user=self.other, identifier="THEIRS")
+
+		self.assertFalse(
+			frappe.has_permission("Process Run", doc=theirs, ptype="write", user=self.operator)
+		)
+
+	def test_an_operator_can_still_work_on_their_own_run(self):
+		mine = self._run(user=self.operator, identifier="MINE")
+
+		self.assertTrue(
+			frappe.has_permission("Process Run", doc=mine, ptype="write", user=self.operator)
+		)
+
+	def test_a_supervisor_reads_everyones_runs(self):
+		theirs = self._run(user=self.other, identifier="THEIRS")
+		verifier = _ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier")
+
+		self.assertTrue(frappe.has_permission("Process Run", doc=theirs, user=verifier))
+
+	def test_the_list_query_is_scoped_to_the_operator(self):
+		condition = run_perms.get_permission_query_conditions(self.operator)
+
+		self.assertIn("started_by", condition)
+		self.assertIn(self.operator, condition)
+
+	def test_a_supervisor_gets_no_list_restriction(self):
+		verifier = _ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier")
+
+		self.assertEqual(run_perms.get_permission_query_conditions(verifier), "")
+
+	def test_the_query_condition_escapes_the_user(self):
+		# `started_by` is an email and emails are not SQL-safe by nature; the
+		# predicate is concatenated, so the escaping is the only thing between a
+		# username and the query.
+		condition = run_perms.get_permission_query_conditions("a'; DROP TABLE x; --@test.localhost")
+
+		# The payload survives *inside* the quoted literal — that is fine and
+		# expected. What must not survive is an unescaped quote closing it early.
+		self.assertIn("\\'", condition)
+		self.assertNotIn("= 'a'; DROP", condition)
+
+	def test_scoping_is_on_who_performed_it_not_the_owner_field(self):
+		# `owner` is Frappe bookkeeping a data import can rewrite; who performed
+		# an inspection is a fact about the plant.
+		theirs = self._run(user=self.other, identifier="THEIRS")
+		frappe.db.set_value("Process Run", theirs.name, "owner", self.operator, update_modified=False)
+		theirs.reload()
+
+		self.assertFalse(
+			frappe.has_permission("Process Run", doc=theirs, user=self.operator)
+		)
+
+
+class TestInspectionAdminView(ProcessHistoryTestBase):
+	def test_an_operator_is_refused_the_cross_operator_view(self):
+		with self.assertRaises(frappe.PermissionError):
+			process.inspections()
+
+	def test_a_supervisor_sees_every_operators_runs(self):
+		self._run(user=self.operator, identifier="MINE")
+		self._run(user=self.other, identifier="THEIRS")
+		verifier = _ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier")
+		frappe.set_user(verifier)
+
+		data = process.inspections(process=self.definition)["data"]
+
+		self.assertEqual(
+			{r["run_identifier"] for r in data["runs"]}, {"MINE", "THEIRS"}
+		)
+		self.assertEqual(data["stats"]["total"], 2)
+
+	def test_the_operator_filter_narrows_to_one_person(self):
+		self._run(user=self.operator, identifier="MINE")
+		self._run(user=self.other, identifier="THEIRS")
+		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
+
+		data = process.inspections(operator=self.other, process=self.definition)["data"]
+
+		self.assertEqual([r["run_identifier"] for r in data["runs"]], ["THEIRS"])
+		self.assertEqual(data["stats"]["total"], 1)
+
+	def test_rows_carry_the_operators_display_name(self):
+		self._run(user=self.other, identifier="THEIRS")
+		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
+
+		row = process.inspections(process=self.definition)["data"]["runs"][0]
+
+		self.assertEqual(row["started_by_name"], "Other Operator")
+
+	def test_the_operator_list_covers_the_filtered_range(self):
+		self._run(user=self.operator, identifier="MINE")
+		self._run(user=self.other, identifier="THEIRS")
+		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
+
+		data = process.inspections(process=self.definition)["data"]
+
+		self.assertEqual(
+			{o["user"] for o in data["operators"]}, {self.operator, self.other}
+		)
+
+	def test_search_matches_the_run_identifier(self):
+		self._run(user=self.operator, identifier="PACK-ALPHA")
+		self._run(user=self.other, identifier="PACK-BETA")
+		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
+
+		data = process.inspections(search="ALPHA", process=self.definition)["data"]
+
+		self.assertEqual([r["run_identifier"] for r in data["runs"]], ["PACK-ALPHA"])
+
+	def test_a_date_range_bounds_both_ends(self):
+		# Both bounds on one field need the `between` form — assigning twice
+		# would silently drop the lower bound and widen the range.
+		old = self._run(user=self.operator, identifier="OLD")
+		frappe.db.set_value(
+			"Process Run", old.name, "started_at", "2020-01-01 09:00:00", update_modified=False
+		)
+		self._run(user=self.operator, identifier="RECENT")
+		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
+
+		today = frappe.utils.today()
+		data = process.inspections(from_date=today, to_date=today, process=self.definition)["data"]
+
+		self.assertEqual([r["run_identifier"] for r in data["runs"]], ["RECENT"])
+
+	def test_test_runs_stay_out_of_the_admin_view_too(self):
+		self._run(user=self.operator, identifier="REHEARSAL", is_test_run=1)
+		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
+
+		self.assertEqual(process.inspections(process=self.definition)["data"]["runs"], [])
+
+	def test_limit_is_clamped(self):
+		self._run(user=self.operator, identifier="ONE")
+		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
+
+		self.assertLessEqual(len(process.inspections(limit=10_000, process=self.definition)["data"]["runs"]), 200)
+
+
+class TestInspectionReviewPage(ProcessHistoryTestBase):
+	"""The Desk page is the admin's door; it needs its own lock.
+
+	The page's `roles` gate is separate from `_assert_inspection_admin`, and both
+	matter: the role list stops the page appearing in the awesomebar and being
+	opened at all, the API check stops someone calling the endpoint the page
+	happens to use.
+	"""
+
+	def _page(self, user: str):
+		from frappe.desk.desk_page import get
+
+		frappe.set_user(user)
+		return get("inspection-review")
+
+	def test_the_page_exists_and_is_owned_by_the_engine(self):
+		doc = frappe.get_doc("Page", "inspection-review")
+
+		self.assertEqual(doc.module, "Process Engine")
+		self.assertEqual(doc.title, "Inspection Review")
+
+	def test_an_operator_cannot_open_the_page(self):
+		with self.assertRaises(frappe.PermissionError):
+			self._page(self.operator)
+
+	def test_a_verifier_can_open_the_page(self):
+		verifier = _ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier")
+
+		doc = self._page(verifier)
+
+		self.assertEqual(doc.get("title"), "Inspection Review")
+
+	def test_the_page_ships_its_script(self):
+		# A standard Page with no script renders an empty shell and looks broken
+		# rather than erroring, so the asset loading is worth pinning.
+		doc = self._page("Administrator")
+
+		self.assertIn("class InspectionReview", doc.get("script") or "")
+		self.assertIn("vehicle_maintenance.api.process.inspections", doc.get("script") or "")

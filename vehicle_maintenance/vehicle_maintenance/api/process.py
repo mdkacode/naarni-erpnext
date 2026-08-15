@@ -1219,6 +1219,161 @@ def _history_stats(user: str) -> dict:
 	}
 
 
+# ------------------------------------------------------------- admin overview
+
+
+#: Who may read the whole plant's inspections rather than their own.
+ADMIN_ROLES = ("System Manager", "Process Author", "Process Verifier", "Process Viewer")
+
+
+def _assert_inspection_admin() -> None:
+	"""Gate the cross-operator views.
+
+	`my_history` needs no role check because it can only ever return the caller's
+	own work. These do the opposite — they read everybody's — so the role check
+	is the only thing standing between an operator and their colleagues' records.
+	"""
+	if frappe.session.user == "Administrator":
+		return
+	if not (set(ADMIN_ROLES) & _user_roles()):
+		frappe.throw(
+			_("You do not have access to the inspection overview."), frappe.PermissionError
+		)
+
+
+@frappe.whitelist()
+def inspections(
+	from_date: str | None = None,
+	to_date: str | None = None,
+	operator: str | None = None,
+	status: str | None = None,
+	process: str | None = None,
+	search: str | None = None,
+	limit: int = 50,
+	offset: int = 0,
+) -> dict:
+	"""Every operator's inspections, for the admin review screen.
+
+	Returns ``{stats, runs, operators}``. `operators` is the distinct set of
+	people who appear in the *filtered* range, so the filter dropdown offers
+	names that will actually return something rather than the whole user table.
+	"""
+	_assert_inspection_admin()
+
+	limit = min(max(cint(limit) or 50, 1), 200)
+	offset = max(cint(offset), 0)
+
+	filters: dict = {"is_test_run": 0}
+	if operator:
+		filters["started_by"] = operator
+	if status:
+		filters["status"] = status
+	if process:
+		filters["process_definition"] = process
+	if from_date:
+		filters["started_at"] = [">=", f"{from_date} 00:00:00"]
+	if to_date:
+		# Two bounds on one field need the tuple form; a second assignment would
+		# silently discard the first and quietly widen the range.
+		if from_date:
+			filters["started_at"] = ["between", [f"{from_date} 00:00:00", f"{to_date} 23:59:59"]]
+		else:
+			filters["started_at"] = ["<=", f"{to_date} 23:59:59"]
+
+	or_filters = None
+	if search:
+		like = f"%{search.strip()}%"
+		or_filters = {"run_identifier": ["like", like], "name": ["like", like]}
+
+	fields = [
+		"name",
+		"process_definition",
+		"process_name",
+		"run_identifier",
+		"status",
+		"result",
+		"score_pct",
+		"pass_count",
+		"fail_count",
+		"skip_count",
+		"critical_count",
+		"answered_count",
+		"trace_completeness_pct",
+		"started_by",
+		"started_at",
+		"completed_at",
+		"station",
+	]
+	runs = frappe.get_all(
+		"Process Run",
+		filters=filters,
+		or_filters=or_filters,
+		fields=fields,
+		order_by="ifnull(completed_at, started_at) desc",
+		limit_page_length=limit,
+		limit_start=offset,
+	)
+
+	_attach_photo_summary(runs)
+
+	names = {r["started_by"] for r in runs if r.get("started_by")}
+	full_names = (
+		dict(
+			frappe.get_all(
+				"User",
+				filters={"name": ["in", list(names)]},
+				fields=["name", "full_name"],
+				as_list=True,
+				limit_page_length=0,
+			)
+		)
+		if names
+		else {}
+	)
+	for row in runs:
+		row["started_by_name"] = full_names.get(row.get("started_by")) or row.get("started_by")
+
+	return _ok(
+		{
+			"stats": _inspection_stats(filters, or_filters),
+			"runs": runs,
+			"operators": sorted(
+				({"user": u, "full_name": full_names.get(u) or u} for u in names),
+				key=lambda o: o["full_name"],
+			),
+		}
+	)
+
+
+def _inspection_stats(filters: dict, or_filters) -> dict:
+	"""Counts over the same filtered set the list is drawn from.
+
+	One grouped query rather than one count per status: these are five slices of
+	the same rows, and the headline is supposed to appear before the list does.
+
+	Derived from the filters rather than from the returned page — the page is at
+	most 200 rows, and a headline number is meant to describe the range the admin
+	chose, not the slice that happened to fit on it.
+	"""
+	grouped = frappe.get_all(
+		"Process Run",
+		filters=filters,
+		or_filters=or_filters,
+		fields=["status", "count(name) as n"],
+		group_by="status",
+		limit_page_length=0,
+	)
+	by_status = {row["status"]: cint(row["n"]) for row in grouped}
+	open_statuses = (C.STATUS_IN_PROGRESS, C.STATUS_DRAFT, C.STATUS_IN_REWORK)
+	return {
+		"total": sum(by_status.values()),
+		"passed": by_status.get(C.STATUS_PASSED, 0),
+		"quarantined": by_status.get(C.STATUS_QUARANTINED, 0),
+		"awaiting": by_status.get(C.STATUS_AWAITING_VERIFICATION, 0),
+		"in_progress": sum(by_status.get(s, 0) for s in open_statuses),
+	}
+
+
 @frappe.whitelist()
 def run_report(name: str) -> dict:
 	"""One finished run, as the operator filled it in.

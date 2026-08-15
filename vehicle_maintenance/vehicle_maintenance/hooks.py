@@ -47,12 +47,17 @@ permission_query_conditions = {
 	# A daily status is readable by its author and by a supervisor, nobody else —
 	# the whole point of the DocType is who can see it.
 	"VM Daily Status": "vehicle_maintenance.fleet_service.doctype.vm_daily_status.vm_daily_status.get_permission_query_conditions",
+	# An inspection belongs to the person who performed it. Supervisors see all; an
+	# operator sees only their own — enforced here so every endpoint touching
+	# Process Run inherits it, rather than each one remembering to filter.
+	"Process Run": "vehicle_maintenance.process_engine.doctype.process_run.process_run.get_permission_query_conditions",
 }
 
 has_permission = {
 	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.has_permission",
 	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.has_permission",
 	"VM Daily Status": "vehicle_maintenance.fleet_service.doctype.vm_daily_status.vm_daily_status.has_permission",
+	"Process Run": "vehicle_maintenance.process_engine.doctype.process_run.process_run.has_permission",
 }
 
 # Idempotent seeders run after every migrate. Each function checks existence

@@ -101,3 +101,63 @@ class ProcessRun(Document):
 			if row.stage == stage_code and row.level == level:
 				return row
 		return None
+
+
+# ------------------------------------------------------------------ visibility
+
+#: Roles that may see and act on *anyone's* inspection.
+#:
+#: Everything outside this set — in practice a plain `Process Operator` — sees
+#: only the runs it started. That is the whole isolation rule, and it lives here
+#: rather than in each API method so no endpoint can forget it.
+SUPERVISOR_ROLES = frozenset(
+	{
+		"System Manager",
+		"Administrator",
+		"Process Author",
+		"Process Verifier",
+		"Process Viewer",
+		"Central Ops",
+		"Depot Manager",
+	}
+)
+
+
+def is_process_supervisor(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	return bool(SUPERVISOR_ROLES & set(frappe.get_roles(user)))
+
+
+def get_permission_query_conditions(user: str | None = None) -> str:
+	"""SQL predicate limiting run *lists* to the operator's own work.
+
+	The DocType grants `Process Operator` read and write on Process Run with
+	`if_owner = 0`, which by itself lets any operator open — and answer into —
+	somebody else's inspection. Narrowing it here rather than tightening the role
+	is deliberate: a supervisor genuinely needs to read every run to verify one,
+	so the distinction is per-user, not per-row-owner, and `if_owner` cannot
+	express it.
+
+	Scoped on `started_by` rather than `owner`. They are the same person today,
+	but `owner` is a Frappe bookkeeping field that a data import or a support
+	fix can change, and who *performed* an inspection is a fact about the plant.
+	"""
+	user = user or frappe.session.user
+	if is_process_supervisor(user):
+		return ""
+	return f"`tabProcess Run`.started_by = {frappe.db.escape(user)}"
+
+
+def has_permission(doc, ptype: str = "read", user: str | None = None) -> bool:
+	"""Document-level twin of the query condition.
+
+	Frappe consults this only after the role check has already passed, so it can
+	narrow access but never widen it — which is the property that makes it safe
+	to put the whole rule in one place.
+	"""
+	user = user or frappe.session.user
+	if is_process_supervisor(user):
+		return True
+	return (doc.started_by or doc.owner) == user

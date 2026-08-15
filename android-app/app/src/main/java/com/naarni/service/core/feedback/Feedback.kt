@@ -2,6 +2,7 @@ package com.naarni.service.core.feedback
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.SoundPool
 import android.os.Build
 import android.os.VibrationEffect
@@ -14,9 +15,25 @@ import androidx.compose.ui.platform.LocalContext
 import com.naarni.service.R
 
 /**
- * Lightweight tactile + audio feedback used across the UI: a soft tap on primary
- * actions, a pleasant chime on success, and a buzz on error. Sound is subtle and
- * short; haptics use the device vibrator. Both fail silently if unavailable.
+ * Tactile and audio feedback.
+ *
+ * Two principles, both learned the hard way from the previous version:
+ *
+ * **Every sound is its own sample.** The old implementation built the chat tones
+ * by replaying one `tap.wav` at different playback rates, which shifts formants
+ * along with pitch — the "sent" tick was an audibly chipmunked tap and "received"
+ * was a muddy one. They are now eight purpose-built samples from one synthesised
+ * family (see `tools/gen_ui_sounds.py`), which costs about 130 KB of APK and is
+ * the difference between an app that sounds designed and one that sounds cheap.
+ *
+ * **Silence is respected.** Sound is skipped when the phone is on vibrate or
+ * silent. `USAGE_ASSISTANCE_SONIFICATION` streams do *not* honour ringer mode on
+ * their own, so a phone in a meeting was chiming for every message that arrived
+ * — the single fastest way to get an app's audio switched off for good. The
+ * haptic still fires, because that is what the user asked for by choosing
+ * vibrate.
+ *
+ * Both halves fail silently if the hardware is missing.
  */
 class Feedback(context: Context) {
     private val appContext = context.applicationContext
@@ -30,8 +47,14 @@ class Feedback(context: Context) {
         }
     }
 
+    private val audioManager =
+        appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+
     private val soundPool: SoundPool = SoundPool.Builder()
-        .setMaxStreams(3)
+        // Four, not three: a send, an arriving message, an upload completing and
+        // a tap can genuinely overlap in a live thread, and the stream that gets
+        // dropped when the pool is full is the one that was about to start.
+        .setMaxStreams(4)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -40,8 +63,30 @@ class Feedback(context: Context) {
         )
         .build()
 
-    private val tapId = soundPool.load(appContext, R.raw.tap, 1)
-    private val successId = soundPool.load(appContext, R.raw.success_chime, 1)
+    private val tapId = soundPool.load(appContext, R.raw.ui_tap, 1)
+    private val successId = soundPool.load(appContext, R.raw.ui_success, 1)
+    private val errorId = soundPool.load(appContext, R.raw.ui_error, 1)
+    private val sentId = soundPool.load(appContext, R.raw.msg_sent, 1)
+    private val receivedId = soundPool.load(appContext, R.raw.msg_received, 1)
+    private val recStartId = soundPool.load(appContext, R.raw.rec_start, 1)
+    private val recCancelId = soundPool.load(appContext, R.raw.rec_cancel, 1)
+
+    /** True when the user has asked, via the ringer switch, not to hear things. */
+    private val audible: Boolean
+        get() = audioManager?.ringerMode == AudioManager.RINGER_MODE_NORMAL
+
+    /**
+     * Volumes are relative to each other, and every one of them is low.
+     *
+     * These sounds play over whatever the user is already listening to, on a
+     * phone that may be in a pocket next to a running engine. Loud does not make
+     * them more useful, it makes them the reason someone turns the app's audio
+     * off.
+     */
+    private fun play(id: Int, volume: Float) {
+        if (!audible) return
+        runCatching { soundPool.play(id, volume, volume, 1, 0, 1f) }
+    }
 
     private fun vibrate(ms: Long, amplitude: Int = VibrationEffect.DEFAULT_AMPLITUDE) {
         val v = vibrator ?: return
@@ -65,38 +110,43 @@ class Feedback(context: Context) {
         }
     }
 
+    // ── General ───────────────────────────────────────────────────────────
+
     /** A light tap — primary buttons, chips, selections. */
     fun tap() {
-        soundPool.play(tapId, 0.35f, 0.35f, 1, 0, 1f)
+        play(tapId, 0.5f)
         vibrate(12, 80)
     }
 
     /** A success chime + double pulse — job created, saved, transition complete. */
     fun success() {
-        soundPool.play(successId, 0.6f, 0.6f, 1, 0, 1f)
+        play(successId, 0.85f)
         vibratePattern(longArrayOf(0, 18, 60, 28))
     }
 
-    /** A short buzz — errors / blocked actions. */
+    /**
+     * A short buzz — errors, blocked actions.
+     *
+     * Now has a tone of its own. It was silent before, which meant a blocked
+     * action and a successful one were indistinguishable to anyone who had the
+     * phone in a pocket rather than in their hand.
+     */
     fun error() {
+        play(errorId, 0.7f)
         vibratePattern(longArrayOf(0, 35, 80, 35))
     }
 
     // ── Chat ──────────────────────────────────────────────────────────────
-    // Deliberately built from the two existing samples at different playback
-    // rates rather than shipping new audio: chat feedback fires far more often
-    // than anything else in the app, so it has to stay light on the APK and
-    // instantly familiar. Rate shifts read as "related but distinct".
 
-    /** Outgoing message committed to the outbox — a crisp upward tick. */
+    /** Outgoing message committed to the outbox — a crisp rising tick. */
     fun messageSent() {
-        soundPool.play(tapId, 0.30f, 0.30f, 1, 0, 1.45f)
+        play(sentId, 0.55f)
         vibrate(10, 60)
     }
 
-    /** A message arrived while the thread is open — softer, lower, unobtrusive. */
+    /** A message arrived while the thread is open — falling, softer, unobtrusive. */
     fun messageReceived() {
-        soundPool.play(tapId, 0.22f, 0.22f, 0, 0, 0.75f)
+        play(receivedId, 0.45f)
         vibrate(14, 55)
     }
 
@@ -118,8 +168,38 @@ class Feedback(context: Context) {
 
     /** Attachment finished uploading. */
     fun uploadComplete() {
-        soundPool.play(successId, 0.4f, 0.4f, 0, 0, 1.15f)
+        play(successId, 0.4f)
         vibrate(12, 70)
+    }
+
+    // ── Voice notes ───────────────────────────────────────────────────────
+
+    /** The microphone is live. Rising, and firm enough to feel through a glove. */
+    fun recordStart() {
+        play(recStartId, 0.5f)
+        vibrate(18, 130)
+    }
+
+    /**
+     * The recording was thrown away — slid to cancel, or too short to be real.
+     *
+     * Falling, and distinct from [messageSent] on purpose: the one thing a user
+     * must never be unsure about is whether the thing they just recorded went.
+     */
+    fun recordCancel() {
+        play(recCancelId, 0.5f)
+        vibratePattern(longArrayOf(0, 20, 55, 20))
+    }
+
+    /**
+     * The slide-to-cancel gesture crossing its point of no return.
+     *
+     * Haptic only, and sharp. It fires while the finger is still down and the
+     * decision is still reversible, so its whole job is to say "let go now and
+     * this is gone" without adding a noise to a gesture already in progress.
+     */
+    fun cancelArmed() {
+        vibrate(20, 160)
     }
 }
 

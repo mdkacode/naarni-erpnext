@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -177,7 +177,7 @@ fun MediaViewer(
             ) {
                 IconButton(onClick = onClose) {
                     Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
+                        Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Close",
                         tint = Color.White,
                     )
@@ -225,13 +225,14 @@ fun MediaViewer(
 private const val ZOOMED = 1.01f
 private const val DISMISS_PX = 170f
 
-/** One photo in a swipeable run. */
+/** One photo — or one video — in a swipeable run. */
 data class MediaPage(
     val key: String,
     val model: Any?,
     val title: String,
     val subtitle: String,
     val caption: String,
+    val isVideo: Boolean = false,
 )
 
 /**
@@ -274,12 +275,21 @@ fun MediaPagerViewer(
             userScrollEnabled = !zoomedPage,
             modifier = Modifier.fillMaxSize(),
         ) { index ->
-            ZoomableImage(
-                page = pages[index],
-                active = index == pagerState.currentPage,
-                onZoomedChange = { if (index == pagerState.currentPage) zoomedPage = it },
-                onToggleChrome = { chrome = !chrome },
-            )
+            val page = pages[index]
+            if (page.isVideo) {
+                VideoPage(
+                    model = page.model,
+                    active = index == pagerState.currentPage,
+                    onChromeChange = { visible -> if (index == pagerState.currentPage) chrome = visible },
+                )
+            } else {
+                ZoomableImage(
+                    page = page,
+                    active = index == pagerState.currentPage,
+                    onZoomedChange = { if (index == pagerState.currentPage) zoomedPage = it },
+                    onToggleChrome = { chrome = !chrome },
+                )
+            }
         }
 
         val current = pages[pagerState.currentPage.coerceIn(0, pages.lastIndex)]
@@ -300,7 +310,7 @@ fun MediaPagerViewer(
             ) {
                 IconButton(onClick = onClose) {
                     Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
+                        Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Close",
                         tint = Color.White,
                     )

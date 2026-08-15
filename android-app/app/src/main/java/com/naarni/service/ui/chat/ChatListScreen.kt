@@ -24,17 +24,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,18 +44,18 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.naarni.service.core.feedback.LocalFeedback
 import com.naarni.service.data.chat.ChatRoomEntity
 import com.naarni.service.ui.components.EmptyState
-import com.naarni.service.ui.theme.BrandGradient
+import com.naarni.service.ui.components.HairlineDivider
+import com.naarni.service.ui.components.SearchField
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Semantic
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -118,10 +112,10 @@ fun ChatListScreen(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(Brush.horizontalGradient(BrandGradient))
+                    .background(AppSurface.raised)
                     // Outside the animated child, so the status bar keeps its
-                    // brand ground when the field is away and the list does not
-                    // slide up underneath the clock.
+                    // ground when the field is away and the list does not slide
+                    // up underneath the clock.
                     .statusBarsPadding(),
             ) {
                 AnimatedVisibility(
@@ -129,10 +123,16 @@ fun ChatListScreen(
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut(),
                 ) {
-                    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)) {
-                        SearchPill(query, onChange = { query = it }, busy = vm.contacts.busy)
+                    Box(Modifier.padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 8.dp)) {
+                        SearchField(
+                            value = query,
+                            onChange = { query = it },
+                            placeholder = "Search messages, people, vehicles",
+                            busy = vm.contacts.busy,
+                        )
                     }
                 }
+                HairlineDivider()
             }
 
             ConnectionBanner(vm.connection, vm.connectionDetail)
@@ -140,7 +140,7 @@ fun ChatListScreen(
             val nothing = filtered.isEmpty() && (!searching || (people.isEmpty() && !vm.contacts.busy))
             if (nothing) {
                 EmptyState(
-                    icon = Icons.Default.Forum,
+                    icon = Icons.Rounded.Forum,
                     title = if (searching) "Nothing matches" else "No conversations yet",
                     body = if (searching) {
                         "Try a colleague's name, a phone number, a depot or a vehicle."
@@ -154,9 +154,20 @@ fun ChatListScreen(
                     if (searching && filtered.isNotEmpty()) {
                         item(key = "hdr-chats") { SectionHeader("Chats") }
                     }
-                    items(filtered, key = { "room-${it.name}" }) { room ->
+                    // contentType lets the lazy list reuse a room row for a room
+                    // row instead of tearing one down to build a contact row when
+                    // a search brings both kinds on screen at once.
+                    items(
+                        filtered,
+                        key = { "room-${it.name}" },
+                        contentType = { "room" },
+                    ) { room ->
                         RoomRow(
                             room = room,
+                            // Only direct threads carry presence — a dot on a
+                            // twelve-person depot group would be claiming
+                            // something about all of them at once.
+                            online = room.kind == "Direct" && room.peer in vm.onlineUsers,
                             onClick = {
                                 feedback.tap()
                                 onOpenRoom(room.name)
@@ -165,7 +176,11 @@ fun ChatListScreen(
                     }
                     if (searching && people.isNotEmpty()) {
                         item(key = "hdr-people") { SectionHeader("Contacts") }
-                        items(people, key = { "user-${it.name}" }) { user ->
+                        items(
+                            people,
+                            key = { "user-${it.name}" },
+                            contentType = { "contact" },
+                        ) { user ->
                             ContactRow(
                                 user = user,
                                 busy = opening == user.name,
@@ -190,63 +205,12 @@ fun ChatListScreen(
             containerColor = MaterialTheme.colorScheme.primary,
             modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp),
         ) {
-            Icon(Icons.Default.Edit, contentDescription = "New chat", tint = Color.White)
-        }
-    }
-}
-
-/** The rounded search field that sits on the brand gradient. */
-@Composable
-private fun SearchPill(value: String, onChange: (String) -> Unit, busy: Boolean) {
-    Surface(color = Color.White.copy(alpha = 0.16f), shape = RoundedCornerShape(22.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
             Icon(
-                Icons.Default.Search,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.size(18.dp),
+                Icons.AutoMirrored.Rounded.Chat,
+                contentDescription = "New chat",
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
             )
-            BasicTextField(
-                value = value,
-                onValueChange = onChange,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
-                cursorBrush = SolidColor(Color.White),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                modifier = Modifier.weight(1f).padding(start = 9.dp, top = 11.dp, bottom = 11.dp),
-                decorationBox = { inner ->
-                    Box {
-                        if (value.isEmpty()) {
-                            Text(
-                                "messages, search contacts, open threads",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Color.White.copy(alpha = 0.7f),
-                            )
-                        }
-                        inner()
-                    }
-                },
-            )
-            if (busy) {
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    color = Color.White,
-                    modifier = Modifier.size(15.dp),
-                )
-            } else if (value.isNotEmpty()) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Clear search",
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .clickable { onChange("") },
-                )
-            }
         }
     }
 }
@@ -256,7 +220,10 @@ private fun SectionHeader(label: String) {
     Text(
         label.uppercase(),
         style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
+        // Neutral, not accent. These headers are signposts between two groups of
+        // results, and colouring them made the word "CONTACTS" more prominent
+        // than any of the contacts under it.
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
             .fillMaxWidth()
@@ -266,7 +233,7 @@ private fun SectionHeader(label: String) {
 }
 
 @Composable
-private fun RoomRow(room: ChatRoomEntity, onClick: () -> Unit) {
+private fun RoomRow(room: ChatRoomEntity, online: Boolean, onClick: () -> Unit) {
     val unread = (room.lastSeq - room.lastReadSeq).coerceAtLeast(0)
     Row(
         Modifier
@@ -275,7 +242,23 @@ private fun RoomRow(room: ChatRoomEntity, onClick: () -> Unit) {
             .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RoomAvatar(room)
+        Box {
+            RoomAvatar(room)
+            if (online) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        // Ringed in the list's own ground so the dot sits on the
+                        // avatar rather than looking like a hole in it.
+                        .background(MaterialTheme.colorScheme.background),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(Modifier.size(9.dp).clip(CircleShape).background(Semantic.online))
+                }
+            }
+        }
         Spacer(Modifier.width(12.dp))
 
         Column(Modifier.weight(1f)) {
@@ -293,7 +276,7 @@ private fun RoomRow(room: ChatRoomEntity, onClick: () -> Unit) {
                 if (room.muted) {
                     Spacer(Modifier.width(5.dp))
                     Icon(
-                        Icons.Default.NotificationsOff,
+                        Icons.Rounded.NotificationsOff,
                         contentDescription = "Muted",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(13.dp),
@@ -371,38 +354,51 @@ private fun RoomAvatar(room: ChatRoomEntity) {
     }
 }
 
-/** Shown only when the transport is not healthy — silent when things work. */
+/**
+ * Shown only when the transport is not healthy — silent when things work.
+ *
+ * Severity is carried by the text colour and the icon rather than by a filled
+ * band. A full-width coloured strip for "Connecting…" — a state that resolves in
+ * under a second on any working link — was the loudest element on the screen for
+ * the least important reason.
+ */
 @Composable
 fun ConnectionBanner(state: ConnectionState, detail: String? = null) {
     val visible = state != ConnectionState.Live
     AnimatedVisibility(visible, enter = expandVertically(), exit = shrinkVertically()) {
-        val (text, color) = when (state) {
-            ConnectionState.Connecting -> "Connecting…" to MaterialTheme.colorScheme.secondaryContainer
+        val (text, tone) = when (state) {
+            ConnectionState.Connecting -> "Connecting…" to MaterialTheme.colorScheme.onSurfaceVariant
             ConnectionState.Offline ->
-                "Offline — messages will send when you reconnect" to MaterialTheme.colorScheme.surfaceVariant
+                "Offline — messages will send when you reconnect" to Semantic.caution
             ConnectionState.Rejected ->
-                "Session expired — sign in again" to MaterialTheme.colorScheme.errorContainer
-            ConnectionState.Live -> "" to MaterialTheme.colorScheme.surfaceVariant
+                "Session expired — sign in again" to Semantic.critical
+            ConnectionState.Live -> "" to MaterialTheme.colorScheme.onSurfaceVariant
         }
-        Row(
-            Modifier.fillMaxWidth().background(color).padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                Icons.Default.CloudOff,
-                contentDescription = null,
-                modifier = Modifier.size(13.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                // The raw server reason beats a generic "offline" when someone
-                // has to work out why a depot's phones are silent.
-                if (detail.isNullOrBlank()) text else "$text · $detail",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(AppSurface.sunken)
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.CloudOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = tone,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    // The raw server reason beats a generic "offline" when someone
+                    // has to work out why a depot's phones are silent.
+                    if (detail.isNullOrBlank()) text else "$text · $detail",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = tone,
+                )
+            }
+            HairlineDivider()
         }
     }
 }
@@ -472,35 +468,118 @@ private val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault())
 private val dayFmt = SimpleDateFormat("dd MMM", Locale.getDefault())
 private val parser = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
+/**
+ * Midnight, computed once instead of per call.
+ *
+ * [dayLabel] is called twice for every visible row of a thread — once for the
+ * message and once for its older neighbour — on every recomposition. The old
+ * implementation allocated two `Calendar` objects each time, so a ten-row screen
+ * churned forty `Calendar`s per frame during a scroll, which is exactly the kind
+ * of steady allocation that shows up as dropped frames rather than as a visible
+ * pause.
+ *
+ * Boundaries are recomputed only when the clock actually crosses one, so a
+ * thread left open overnight still relabels correctly the next morning.
+ *
+ * Not thread-safe, and deliberately so: every caller is a composable on the main
+ * thread. Guarding it would cost a lock on the hot path to protect against a
+ * caller that does not exist.
+ */
+private object Midnight {
+    var todayStart = 0L
+        private set
+    var yesterdayStart = 0L
+        private set
+    private var tomorrowStart = 0L
+
+    fun sync(now: Long) {
+        if (now in todayStart until tomorrowStart) return
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        todayStart = cal.timeInMillis
+        // Stepped with the calendar rather than by subtracting 24h, so a DST
+        // boundary cannot make "yesterday" an hour wrong.
+        cal.add(Calendar.DAY_OF_YEAR, -1)
+        yesterdayStart = cal.timeInMillis
+        cal.add(Calendar.DAY_OF_YEAR, 2)
+        tomorrowStart = cal.timeInMillis
+    }
+}
+
+/**
+ * Parsed room timestamps, so the room list does not re-parse a string per row.
+ *
+ * `SimpleDateFormat.parse` is one of the more expensive things in the standard
+ * library, and the chat list called it once per row on every emission of the
+ * rooms Flow — which is every message that arrives in any room. The cache is
+ * bounded because room previews change, not because they are numerous.
+ */
+private val parsedAt = object : LinkedHashMap<String, Long>(64, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > 256
+}
+
 /** Today → time, yesterday → "Yesterday", older → date. */
 fun relativeTime(raw: String?): String {
     if (raw.isNullOrBlank()) return ""
-    val date = runCatching { parser.parse(raw.substringBefore(".")) }.getOrNull() ?: return ""
-    val now = Calendar.getInstance()
-    val then = Calendar.getInstance().apply { time = date }
+    val millis = parsedAt.getOrPut(raw) {
+        runCatching { parser.parse(raw.substringBefore("."))?.time }.getOrNull() ?: return ""
+    }
+    Midnight.sync(System.currentTimeMillis())
     return when {
-        now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
-            now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR) -> hhmm.format(date)
-
-        now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
-            now.get(Calendar.DAY_OF_YEAR) - then.get(Calendar.DAY_OF_YEAR) == 1 -> "Yesterday"
-
-        else -> dayFmt.format(date)
+        millis >= Midnight.todayStart -> hhmm.format(Date(millis))
+        millis >= Midnight.yesterdayStart -> "Yesterday"
+        else -> dayFmt.format(Date(millis))
     }
 }
 
 /** Day divider label for a message timestamp. */
 fun dayLabel(millis: Long): String {
-    val now = Calendar.getInstance()
-    val then = Calendar.getInstance().apply { timeInMillis = millis }
-    val sameYear = now.get(Calendar.YEAR) == then.get(Calendar.YEAR)
-    val delta = now.get(Calendar.DAY_OF_YEAR) - then.get(Calendar.DAY_OF_YEAR)
+    Midnight.sync(System.currentTimeMillis())
     return when {
-        sameYear && delta == 0 -> "Today"
-        sameYear && delta == 1 -> "Yesterday"
+        millis >= Midnight.todayStart -> "Today"
+        millis >= Midnight.yesterdayStart -> "Yesterday"
         else -> dayFmt.format(Date(millis))
     }
 }
 
 /** Wall-clock time for a message timestamp, used by the media viewer's header. */
 fun clockTime(millis: Long): String = hhmm.format(Date(millis))
+
+/**
+ * Parse a Frappe `yyyy-MM-dd HH:mm:ss` stamp to epoch millis, or null.
+ *
+ * No timezone is applied, matching every other timestamp in the app: the server
+ * and every handset that talks to it are on IST, and introducing a conversion
+ * here alone would make last seen disagree with the message times beside it.
+ */
+fun parseServerTime(raw: String?): Long? {
+    if (raw.isNullOrBlank()) return null
+    return parsedAt.getOrPut(raw) {
+        runCatching { parser.parse(raw.substringBefore("."))?.time }.getOrNull() ?: return null
+    }
+}
+
+/**
+ * "last seen today at 15:04" and friends.
+ *
+ * Rounded to the minute at the fine end and never to the second. Presence is
+ * approximate by construction — the beat is every thirty seconds and the
+ * written-down copy lags further — so a label precise enough to invite
+ * arithmetic would be claiming an accuracy the number does not have.
+ */
+fun lastSeenLabel(millis: Long, now: Long = System.currentTimeMillis()): String {
+    val ago = now - millis
+    if (ago < 90_000L) return "last seen just now"
+    Midnight.sync(now)
+    val at = hhmm.format(Date(millis))
+    return when {
+        millis >= Midnight.todayStart -> "last seen today at $at"
+        millis >= Midnight.yesterdayStart -> "last seen yesterday at $at"
+        else -> "last seen ${dayFmt.format(Date(millis))} at $at"
+    }
+}

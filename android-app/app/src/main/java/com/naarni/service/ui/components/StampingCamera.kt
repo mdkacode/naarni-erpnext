@@ -3,6 +3,7 @@ package com.naarni.service.ui.components
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -37,8 +38,10 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.exifinterface.media.ExifInterface
 import com.naarni.service.appContainer
 import com.naarni.service.core.camera.PhotoStamper
+import com.naarni.service.core.media.ImageScaler
 import com.naarni.service.core.location.LocationProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,10 +57,28 @@ import java.util.concurrent.Executors
  */
 @Composable
 fun StampingCamera(
-    onCaptured: (File) -> Unit,
+    /**
+     * The stamped file, and the fix it was stamped with (null when location was
+     * denied or timed out).
+     *
+     * The fix is handed back rather than kept private because burning
+     * coordinates into the pixels is not the same as recording them: the burn-in
+     * survives a screenshot, but only a stored latitude/longitude can be queried,
+     * geofenced or plotted. A photo whose location exists solely as painted text
+     * is evidence a human can read and a report cannot.
+     */
+    onCaptured: (File, Location?) -> Unit,
     onClose: () -> Unit,
     /** Optional photo type/angle burned into the stamp (e.g. "Front", "Damage"). */
     label: String? = null,
+    /**
+     * The scanned serial / pack number this photo belongs to.
+     *
+     * Burned in so the image identifies itself once it has left the record it was
+     * captured against — exported, emailed or printed, which is exactly when the
+     * surrounding context is gone.
+     */
+    subject: String? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -171,13 +192,20 @@ fun StampingCamera(
                                 val location =
                                     if (hasLocationPerm()) locationProvider.current() else null
                                 withContext(Dispatchers.IO) {
-                                    val src = BitmapFactory.decodeFile(temp.absolutePath)
+                                    // Downscaled *before* stamping, never after.
+                                    // Decoding a 12-megapixel capture whole costs
+                                    // ~48 MB of heap with the camera still bound,
+                                    // and shrinking a stamped photo afterwards
+                                    // would soften the very text the stamp exists
+                                    // to make readable.
+                                    val src = decodeForStamping(temp)
                                         ?: return@withContext
                                     val stamp = PhotoStamper.build(
                                         location = location,
                                         userFullName = session.fullName ?: (session.user ?: "User"),
                                         userRole = session.primaryRole,
                                         label = label,
+                                        subject = subject,
                                     )
                                     val stamped = PhotoStamper.stamp(src, stamp)
                                     FileOutputStream(temp).use { out ->
@@ -187,7 +215,7 @@ fun StampingCamera(
                                     }
                                 }
                                 busy = false
-                                onCaptured(temp)
+                                onCaptured(temp, location)
                             }
                         }
                     },
@@ -207,4 +235,46 @@ fun StampingCamera(
             modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
         ) { Text("Close") }
     }
+}
+
+/**
+ * Decode a capture at upload resolution, rotated upright.
+ *
+ * The camera writes a full-sensor JPEG with an orientation tag. Both facts are
+ * dealt with here so that everything downstream — the stamp, the outbox, the
+ * bubble — is working on pixels that are already the right size and the right
+ * way up. Nothing re-reads the EXIF afterwards, because after this there is
+ * none: the re-encode drops it.
+ */
+private fun decodeForStamping(file: File): android.graphics.Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+    if (longest <= 0) return BitmapFactory.decodeFile(file.absolutePath)
+
+    var sample = 1
+    while (longest / (sample * 2) >= ImageScaler.MAX_EDGE) sample *= 2
+    val decoded = BitmapFactory.decodeFile(
+        file.absolutePath,
+        BitmapFactory.Options().apply { inSampleSize = sample },
+    ) ?: return null
+
+    val upright = when (
+        ExifInterface(file.absolutePath)
+            .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+    ) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> rotated(decoded, 90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> rotated(decoded, 180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> rotated(decoded, 270f)
+        else -> decoded
+    }
+    return ImageScaler.fit(upright, ImageScaler.MAX_EDGE)
+}
+
+private fun rotated(source: android.graphics.Bitmap, degrees: Float): android.graphics.Bitmap {
+    val matrix = android.graphics.Matrix().apply { postRotate(degrees) }
+    val out = android.graphics.Bitmap
+        .createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+    if (out !== source) source.recycle()
+    return out
 }

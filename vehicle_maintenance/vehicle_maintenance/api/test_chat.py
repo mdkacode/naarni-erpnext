@@ -1074,3 +1074,308 @@ class TestChatReceipts(ChatTestBase):
 		frappe.set_user(self.alice)
 		row = next(r for r in chat.list_rooms()["data"]["rooms"] if r["name"] == room.name)
 		self.assertEqual(row["delivered_upto"], 1)
+
+
+class TestChatTyping(ChatTestBase):
+	"""Typing is a permission-checked broadcast that persists nothing."""
+
+	def test_non_member_cannot_announce_typing(self):
+		# Otherwise anyone with a room name could put their name in a
+		# conversation they are not part of.
+		frappe.set_user(self.mallory)
+		with self.assertRaises(frappe.PermissionError):
+			chat.set_typing(room=self.room, typing=1)
+
+	def test_typing_publishes_to_the_doc_room(self):
+		published = []
+		orig = frappe.publish_realtime
+		frappe.publish_realtime = lambda **kw: published.append(kw)
+		try:
+			frappe.set_user(self.alice)
+			chat.set_typing(room=self.room, typing=1)
+		finally:
+			frappe.publish_realtime = orig
+
+		self.assertEqual(len(published), 1)
+		event = published[0]
+		self.assertEqual(event["event"], "vm_chat_typing")
+		self.assertEqual(event["docname"], self.room)
+		self.assertEqual(event["message"]["user"], self.alice)
+		self.assertEqual(event["message"]["typing"], 1)
+		# The client sizes its own expiry off this rather than hardcoding one.
+		self.assertEqual(event["message"]["ttl"], chat.TYPING_TTL_SECONDS)
+
+	def test_stopped_typing_is_its_own_signal(self):
+		published = []
+		orig = frappe.publish_realtime
+		frappe.publish_realtime = lambda **kw: published.append(kw)
+		try:
+			frappe.set_user(self.alice)
+			chat.set_typing(room=self.room, typing=0)
+		finally:
+			frappe.publish_realtime = orig
+		self.assertEqual(published[0]["message"]["typing"], 0)
+
+	def test_a_failed_publish_does_not_fail_the_request(self):
+		# A typing dot is never worth surfacing an error over a thread the user
+		# is otherwise messaging in successfully.
+		orig = frappe.publish_realtime
+
+		def boom(*args, **kwargs):
+			# Only the typing publish is broken. The handler's own recovery path
+			# calls frappe.log_error, whose insert publishes a doc update through
+			# this same function — failing that too would be testing the stub
+			# rather than the endpoint.
+			if kwargs.get("event") == "vm_chat_typing":
+				raise Exception("redis is down")
+			return orig(*args, **kwargs)
+
+		frappe.publish_realtime = boom
+		try:
+			frappe.set_user(self.alice)
+			result = chat.set_typing(room=self.room, typing=1)
+		finally:
+			frappe.publish_realtime = orig
+		self.assertTrue(result["success"])
+
+
+class TestChatPresence(ChatTestBase):
+	"""Presence is scoped to people you actually share a room with."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.cache().delete_key(chat._PRESENCE_KEY)
+
+	def test_heartbeat_reports_a_room_mate_as_online(self):
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+
+		frappe.set_user(self.alice)
+		online = chat.heartbeat()["data"]["online"]
+		self.assertIn(self.bob, online)
+
+	def test_you_are_never_in_your_own_online_list(self):
+		frappe.set_user(self.alice)
+		self.assertNotIn(self.alice, chat.heartbeat()["data"]["online"])
+
+	def test_presence_does_not_leak_across_rooms(self):
+		# Mallory is in no room with Alice, so her being online is none of
+		# Alice's business — presence is a fact about a conversation, not a
+		# staff directory of who is at work today.
+		frappe.set_user(self.mallory)
+		chat.heartbeat()
+
+		frappe.set_user(self.alice)
+		self.assertNotIn(self.mallory, chat.heartbeat()["data"]["online"])
+
+	def test_a_stale_heartbeat_is_not_online(self):
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+
+		# Wind Bob's stamp back past the window rather than sleeping through it.
+		stale = frappe.utils.now_datetime().timestamp() - chat.PRESENCE_TTL_SECONDS - 5
+		frappe.cache().hset(chat._PRESENCE_KEY, self.bob, stale)
+
+		frappe.set_user(self.alice)
+		self.assertNotIn(self.bob, chat.heartbeat()["data"]["online"])
+
+	def test_ttl_is_reported_so_the_client_need_not_hardcode_it(self):
+		frappe.set_user(self.alice)
+		self.assertEqual(chat.heartbeat()["data"]["ttl"], chat.PRESENCE_TTL_SECONDS)
+
+
+class TestChatReceiptBroadcast(ChatTestBase):
+	"""A tick is only worth anything if it moves while somebody is watching it."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.cache().delete_key(chat._RECEIPT_PUB_KEY)
+		self.published = []
+		self._orig_publish = frappe.publish_realtime
+
+		def capture(*args, **kwargs):
+			if kwargs.get("event") == "vm_chat_receipt":
+				self.published.append(kwargs)
+				return None
+			return self._orig_publish(*args, **kwargs)
+
+		frappe.publish_realtime = capture
+
+	def tearDown(self):
+		frappe.publish_realtime = self._orig_publish
+		super().tearDown()
+
+	def _receipts(self):
+		return [p["message"] for p in self.published]
+
+	def test_reading_publishes_to_the_room(self):
+		self._send(self.alice, "did you get this")
+		self.published.clear()
+
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=1)
+
+		self.assertEqual(len(self.published), 1)
+		event = self.published[0]
+		self.assertEqual(event["docname"], self.room)
+		self.assertEqual(event["message"]["read_upto"], 1)
+
+	def test_a_repeated_mark_read_says_nothing(self):
+		# A thread left open re-marks the same seq on every foreground. None of
+		# those are news, and a group of twenty would otherwise generate a
+		# broadcast storm out of nobody doing anything.
+		self._send(self.alice, "hello")
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=1)
+		self.published.clear()
+
+		chat.mark_read(room=self.room, seq=1)
+		self.assertEqual(self.published, [])
+
+	def test_syncing_publishes_delivery(self):
+		self._send(self.alice, "hello")
+		self.published.clear()
+
+		frappe.set_user(self.bob)
+		chat.sync(cursors={})
+
+		self.assertTrue(self._receipts())
+		self.assertEqual(self._receipts()[-1]["delivered_upto"], 1)
+
+	def test_the_aggregate_waits_for_the_slowest_member(self):
+		carol = self._ensure_user("chat-carol@test.localhost", "9990100004", ["Technician"])
+		room = frappe.get_doc("VM Chat Room", self.room)
+		room.append("members", {"user": carol, "member_role": "Member"})
+		room.save(ignore_permissions=True)
+
+		self._send(self.alice, "everyone please confirm")
+		self.published.clear()
+
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=1)
+		# Bob has read it; Carol has not. Nobody may be told it was read.
+		self.assertTrue(all(r["read_upto"] == 0 for r in self._receipts()))
+
+		frappe.set_user(carol)
+		chat.mark_read(room=self.room, seq=1)
+		self.assertEqual(self._receipts()[-1]["read_upto"], 1)
+
+	def test_delivered_is_never_reported_behind_read(self):
+		# Reading a message plainly means receiving it. "Read but not delivered"
+		# is a state no client should ever have to render.
+		self._send(self.alice, "hello")
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=1)
+
+		last = self._receipts()[-1]
+		self.assertGreaterEqual(last["delivered_upto"], last["read_upto"])
+
+	def test_a_failed_publish_does_not_fail_the_read(self):
+		self._send(self.alice, "hello")
+
+		def boom(*args, **kwargs):
+			if kwargs.get("event") == "vm_chat_receipt":
+				raise Exception("redis is down")
+			return self._orig_publish(*args, **kwargs)
+
+		frappe.publish_realtime = boom
+		frappe.set_user(self.bob)
+		result = chat.mark_read(room=self.room, seq=1)
+		self.assertTrue(result["success"])
+		# And the cursor itself still moved — the broadcast is the optional half.
+		self.assertEqual(result["data"]["last_read_seq"], 1)
+
+
+class TestChatLastSeen(ChatTestBase):
+	"""Last seen answers the question presence cannot: they are not here now."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.cache().delete_key(chat._PRESENCE_KEY)
+		frappe.cache().delete_key(chat._PERSIST_KEY)
+		for user in (self.alice, self.bob):
+			if frappe.db.exists("VM Chat Presence", user):
+				frappe.delete_doc("VM Chat Presence", user, force=True, ignore_permissions=True)
+
+	def _go_stale(self, user):
+		stale = frappe.utils.now_datetime().timestamp() - chat.PRESENCE_TTL_SECONDS - 5
+		frappe.cache().hset(chat._PRESENCE_KEY, user, stale)
+
+	def test_an_online_peer_reports_no_last_seen(self):
+		# Showing both at once is how you get "online · last seen 2 minutes ago"
+		# on the same line, which reads as a bug.
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+
+		frappe.set_user(self.alice)
+		data = chat.heartbeat()["data"]
+		self.assertIn(self.bob, data["online"])
+		self.assertNotIn(self.bob, data["last_seen"])
+
+	def test_last_seen_appears_once_the_beat_goes_stale(self):
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+		self._go_stale(self.bob)
+
+		frappe.set_user(self.alice)
+		data = chat.heartbeat()["data"]
+		self.assertNotIn(self.bob, data["online"])
+		self.assertIn(self.bob, data["last_seen"])
+
+	def test_last_seen_survives_a_cold_cache(self):
+		# The whole reason it is written down. A Redis restart must not erase
+		# everyone's history and report the entire depot as never seen.
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+		frappe.cache().delete_key(chat._PRESENCE_KEY)
+
+		frappe.set_user(self.alice)
+		self.assertIn(self.bob, chat.heartbeat()["data"]["last_seen"])
+
+	def test_the_write_is_throttled(self):
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+
+		sentinel = "2020-01-01 00:00:00"
+		frappe.db.set_value("VM Chat Presence", self.bob, "last_seen", sentinel, update_modified=False)
+		chat.heartbeat()
+
+		self.assertEqual(str(frappe.db.get_value("VM Chat Presence", self.bob, "last_seen")), sentinel)
+
+	def test_hiding_it_withholds_the_time_but_not_the_dot(self):
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+		chat.set_last_seen_visible(visible=0)
+
+		frappe.set_user(self.alice)
+		self.assertIn(self.bob, chat.heartbeat()["data"]["online"])
+
+		self._go_stale(self.bob)
+		frappe.set_user(self.alice)
+		data = chat.heartbeat()["data"]
+		self.assertNotIn(self.bob, data["online"])
+		self.assertNotIn(self.bob, data["last_seen"])
+
+	def test_hiding_is_retroactive(self):
+		# Read at request time rather than stamped at write time, so somebody
+		# turning it on hides the history already recorded rather than only
+		# what happens next.
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+		self._go_stale(self.bob)
+
+		frappe.set_user(self.alice)
+		self.assertIn(self.bob, chat.heartbeat()["data"]["last_seen"])
+
+		frappe.set_user(self.bob)
+		chat.set_last_seen_visible(visible=0)
+		frappe.set_user(self.alice)
+		self.assertNotIn(self.bob, chat.heartbeat()["data"]["last_seen"])
+
+	def test_last_seen_does_not_leak_across_rooms(self):
+		frappe.set_user(self.mallory)
+		chat.heartbeat()
+		self._go_stale(self.mallory)
+
+		frappe.set_user(self.alice)
+		self.assertNotIn(self.mallory, chat.heartbeat()["data"]["last_seen"])

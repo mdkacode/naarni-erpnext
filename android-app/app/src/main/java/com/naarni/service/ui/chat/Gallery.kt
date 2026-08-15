@@ -84,4 +84,48 @@ object Gallery {
         }
         else -> "$n ${tab.label.lowercase()}"
     }
+
+    /**
+     * The rows split into day sections, newest first.
+     *
+     * A gallery without this is a wall of squares with no sense of when anything
+     * happened — and "when" is most of what someone is actually navigating by
+     * when they open it looking for the photo of a part taken last Tuesday.
+     *
+     * [dayOf] is passed in rather than called directly so the grouping can be
+     * tested against fixed labels without a clock or a locale.
+     */
+    fun <T> groupByDay(rows: List<T>, dayOf: (T) -> String): List<Pair<String, List<T>>> {
+        if (rows.isEmpty()) return emptyList()
+        val out = mutableListOf<Pair<String, MutableList<T>>>()
+        for (row in rows) {
+            val label = dayOf(row)
+            // The input is already ordered newest-first, so a run of the same
+            // label is always contiguous — comparing with the last section is
+            // enough, and a map would lose the ordering this depends on.
+            val last = out.lastOrNull()
+            if (last != null && last.first == label) last.second.add(row)
+            else out.add(label to mutableListOf(row))
+        }
+        return out.map { it.first to it.second.toList() }
+    }
+
+    /**
+     * The part of a URL worth showing big.
+     *
+     * A full URL in a list is unreadable and mostly noise — the host is what
+     * tells someone whether a link is the vehicle dashboard, a supplier's
+     * invoice or a YouTube video. `www.` goes because it distinguishes nothing.
+     */
+    fun hostOf(url: String): String =
+        url.removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("www.")
+            .substringBefore('/')
+            .substringBefore('?')
+            .ifBlank { url }
+
+    /** The first letter of the host, for a link's tile. */
+    fun linkInitial(url: String): String =
+        hostOf(url).firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "#"
 }

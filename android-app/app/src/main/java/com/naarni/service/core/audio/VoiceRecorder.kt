@@ -64,6 +64,28 @@ class VoiceRecorder(private val context: Context) {
         if (startedAt == 0L) 0L else SystemClock.elapsedRealtime() - startedAt
 
     /**
+     * Current input loudness, 0f..1f, for drawing a live waveform.
+     *
+     * `getMaxAmplitude` reports the peak *since the last call* and resets, so it
+     * must be sampled on a steady tick or the reading is meaningless — sample it
+     * twice quickly and the second call returns near-silence regardless of what
+     * the microphone is hearing.
+     *
+     * The raw value is a linear 0..32767 peak, which drawn directly produces a
+     * waveform that sits flat against the floor and occasionally spikes, because
+     * loudness is perceived logarithmically. Converting to dB and mapping a
+     * 40 dB window onto the bar height is what makes an ordinary speaking voice
+     * fill a useful part of the range.
+     */
+    fun amplitude(): Float {
+        val rec = recorder ?: return 0f
+        val peak = runCatching { rec.maxAmplitude }.getOrDefault(0)
+        if (peak <= 0) return 0f
+        val db = 20.0 * kotlin.math.log10(peak.toDouble() / MAX_PEAK)
+        return ((db + DB_FLOOR) / DB_FLOOR).toFloat().coerceIn(0f, 1f)
+    }
+
+    /**
      * Stops and returns the finished note, or null if it was too short to be
      * anything but an accidental tap on the mic.
      *
@@ -106,5 +128,17 @@ class VoiceRecorder(private val context: Context) {
     companion object {
         /** Below this it is a mis-tap, not a message. */
         const val MIN_MS = 600L
+
+        /** Full scale for MediaRecorder's 16-bit peak reading. */
+        private const val MAX_PEAK = 32_767.0
+
+        /**
+         * The dynamic range the waveform spans, in dB below full scale.
+         *
+         * 40 dB puts a normal speaking voice held at arm's length around the
+         * middle of the bar, which leaves headroom for a shout and still shows
+         * visible movement for someone talking quietly next to a running engine.
+         */
+        private const val DB_FLOOR = 40.0
     }
 }

@@ -12,8 +12,15 @@ import java.util.Locale
 
 /**
  * Burns an accountability stamp into the bottom-left of a captured photo:
- * date-time, latitude/longitude (+accuracy), and the capturing user's name —
- * clearly visible on a high-contrast bar (KOTLIN_APP_PLAN.md §5 headline feature).
+ * the subject's serial, date-time, latitude/longitude (+accuracy), and the
+ * capturing user's name — on a high-contrast bar (KOTLIN_APP_PLAN.md §5).
+ *
+ * **The serial line is what makes a photo findable.** Without it an inspection
+ * archive is thousands of near-identical pictures of battery packs, and the only
+ * way to tell which pack a photo shows is to trace it back through the record it
+ * was attached to. Burning the scanned serial into the pixels means the photo
+ * carries its own identity even after it has been exported, emailed or printed —
+ * which is exactly when the surrounding record is gone.
  *
  * The text is also intended to be written to EXIF by the caller; this method
  * handles the visible burn-in.
@@ -26,6 +33,8 @@ object PhotoStamper {
         val by: String,
         /** Optional photo type/angle (e.g. "Front", "Damage") shown as the top line. */
         val label: String? = null,
+        /** The scanned serial / pack number this photo belongs to. */
+        val subject: String? = null,
     )
 
     /** Build stamp text from raw inputs at capture time. */
@@ -35,6 +44,7 @@ object PhotoStamper {
         userRole: String,
         whenMillis: Long = System.currentTimeMillis(),
         label: String? = null,
+        subject: String? = null,
     ): StampData {
         val ts = SimpleDateFormat("dd MMM yyyy, HH:mm:ss z", Locale.getDefault())
             .format(Date(whenMillis))
@@ -44,7 +54,13 @@ object PhotoStamper {
         } else {
             "Location unavailable"
         }
-        return StampData(dateTime = ts, location = loc, by = "By: $userFullName ($userRole)", label = label)
+        return StampData(
+            dateTime = ts,
+            location = loc,
+            by = "By: $userFullName ($userRole)",
+            label = label,
+            subject = subject?.trim()?.takeIf { it.isNotEmpty() },
+        )
     }
 
     /** Draw the stamp onto a copy of [src] and return it. */
@@ -66,8 +82,20 @@ object PhotoStamper {
         }
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(150, 0, 0, 0) }
 
-        val lines = listOfNotNull(data.label?.let { "📷 $it" }, data.dateTime, data.location, data.by)
-        val maxLineW = lines.maxOf { text.measureText(it) }
+        // Serial first: it is the line a person scanning a folder of photos is
+        // actually looking for, and the top line of the block is where the eye
+        // lands. The label follows it, then the accountability trio.
+        val lines = listOfNotNull(
+            data.subject?.let { "SN: $it" },
+            data.label?.let { "📷 $it" },
+            data.dateTime,
+            data.location,
+            data.by,
+        )
+        val maxLineW = lines.maxOf {
+            if (data.subject != null && it.startsWith("SN: ")) text.measureText(it) * 1.25f
+            else text.measureText(it)
+        }
         val blockH = lineH * lines.size
 
         val left = pad
@@ -80,9 +108,16 @@ object PhotoStamper {
             pad * 0.4f, pad * 0.4f, bg,
         )
 
+        // The serial is drawn a size up, so it survives the photo being viewed
+        // as a thumbnail in a grid — which is how these are usually first seen.
+        val serialPaint = Paint(text).apply {
+            this.textSize = textSize * 1.25f
+            color = Color.rgb(255, 214, 102)
+        }
         var y = top + textSize
         for (line in lines) {
-            canvas.drawText(line, left, y, text)
+            val paint = if (data.subject != null && line.startsWith("SN: ")) serialPaint else text
+            canvas.drawText(line, left, y, paint)
             y += lineH
         }
         return bmp

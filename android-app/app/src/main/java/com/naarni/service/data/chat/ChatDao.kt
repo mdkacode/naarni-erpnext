@@ -20,6 +20,18 @@ interface ChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertRooms(rooms: List<ChatRoomEntity>)
 
+    /**
+     * The watermarks currently held, so a room refresh can be clamped to them.
+     *
+     * `upsertRooms` REPLACEs, and the room list is fetched on a schedule that
+     * has nothing to do with when receipts arrive. Without this, a response
+     * describing the room as it stood a second before a realtime receipt landed
+     * would overwrite it — and a tick that had already turned blue would go
+     * back to grey in front of the person who watched it turn.
+     */
+    @Query("SELECT name, lastReadSeq, deliveredUpto, readUpto FROM chat_room")
+    suspend fun roomWatermarks(): List<RoomWatermarks>
+
     @Query("SELECT * FROM chat_room ORDER BY lastMessageAt DESC, title ASC")
     fun observeRooms(): Flow<List<ChatRoomEntity>>
 
@@ -41,6 +53,26 @@ interface ChatDao {
 
     @Query("UPDATE chat_room SET muted = :muted WHERE name = :room")
     suspend fun setMuted(room: String, muted: Boolean)
+
+    /**
+     * Move the room's delivered/read watermarks — the second and third tick.
+     *
+     * MAX, never assignment. Two sources feed these: `list_rooms`, which
+     * computes the minimum across every member *except* the viewer, and the
+     * realtime receipt, which cannot know who is receiving it and so takes the
+     * minimum across everyone. The realtime figure is therefore sometimes the
+     * lower of the two, and letting it overwrite would make a tick that had
+     * already turned blue go grey again.
+     */
+    @Query(
+        """
+        UPDATE chat_room
+           SET deliveredUpto = MAX(deliveredUpto, :delivered),
+               readUpto = MAX(readUpto, :read)
+         WHERE name = :room
+        """
+    )
+    suspend fun advanceReceipts(room: String, delivered: Long, read: Long)
 
     @Query("UPDATE chat_room SET lastSeq = MAX(lastSeq, :seq), lastMessagePreview = :preview WHERE name = :room")
     suspend fun touchRoom(room: String, seq: Long, preview: String)
@@ -105,6 +137,34 @@ interface ChatDao {
 
     @Query("SELECT MAX(seq) FROM chat_message WHERE room = :room")
     suspend fun highestSeq(room: String): Long?
+
+    /**
+     * Every message in this room that some other message is a reply to.
+     *
+     * One observed query for the whole room rather than a lookup per bubble.
+     * The obvious alternative — a Room `@Relation` or a self-join on the paging
+     * query — would make the (room, sortSeq) index unusable and turn every page
+     * load into a scan, which is a heavy price for a decoration on a minority of
+     * rows. This runs once, is recomputed only when the room is written to, and
+     * the result is a map the bubble reads with a single lookup.
+     *
+     * Bounded because a year-old vehicle thread can accumulate thousands of
+     * replies, and a quote is only ever drawn for a message currently on screen.
+     */
+    @Query(
+        """
+        SELECT * FROM chat_message
+         WHERE room = :room
+           AND serverName IS NOT NULL
+           AND serverName IN (
+                SELECT replyTo FROM chat_message
+                 WHERE room = :room AND replyTo IS NOT NULL
+           )
+         ORDER BY sortSeq DESC
+         LIMIT :limit
+        """
+    )
+    fun observeReplyParents(room: String, limit: Int = 400): Flow<List<ChatMessageEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertMessages(rows: List<ChatMessageEntity>)
@@ -209,6 +269,14 @@ interface ChatDao {
 
 /** Projection for [ChatDao.syncCursors]. */
 data class RoomCursor(val name: String, val lastSeq: Long)
+
+/** Projection for [ChatDao.roomWatermarks] — everything that may only go up. */
+data class RoomWatermarks(
+    val name: String,
+    val lastReadSeq: Long,
+    val deliveredUpto: Long,
+    val readUpto: Long,
+)
 
 /** One-line summary used for room list rows. Mirrors the server's preview_for(). */
 fun previewOf(m: ChatMessageEntity): String = when (m.kind) {

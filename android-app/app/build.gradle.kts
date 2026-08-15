@@ -26,8 +26,8 @@ android {
         applicationId = "com.naarni.service"
         minSdk = 24            // Android 7.0 — covers ~99% of field devices (plan §0)
         targetSdk = 35         // Android 15 — Play requires API 35 for new apps
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
 
         // Backend base URL — overridable per build type.
         buildConfigField("String", "BASE_URL", "\"https://service.naarni.com/\"")
@@ -144,6 +144,18 @@ dependencies {
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
+    implementation(libs.camera.video)
+
+    // Video: recorded at 720p, oversized picks transcoded down, played back
+    // through the app's own authenticated HTTP stack.
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.transformer)
+    implementation(libs.media3.effect)
+    implementation(libs.media3.datasource.okhttp)
+    // Bundled rather than the Play-Services variant: a plant floor is exactly
+    // where you cannot assume Play Services are present or the network is up.
+    implementation(libs.mlkit.barcode)
     implementation(libs.play.location)
 
     // Secure session storage

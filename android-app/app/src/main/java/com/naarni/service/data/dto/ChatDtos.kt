@@ -129,6 +129,26 @@ data class CreateRoomPayload(val room: String)
 @Serializable
 data class MarkReadPayload(val room: String = "", val last_read_seq: Long = 0)
 
+@Serializable
+data class TypingPayload(val room: String = "", val typing: Boolean = false)
+
+/**
+ * Who, of the people you share a room with, is reachable right now.
+ *
+ * `ttl` is the server's own staleness window rather than a client constant, so
+ * tuning presence never means shipping an app update to match.
+ *
+ * `last_seen` covers only those *not* in `online`, and only those who have not
+ * opted out — a user who is online is here now, and saying both at once reads
+ * as a bug. Values are server-local `yyyy-MM-dd HH:mm:ss`.
+ */
+@Serializable
+data class PresencePayload(
+    val online: List<String> = emptyList(),
+    val last_seen: Map<String, String> = emptyMap(),
+    val ttl: Int = 75,
+)
+
 // ------------------------------------------------------------------- uploads
 
 @Serializable

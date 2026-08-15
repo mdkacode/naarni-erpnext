@@ -18,11 +18,14 @@ import com.naarni.service.data.dto.ChatMessageDto
 import com.naarni.service.data.dto.ChatRoomDto
 import com.naarni.service.data.dto.ChatTicketDto
 import com.naarni.service.data.dto.ChatUserDto
+import com.naarni.service.data.dto.PresencePayload
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.long
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.security.MessageDigest
@@ -62,6 +65,18 @@ class ChatRepository(
     /** Attachments and links for one conversation's gallery. */
     fun observeGallery(room: String): Flow<List<ChatMessageEntity>> = dao.observeGallery(room)
 
+    /**
+     * Parents of every reply in the room, keyed by server name.
+     *
+     * Emitted as a map rather than a list because the only access pattern is
+     * "given this message's replyTo, what was quoted" — building the map once
+     * per emission is far cheaper than a linear scan per visible bubble.
+     */
+    fun observeReplyParents(room: String): Flow<Map<String, ChatMessageEntity>> =
+        dao.observeReplyParents(room).map { rows ->
+            rows.associateBy { it.serverName.orEmpty() }
+        }
+
     /** Title for a room already in Room, for the notification tray. */
     suspend fun roomTitle(room: String): String = dao.room(room)?.title.orEmpty()
 
@@ -91,7 +106,22 @@ class ChatRepository(
     /** Refresh the room list (titles, membership, mute state). */
     suspend fun refreshRooms() {
         val rooms = api.chatRooms().payload().rooms
-        dao.upsertRooms(rooms.map { it.toEntity() })
+        // Clamped to what is already held, because the upsert REPLACEs the row
+        // and these three only ever move forward. A response describing the
+        // room as it stood before a receipt or a local read landed must not be
+        // allowed to undo either.
+        val held = dao.roomWatermarks().associateBy { it.name }
+        dao.upsertRooms(
+            rooms.map { dto ->
+                val entity = dto.toEntity()
+                val mark = held[entity.name] ?: return@map entity
+                entity.copy(
+                    lastReadSeq = maxOf(entity.lastReadSeq, mark.lastReadSeq),
+                    deliveredUpto = maxOf(entity.deliveredUpto, mark.deliveredUpto),
+                    readUpto = maxOf(entity.readUpto, mark.readUpto),
+                )
+            },
+        )
     }
 
     /**
@@ -168,6 +198,22 @@ class ChatRepository(
                 if (seq > held) sync()
             }
         }
+    }
+
+    /**
+     * Apply a receipt frame — somebody in the room received or read something.
+     *
+     * Handled apart from [onRealtimeMessage] because a receipt carries no `seq`
+     * of its own and would be discarded by the gap check there. There is also
+     * nothing to fetch: the payload is the whole fact, so this never triggers a
+     * sync however far behind the watermarks are.
+     */
+    suspend fun onRealtimeReceipt(body: JsonObject) {
+        val room = body["room"]?.jsonPrimitive?.content ?: return
+        val read = body["read_upto"]?.jsonPrimitive?.longOrNull ?: 0L
+        val delivered = body["delivered_upto"]?.jsonPrimitive?.longOrNull ?: 0L
+        if (read <= 0 && delivered <= 0) return
+        dao.advanceReceipts(room, delivered = maxOf(delivered, read), read = read)
     }
 
     // ---------------------------------------------------------------- sending
@@ -307,6 +353,27 @@ class ChatRepository(
         dao.setMuted(room, muted)
         runCatching { api.chatSetMuted(room, if (muted) 1 else 0) }
     }
+
+    // ------------------------------------------------------ presence / typing
+
+    /**
+     * Announce composing state. Never throws.
+     *
+     * A failure here is genuinely inconsequential — the worst case is that
+     * somebody's typing dot does not appear — and letting it propagate would
+     * mean a dropped packet could surface an error over a thread the user is
+     * successfully messaging in.
+     */
+    suspend fun setTyping(room: String, typing: Boolean) {
+        runCatching { api.chatSetTyping(room, if (typing) 1 else 0) }
+    }
+
+    /**
+     * Report this device online and collect who else is, plus when the rest
+     * were last around. Empty on any failure — presence is never worth an error.
+     */
+    suspend fun heartbeat(): PresencePayload =
+        runCatching { api.chatHeartbeat().payload() }.getOrDefault(PresencePayload())
 
     /** Directory search. Not cached — it is a live lookup, not app state. */
     suspend fun searchUsers(query: String): List<ChatUserDto> =

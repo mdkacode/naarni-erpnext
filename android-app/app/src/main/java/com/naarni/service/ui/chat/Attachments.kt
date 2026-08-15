@@ -3,6 +3,7 @@ package com.naarni.service.ui.chat
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.naarni.service.core.media.ImageScaler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -66,6 +67,12 @@ object Attachments {
         resolver.openInputStream(uri)?.use { input ->
             dest.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
         } ?: return@withContext null
+
+        // Shrunk here, before it is queued, rather than in the upload worker. A
+        // photo waiting on wifi should already be its final size, so that what
+        // the outbox is holding is what will actually go over the wire — and so
+        // a retry never re-does the work.
+        ImageScaler.scaleInPlace(dest, contentType)
 
         Picked(
             file = dest,

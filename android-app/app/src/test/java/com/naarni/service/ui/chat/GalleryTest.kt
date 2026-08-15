@@ -158,3 +158,61 @@ class GalleryTest {
         assertEquals("No links yet", Gallery.countLabel(Gallery.Tab.LINKS, 0))
     }
 }
+
+class GalleryGroupingTest {
+
+    @Test
+    fun `groups a run of the same day into one section`() {
+        val rows = listOf("Today", "Today", "Yesterday", "Yesterday", "10 Aug")
+        val sections = Gallery.groupByDay(rows) { it }
+        assertEquals(listOf("Today", "Yesterday", "10 Aug"), sections.map { it.first })
+        assertEquals(listOf(2, 2, 1), sections.map { it.second.size })
+    }
+
+    @Test
+    fun `keeps the incoming order inside a section`() {
+        val rows = listOf("a" to "Today", "b" to "Today")
+        val sections = Gallery.groupByDay(rows) { it.second }
+        assertEquals(listOf("a", "b"), sections.single().second.map { it.first })
+    }
+
+    @Test
+    fun `a day that recurs after another day starts a new section`() {
+        // Defends the contiguous-run assumption: if the caller ever hands over
+        // unsorted rows, this must not silently merge two separate days into
+        // one section — it splits, which is visible and therefore fixable.
+        val rows = listOf("Today", "Yesterday", "Today")
+        val sections = Gallery.groupByDay(rows) { it }
+        assertEquals(3, sections.size)
+    }
+
+    @Test
+    fun `empty input yields no sections`() {
+        assertTrue(Gallery.groupByDay(emptyList<String>()) { it }.isEmpty())
+    }
+}
+
+class GalleryLinkDisplayTest {
+
+    @Test
+    fun `host drops the scheme and www`() {
+        assertEquals("naarni.com", Gallery.hostOf("https://www.naarni.com/report/12"))
+        assertEquals("naarni.com", Gallery.hostOf("http://naarni.com"))
+    }
+
+    @Test
+    fun `host drops the path and the query`() {
+        assertEquals("docs.google.com", Gallery.hostOf("https://docs.google.com/a/b?c=d"))
+    }
+
+    @Test
+    fun `a bare host survives unchanged`() {
+        assertEquals("naarni.com", Gallery.hostOf("www.naarni.com"))
+    }
+
+    @Test
+    fun `initial is the first alphanumeric of the host`() {
+        assertEquals("N", Gallery.linkInitial("https://www.naarni.com"))
+        assertEquals("D", Gallery.linkInitial("https://docs.google.com/x"))
+    }
+}

@@ -1,5 +1,6 @@
 package com.naarni.service.ui.chat
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -18,18 +19,20 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -96,6 +99,8 @@ fun MessageBubble(
     onAssignTicket: (String) -> Unit = {},
     isOpening: Boolean = false,
     receipts: Receipts = Receipts(),
+    /** Jump to the quoted message. */
+    onOpenQuote: (ChatMessageEntity) -> Unit = {},
 ) {
     // A server-authored notice is about the conversation, not part of it, so it
     // gets no bubble and no side — the same treatment WhatsApp gives "you were
@@ -174,7 +179,7 @@ fun MessageBubble(
                     )
                 }
 
-                replyPreview?.let { ReplyQuote(it, textColor) }
+                replyPreview?.let { ReplyQuote(it, textColor) { onOpenQuote(it) } }
 
                 when (message.kind) {
                     "image" -> MediaContent(message, isVideo = false, overlayMeta = bare, onOpen = onOpenMedia) {
@@ -228,7 +233,7 @@ fun MessageBubble(
                 // Tags a technician attached via long-press.
                 message.vehicle?.let {
                     Spacer(Modifier.height(5.dp))
-                    TagChip(Icons.Default.DirectionsBus, it)
+                    TagChip(Icons.Rounded.DirectionsBus, it)
                 }
 
                 if (!bare && !inlineMeta) {
@@ -264,7 +269,7 @@ private fun MetaRow(
     ) {
         if (message.geotagged) {
             Icon(
-                Icons.Default.LocationOn,
+                Icons.Rounded.LocationOn,
                 contentDescription = "Location attached",
                 tint = muted,
                 modifier = Modifier.size(11.dp),
@@ -297,7 +302,7 @@ private fun DeliveryTick(
 ) {
     when (message.status) {
         SendStatus.PENDING -> Icon(
-            Icons.Default.Schedule,
+            Icons.Rounded.Schedule,
             contentDescription = "Waiting to send",
             tint = muted,
             modifier = Modifier.size(12.dp),
@@ -314,21 +319,21 @@ private fun DeliveryTick(
             val seq = message.seq ?: 0L
             when {
                 seq > 0 && seq <= receipts.readUpto -> Icon(
-                    Icons.Default.DoneAll,
+                    Icons.Rounded.DoneAll,
                     contentDescription = "Read",
                     tint = ChatTokens.readTick,
                     modifier = Modifier.size(14.dp),
                 )
 
                 seq > 0 && seq <= receipts.deliveredUpto -> Icon(
-                    Icons.Default.DoneAll,
+                    Icons.Rounded.DoneAll,
                     contentDescription = "Delivered",
                     tint = muted,
                     modifier = Modifier.size(14.dp),
                 )
 
                 else -> Icon(
-                    Icons.Default.Check,
+                    Icons.Rounded.Check,
                     contentDescription = "Sent",
                     tint = muted,
                     modifier = Modifier.size(13.dp),
@@ -341,7 +346,7 @@ private fun DeliveryTick(
             modifier = Modifier.clickableNoRipple(onRetry),
         ) {
             Icon(
-                Icons.Default.ErrorOutline,
+                Icons.Rounded.ErrorOutline,
                 contentDescription = "Failed to send",
                 tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(13.dp),
@@ -356,7 +361,7 @@ private fun DeliveryTick(
         }
 
         else -> Icon(
-            Icons.Default.DoneAll,
+            Icons.Rounded.DoneAll,
             contentDescription = "Read",
             tint = ChatTokens.readTick,
             modifier = Modifier.size(13.dp),
@@ -364,14 +369,35 @@ private fun DeliveryTick(
     }
 }
 
+/**
+ * The quoted message above a reply.
+ *
+ * Tapping it jumps to the original, which is the behaviour that makes replies
+ * worth having at all: without it a quote is a screenshot of context, and the
+ * reader still has to scroll and hunt for what was actually being answered.
+ *
+ * An attachment gets an icon and a word rather than its raw `kind`, because
+ * "Image" is a database value and "Photo" is what the thing is.
+ */
 @Composable
-private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color) {
+private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color, onOpen: () -> Unit) {
     val accent = authorColor(source.author)
+    val (icon, fallback) = when (source.kind) {
+        "image" -> Icons.Rounded.Image to "Photo"
+        "video" -> Icons.Rounded.Videocam to "Video"
+        "audio" -> Icons.Rounded.Mic to "Voice note"
+        "file" -> Icons.Rounded.InsertDriveFile to (source.fileName ?: "Document")
+        "ticket" -> Icons.Rounded.ConfirmationNumber to (source.ticket ?: "Service ticket")
+        else -> null to ""
+    }
+    val summary = source.body.ifBlank { fallback }
+
     Row(
         Modifier
             .padding(bottom = 4.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(onBubble.copy(alpha = 0.07f))
+            .clickable(onClick = onOpen)
             .heightIn(min = 34.dp),
     ) {
         Box(Modifier.width(3.dp).heightIn(min = 34.dp).background(accent))
@@ -382,13 +408,24 @@ private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color) {
                 color = accent,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                source.body.ifBlank { source.kind.replaceFirstChar { it.uppercase() } },
-                style = MaterialTheme.typography.bodySmall,
-                color = mutedOn(onBubble),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                icon?.let {
+                    Icon(
+                        it,
+                        contentDescription = null,
+                        tint = mutedOn(onBubble),
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedOn(onBubble),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -436,7 +473,7 @@ private fun MediaContent(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Default.PlayArrow,
+                    Icons.Rounded.PlayArrow,
                     contentDescription = "Play",
                     tint = Color.White,
                     modifier = Modifier.size(26.dp),
@@ -508,7 +545,7 @@ private fun FileCard(
                 )
             } else {
                 Icon(
-                    Icons.Default.InsertDriveFile,
+                    Icons.Rounded.InsertDriveFile,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(19.dp),
@@ -555,7 +592,7 @@ private fun TicketCard(message: ChatMessageEntity, textColor: Color, onAssign: (
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                Icons.Default.ConfirmationNumber,
+                Icons.Rounded.ConfirmationNumber,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(15.dp),
@@ -624,7 +661,7 @@ private fun AlertCard(message: ChatMessageEntity) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.WarningAmber,
+                    Icons.Rounded.WarningAmber,
                     contentDescription = null,
                     tint = accent,
                     modifier = Modifier.size(15.dp),
@@ -711,7 +748,7 @@ private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
                 )
             } else {
                 Icon(
-                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play voice note",
                     tint = textColor,
                     modifier = Modifier.size(19.dp),
@@ -721,21 +758,38 @@ private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
         Spacer(Modifier.width(8.dp))
 
         Column {
-            // A plain progress line rather than a waveform: a waveform has to be
-            // decoded from the audio before it can be drawn, which is real work
-            // per bubble for decoration that tells the listener nothing.
-            LinearProgressIndicator(
-                progress = { if (isPlaying) VoicePlayer.progress else 0f },
-                color = textColor,
-                trackColor = textColor.copy(alpha = 0.22f),
-                modifier = Modifier.width(120.dp).height(3.dp),
+            VoiceMeter(
+                progress = if (isPlaying) VoicePlayer.progress else 0f,
+                tint = textColor,
+                modifier = Modifier.width(128.dp).height(20.dp),
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                formatDuration(message.durationMs),
-                style = MaterialTheme.typography.labelSmall,
-                color = mutedOn(textColor),
-            )
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    formatDuration(message.durationMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedOn(textColor),
+                )
+                // Only on the note that is playing. A speed chip on all forty
+                // voice notes in a breakdown thread is forty controls for a
+                // setting that is global anyway.
+                if (isPlaying) {
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        color = textColor.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(7.dp),
+                        modifier = Modifier.clickable { VoicePlayer.cycleSpeed() },
+                    ) {
+                        Text(
+                            speedLabel(VoicePlayer.speed),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
         }
         // Transcript arrives later from speech-to-text; shown inline when present.
         message.transcript?.takeIf { it.isNotBlank() }?.let {
@@ -746,6 +800,55 @@ private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
                 color = mutedOn(textColor),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** "1×", "1.5×", "2×" — no trailing zero on the whole numbers. */
+private fun speedLabel(speed: Float): String =
+    if (speed % 1f == 0f) "${speed.toInt()}×" else "${speed}×"
+
+/**
+ * The bar meter behind a voice note.
+ *
+ * Deliberately **not** a waveform of the audio. Drawing a real one means
+ * decoding the note before it can be displayed — per bubble, for every note in
+ * the thread, most of which will never be played. The alternative some apps take
+ * is to generate bar heights from a hash of the message id, which looks like a
+ * waveform and is not one: it shows the reader a picture of the audio that has
+ * no relationship to the audio. That is a small lie told very often, so this
+ * does neither.
+ *
+ * What it is instead is an honest position indicator with the *shape* of a
+ * waveform — uniform bars that fill as the note plays. It reads at a glance, it
+ * costs one `Canvas` draw, and it never claims to know something it does not.
+ * The live waveform during recording is a different matter: there the amplitude
+ * is real, measured from the microphone, and is drawn as such.
+ */
+@Composable
+private fun VoiceMeter(progress: Float, tint: Color, modifier: Modifier = Modifier) {
+    val played = tint
+    val pending = tint.copy(alpha = 0.24f)
+    Canvas(modifier) {
+        val barW = 2.5.dp.toPx()
+        val gap = 2.5.dp.toPx()
+        val count = ((size.width + gap) / (barW + gap)).toInt().coerceAtLeast(1)
+        val filled = (count * progress).toInt()
+        for (i in 0 until count) {
+            // A gentle rise and fall across the run rather than a flat block, so
+            // it reads as a sound rather than as a loading bar. Fixed by index,
+            // so it does not shimmer as playback advances.
+            val curve = 0.42f + 0.58f * kotlin.math.sin(Math.PI * (i + 0.5) / count).toFloat()
+            val h = size.height * curve
+            drawRoundRect(
+                color = if (i <= filled) played else pending,
+                topLeft = androidx.compose.ui.geometry.Offset(
+                    x = i * (barW + gap),
+                    y = (size.height - h) / 2f,
+                ),
+                size = androidx.compose.ui.geometry.Size(barW, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2f),
             )
         }
     }

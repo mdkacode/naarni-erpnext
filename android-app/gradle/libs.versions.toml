@@ -15,7 +15,8 @@ kotlinxSerialization = "1.7.3"
 retrofitSerialization = "1.0.0"
 coroutines = "1.9.0"
 coil = "2.7.0"
-camerax = "1.4.2"          # 1.4.0+ ships 16 KB page-size-aligned native libs
+camerax = "1.4.2"
+mlkitBarcode = "17.3.0"   # bundled model — decodes with no Play Services and no network          # 1.4.0+ ships 16 KB page-size-aligned native libs
 playLocation = "21.3.0"
 securityCrypto = "1.1.0-alpha06"
 datastore = "1.1.1"
@@ -23,9 +24,16 @@ googleServices = "4.4.2"
 firebaseBom = "33.5.1"
 # Chat module. Room is the client's single source of truth, WorkManager carries
 # the resumable uploads, Paging3's maxSize is the OOM guard on long threads.
-# ~960 KB total against the < 12 MB budget; media3/ExoPlayer deliberately not
-# added — video opens in an external viewer for now.
+#
+# media3 was deliberately left out while video only ever opened in an external
+# viewer. It is in now because chat records and sends video, and both halves of
+# that need it: Transformer to get a 4K clip off the phone down to something a
+# depot's uplink can move, and ExoPlayer to play the result back through our own
+# authenticated OkHttp stack — the framework MediaPlayer has its own HTTP client
+# with no access to the session cookie, which is the exact bug that stopped
+# voice notes playing.
 room = "2.6.1"
+media3 = "1.4.1"
 ksp = "2.0.20-1.0.25"          # must track the Kotlin version exactly
 work = "2.9.1"
 paging = "3.3.2"
@@ -62,6 +70,13 @@ camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "
 camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
+media3-effect = { group = "androidx.media3", name = "media3-effect", version.ref = "media3" }
+media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
+mlkit-barcode = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
 play-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playLocation" }
 
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }

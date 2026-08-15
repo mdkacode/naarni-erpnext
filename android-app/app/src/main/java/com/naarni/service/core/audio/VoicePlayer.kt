@@ -41,9 +41,49 @@ object VoicePlayer {
     var progress by mutableStateOf(0f)
         private set
 
+    /**
+     * Playback rate, remembered across notes.
+     *
+     * Deliberately sticky and process-wide. Someone working through a backlog of
+     * voice notes wants to hear all of them at their chosen speed, and a control
+     * that resets to 1× for every bubble is one they will press once and never
+     * find useful. The cycle stops at 2× because AAC speech beyond that stops
+     * being comprehensible.
+     */
+    var speed by mutableStateOf(1f)
+        private set
+
+    /** Cycles 1× → 1.5× → 2× → 1×, applying immediately if something is playing. */
+    fun cycleSpeed() {
+        speed = when {
+            speed < 1.25f -> 1.5f
+            speed < 1.75f -> 2f
+            else -> 1f
+        }
+        val mp = player ?: return
+        // Only legal while started; setting it on a paused or prepared player
+        // throws, and on some OEM builds silently restarts playback.
+        runCatching {
+            if (mp.isPlaying) mp.playbackParams = mp.playbackParams.setSpeed(speed)
+        }
+    }
+
     private var player: MediaPlayer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var job: Job? = null
+
+    /**
+     * Called when a note reaches its end, with the id that finished.
+     *
+     * The hook exists so the thread screen can play the next voice note in the
+     * run without this object having to know what a conversation is — someone
+     * catching up on six notes from a breakdown should not have to tap six
+     * times, and the alternative was teaching the player to read Room.
+     *
+     * Set by the screen while it is composed and cleared when it leaves, so a
+     * note finishing in the background falls back to simply stopping.
+     */
+    var onFinished: ((String) -> Unit)? = null
 
     /** Toggle: playing the note that is already playing stops it. */
     fun toggle(context: Context, id: String, source: String) {
@@ -87,9 +127,17 @@ object VoicePlayer {
         }
         val ok = runCatching {
             mp.setDataSource(file.absolutePath)
-            mp.setOnCompletionListener { stop() }
+            mp.setOnCompletionListener { onFinished?.invoke(id) ?: stop() }
             mp.setOnErrorListener { _, _, _ -> stop(); true }
-            mp.setOnPreparedListener { it.start() }
+            mp.setOnPreparedListener {
+                it.start()
+                // After start(), never before: setting playbackParams on a
+                // prepared-but-not-started player begins playback on most
+                // devices, which produced a note that played twice.
+                if (speed != 1f) {
+                    runCatching { it.playbackParams = it.playbackParams.setSpeed(speed) }
+                }
+            }
             mp.prepareAsync()
             true
         }.getOrDefault(false)

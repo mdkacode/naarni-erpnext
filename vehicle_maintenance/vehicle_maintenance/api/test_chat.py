@@ -15,7 +15,6 @@ import types
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-
 from frappe.utils import cint
 
 from vehicle_maintenance.api import chat, chat_upload
@@ -1212,6 +1211,10 @@ class TestChatReceiptBroadcast(ChatTestBase):
 	def _receipts(self):
 		return [p["message"] for p in self.published]
 
+	def _to_user(self, user):
+		"""The receipts addressed to one person's own socket."""
+		return [p["message"] for p in self.published if p.get("user") == user]
+
 	def test_reading_publishes_to_the_room(self):
 		self._send(self.alice, "did you get this")
 		self.published.clear()
@@ -1219,10 +1222,29 @@ class TestChatReceiptBroadcast(ChatTestBase):
 		frappe.set_user(self.bob)
 		chat.mark_read(room=self.room, seq=1)
 
-		self.assertEqual(len(self.published), 1)
-		event = self.published[0]
-		self.assertEqual(event["docname"], self.room)
-		self.assertEqual(event["message"]["read_upto"], 1)
+		doc_room = [p for p in self.published if p.get("docname") == self.room]
+		self.assertEqual(len(doc_room), 1)
+		self.assertEqual(doc_room[0]["message"]["read_upto"], 1)
+
+	def test_a_receipt_also_reaches_a_sender_who_left_the_thread(self):
+		"""The doc room alone is not enough, and this is where ticks were lost.
+
+		Only a client with that exact thread on screen is subscribed to the doc
+		room. A sender who has gone back to the conversation list — which is
+		where people actually look at ticks — unsubscribed on the way out, so
+		their ticks froze until the next `list_rooms`. Every socket joins its own
+		user room on connect, so the per-member copy reaches them anywhere.
+		"""
+		self._send(self.alice, "did you get this")
+		self.published.clear()
+
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=1)
+
+		mine = self._to_user(self.alice)
+		self.assertEqual(len(mine), 1)
+		self.assertEqual(mine[0]["read_upto"], 1)
+		self.assertEqual(mine[0]["room"], self.room)
 
 	def test_a_repeated_mark_read_says_nothing(self):
 		# A thread left open re-marks the same seq on every foreground. None of
@@ -1337,14 +1359,37 @@ class TestChatLastSeen(ChatTestBase):
 		self.assertIn(self.bob, chat.heartbeat()["data"]["last_seen"])
 
 	def test_the_write_is_throttled(self):
+		# `seen_at`, not `last_seen`. Watching the wrong column here made this
+		# test vacuous — it passed with the throttle disabled entirely, because
+		# the heartbeat was writing one column while the assertion read another,
+		# and it only ran at all because a dropped `last_seen` column lingered
+		# in this database from before the rename. On a fresh site it errored.
 		frappe.set_user(self.bob)
 		chat.heartbeat()
 
 		sentinel = "2020-01-01 00:00:00"
-		frappe.db.set_value("VM Chat Presence", self.bob, "last_seen", sentinel, update_modified=False)
+		frappe.db.set_value("VM Chat Presence", self.bob, "seen_at", sentinel, update_modified=False)
 		chat.heartbeat()
 
-		self.assertEqual(str(frappe.db.get_value("VM Chat Presence", self.bob, "last_seen")), sentinel)
+		self.assertEqual(str(frappe.db.get_value("VM Chat Presence", self.bob, "seen_at")), sentinel)
+
+	def test_the_throttle_is_what_holds_the_write_back(self):
+		"""The negative half: with the window closed, the beat does write.
+
+		Without this the test above passes just as happily against a heartbeat
+		that never persists anything at all.
+		"""
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+
+		sentinel = "2020-01-01 00:00:00"
+		frappe.db.set_value("VM Chat Presence", self.bob, "seen_at", sentinel, update_modified=False)
+		# Forget that we recently wrote, which is exactly what the passage of
+		# PRESENCE_PERSIST_SECONDS does.
+		frappe.cache().hdel(chat._PERSIST_KEY, self.bob)
+		chat.heartbeat()
+
+		self.assertNotEqual(str(frappe.db.get_value("VM Chat Presence", self.bob, "seen_at")), sentinel)
 
 	def test_hiding_it_withholds_the_time_but_not_the_dot(self):
 		frappe.set_user(self.bob)
@@ -1395,9 +1440,7 @@ class TestDeliveryReceipts(ChatTestBase):
 
 	def _send_from_alice(self) -> int:
 		frappe.set_user(self.alice)
-		sent = chat.send_message(
-			room=self.room, body="tick", client_id=frappe.generate_hash(length=12)
-		)
+		sent = chat.send_message(room=self.room, body="tick", client_id=frappe.generate_hash(length=12))
 		return cint(sent["data"]["message"]["seq"])
 
 	def _marks(self) -> tuple:
@@ -1414,16 +1457,34 @@ class TestDeliveryReceipts(ChatTestBase):
 		self.assertEqual(self._marks(), (0, 0))
 
 	def test_opening_the_thread_marks_it_delivered(self):
-		# The regression this class exists for. Fetching history *is* delivery;
-		# before this, only `sync` said so.
+		# Opening a thread runs a sync (ChatViewModel.openThread), and it is the
+		# sync that records delivery. Asserted through sync rather than through
+		# list_messages: see the test below for why marking inside the history
+		# fetch cannot work.
 		seq = self._send_from_alice()
 		frappe.set_user(self.bob)
-		chat.list_messages(room=self.room)
+		chat.sync(cursors={})
 
 		delivered, read = self._marks()
 
 		self.assertEqual(delivered, seq)
 		self.assertEqual(read, 0)
+
+	def test_fetching_history_does_not_mark_delivery(self):
+		"""list_messages must stay a read, however tempting it is.
+
+		The client fetches it with GET, and Frappe rolls back the transaction
+		for every safe method, so a cursor advanced in there is discarded on the
+		way out — verified against the running bench, where a GET left the
+		member row at delivered 0 while the POST endpoint moved it to 1. A test
+		calling the function directly would never notice, because there is no
+		request to roll back; hence this one, which locks the decision in.
+		"""
+		self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.list_messages(room=self.room)
+
+		self.assertEqual(self._marks(), (0, 0))
 
 	def test_delivery_does_not_imply_read(self):
 		# Collapsing the two would turn every push into a false blue tick.
@@ -1482,15 +1543,65 @@ class TestDeliveryReceipts(ChatTestBase):
 
 		self.assertEqual(delivered, 0)
 
-	def test_paging_backwards_still_reports_the_highest_page_seq(self):
+	def test_delivery_reflects_what_the_device_holds_not_the_newest_message(self):
 		first = self._send_from_alice()
 		second = self._send_from_alice()
 		frappe.set_user(self.bob)
-		chat.list_messages(room=self.room, before_seq=second)
+		# The device acknowledges only what it actually received — a client that
+		# has paged back to an older message has not thereby received the newer
+		# one, and must not claim to have.
+		chat.mark_delivered(room=self.room, seq=first)
 
 		delivered, _ = self._marks()
 
-		# The backwards page contains `first` only; delivery reflects what was
-		# actually handed over, not the newest message in the room.
 		self.assertEqual(delivered, first)
 		self.assertLess(delivered, second)
+
+	def test_a_sync_cursor_is_itself_a_delivery_receipt(self):
+		"""The repair path, and the one that was missing.
+
+		A device handed a message over the socket or a push, whose ack was lost
+		with the connection that carried it, already holds the message — so the
+		old sync found nothing newer, returned an empty delta and recorded
+		nothing. The sender sat on one tick while the recipient read it. The
+		cursor is the client stating what it holds, and a device cannot hold a
+		message it never received, so every sync now repairs the receipt.
+		"""
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		out = chat.sync(cursors={self.room: seq})
+
+		# Nothing to hand over for this room: the case the old code did not cover.
+		# Asserted per-room rather than on the whole payload, which also carries
+		# any other conversation these fixtures left Bob a member of.
+		self.assertNotIn(self.room, out["data"]["rooms"])
+		self.assertEqual(self._marks()[0], seq)
+
+	def test_a_cursor_cannot_claim_a_message_that_does_not_exist(self):
+		# Cursors are client-supplied. A delivery for a seq the room has not
+		# reached would tick a message before anybody had sent it.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.sync(cursors={self.room: seq + 500})
+
+		self.assertEqual(self._marks()[0], seq)
+
+	def test_a_reinstalled_client_does_not_undeliver_what_it_had(self):
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+		# A wiped database syncs from zero again. That is not evidence the
+		# messages were never received.
+		chat.sync(cursors={self.room: 0})
+
+		self.assertEqual(self._marks()[0], seq)
+
+	def test_a_cursor_for_a_room_you_are_not_in_is_ignored(self):
+		# sync only ever walks the caller's own rooms, so a forged cursor for
+		# somebody else's conversation has nothing to write to.
+		seq = self._send_from_alice()
+		frappe.set_user(self.mallory)
+		out = chat.sync(cursors={self.room: seq})
+
+		self.assertNotIn(self.room, out["data"]["rooms"])
+		self.assertEqual(self._marks(), (0, 0))

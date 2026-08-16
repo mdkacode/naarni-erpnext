@@ -54,9 +54,18 @@ fun ChatLifecycle(vm: ChatViewModel) {
                     // Resync regardless of socket health — the cursor, not the
                     // connection, is the source of truth about what we missed.
                     vm.refresh()
+                    // Presence follows the same signal as the socket: a phone in
+                    // a pocket is not somebody who is reachable, and claiming
+                    // otherwise is worse than saying nothing.
+                    vm.startPresence()
                 }
 
                 Lifecycle.Event.ON_STOP -> {
+                    // Stopped immediately rather than on the grace timer. The
+                    // socket is worth holding through a screen glance; a
+                    // heartbeat is a request every thirty seconds, and thirty
+                    // seconds of a stale green dot costs nothing to avoid.
+                    vm.stopPresence()
                     disconnectJob?.cancel()
                     disconnectJob = scope.launch {
                         delay(GRACE_MS)
@@ -90,12 +99,18 @@ fun ChatLifecycle(vm: ChatViewModel) {
             owner.lifecycle.removeObserver(observer)
             disconnectJob?.cancel()
             runCatching { cm?.unregisterNetworkCallback(netCallback) }
+            vm.stopPresence()
             socket.disconnect()
         }
     }
 
     // First connect once the shell is composed and we know there is a session.
-    LaunchedEffect(Unit) { socket.connect() }
+    // ON_START does not fire for a process that is already started when the
+    // shell composes, so presence is kicked off here as well as in the observer.
+    LaunchedEffect(Unit) {
+        socket.connect()
+        vm.startPresence()
+    }
 }
 
 private const val GRACE_MS = 30_000L

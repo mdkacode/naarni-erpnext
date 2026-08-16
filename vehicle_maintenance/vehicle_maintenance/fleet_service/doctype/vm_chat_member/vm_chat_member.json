@@ -1,58 +1,66 @@
 {
-  "name": "VM Chat Member",
-  "module": "Fleet Service",
-  "doctype": "DocType",
-  "istable": 1,
-  "editable_grid": 1,
-  "engine": "InnoDB",
-  "description": "One participant of a VM Chat Room. `last_read_seq` is the per-user read cursor the unread badge is computed from.",
-  "fields": [
-    {
-      "fieldname": "user",
-      "label": "User",
-      "fieldtype": "Link",
-      "options": "User",
-      "reqd": 1,
-      "in_list_view": 1,
-      "columns": 4
-    },
-    {
-      "fieldname": "member_role",
-      "label": "Role",
-      "fieldtype": "Select",
-      "options": "Member\nAdmin",
-      "default": "Member",
-      "in_list_view": 1,
-      "columns": 2,
-      "description": "Admins can add/remove members and rename the room."
-    },
-    {
-      "fieldname": "last_read_seq",
-      "label": "Last Read Seq",
-      "fieldtype": "Int",
-      "default": "0",
-      "in_list_view": 1,
-      "columns": 2,
-      "description": "Highest message seq this user has read. Unread = room.last_seq - this."
-    },
-    {
-      "fieldname": "muted",
-      "label": "Muted",
-      "fieldtype": "Check",
-      "default": "0",
-      "in_list_view": 1,
-      "columns": 1
-    },
-    {
-      "fieldname": "notify_push",
-      "label": "Push",
-      "fieldtype": "Check",
-      "default": "1",
-      "columns": 1,
-      "description": "Send FCM for messages in this room. Independent of `muted`, which only silences the in-app badge."
-    }
-  ],
-  "permissions": [],
-  "sort_field": "idx",
-  "sort_order": "ASC"
+ "name": "VM Chat Member",
+ "module": "Fleet Service",
+ "doctype": "DocType",
+ "istable": 1,
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "description": "One participant of a VM Chat Room. `last_read_seq` is the per-user read cursor the unread badge is computed from.",
+ "fields": [
+  {
+   "fieldname": "user",
+   "label": "User",
+   "fieldtype": "Link",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 4
+  },
+  {
+   "fieldname": "member_role",
+   "label": "Role",
+   "fieldtype": "Select",
+   "options": "Member\nAdmin",
+   "default": "Member",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Admins can add/remove members and rename the room."
+  },
+  {
+   "fieldname": "last_read_seq",
+   "label": "Last Read Seq",
+   "fieldtype": "Int",
+   "default": "0",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Highest message seq this user has read. Unread = room.last_seq - this."
+  },
+  {
+   "fieldname": "last_delivered_seq",
+   "fieldtype": "Int",
+   "label": "Last Delivered Seq",
+   "non_negative": 1,
+   "read_only": 1,
+   "description": "Highest seq this member's device has actually pulled. Drives the second tick."
+  },
+  {
+   "fieldname": "muted",
+   "label": "Muted",
+   "fieldtype": "Check",
+   "default": "0",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "notify_push",
+   "label": "Push",
+   "fieldtype": "Check",
+   "default": "1",
+   "columns": 1,
+   "description": "Send FCM for messages in this room. Independent of `muted`, which only silences the in-app badge."
+  }
+ ],
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC"
 }

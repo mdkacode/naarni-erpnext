@@ -41,7 +41,33 @@ class NaarniMessagingService : FirebaseMessagingService() {
         val body = message.notification?.body ?: data["body"] ?: data["message"] ?: ""
         val route = data["deeplink"] ?: data["route"] ?: data["click_action"] ?: data["link"]
 
+        // Chat gets its own tray per conversation, styled as a conversation and
+        // carrying a reply field. Everything else keeps the flat alert shape.
+        if (data["type"] == "chat") {
+            val room = data["room"].orEmpty()
+            val shown = ChatNotifications.show(
+                context = this,
+                room = room,
+                roomTitle = data["room_title"].orEmpty().ifBlank { title },
+                // The server pre-formats "Author: preview" for the generic path;
+                // MessagingStyle wants them apart, so prefer the split fields
+                // and fall back to the combined one.
+                authorName = data["author_name"] ?: body.substringBefore(":", "").trim(),
+                body = data["preview"] ?: body.substringAfter(": ", body),
+                mention = data["mention"] == "1",
+            )
+            // A suppressed tray still needs the message pulled down, so opening
+            // the app later does not show a gap.
+            if (!shown) syncQuietly()
+            return
+        }
+
         notify(title, body, route)
+    }
+
+    /** Pull whatever the push was announcing, so Room is current either way. */
+    private fun syncQuietly() {
+        scope.launch { runCatching { appContainer.chatRepo.sync() } }
     }
 
     private fun notify(title: String, body: String, route: String?) {

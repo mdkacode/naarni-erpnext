@@ -3,6 +3,7 @@ package com.naarni.service.ui.chat
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.naarni.service.core.media.ImageScaler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -19,12 +20,28 @@ import java.util.UUID
  */
 object Attachments {
 
-    /** Types the chat backend's allow-list accepts. */
-    private val SUPPORTED = setOf(
-        "image/jpeg", "image/png", "image/webp",
-        "video/mp4", "video/quicktime",
-        "audio/mp4", "audio/aac", "audio/mpeg", "audio/ogg", "audio/opus",
-        "application/pdf",
+    /**
+     * The only things chat refuses.
+     *
+     * Mirrors the server's deny-list so the app can say no immediately rather
+     * than after copying 400 MB to disk. Everything else — spreadsheets, CAD
+     * exports, diagnostic logs, zips — goes, because an allow-list means
+     * someone hits "cannot be sent" for an ordinary work document and goes back
+     * to WhatsApp.
+     */
+    private val BLOCKED_TYPES = setOf(
+        "application/vnd.android.package-archive",
+        "application/x-msdownload",
+        "application/x-msdos-program",
+        "application/x-executable",
+        "application/x-sh",
+        "application/x-shellscript",
+        "text/x-shellscript",
+        "application/x-dosexec",
+    )
+
+    private val BLOCKED_EXTENSIONS = setOf(
+        "apk", "apex", "dex", "exe", "msi", "bat", "cmd", "com", "scr", "sh", "bash",
     )
 
     data class Picked(val file: File, val contentType: String, val kind: String, val displayName: String)
@@ -32,17 +49,17 @@ object Attachments {
     /**
      * Copy [uri] into `filesDir/chat_outbox` and classify it.
      *
-     * Returns null when the type is not one the server will accept, so the UI
-     * can say so instead of queueing an upload that is guaranteed to be
-     * rejected at commit.
+     * Returns null only for something the server would refuse anyway, so the UI
+     * can say so up front instead of copying the bytes and then failing at
+     * commit.
      */
     suspend fun copyToOutbox(context: Context, uri: Uri): Picked? = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val rawType = resolver.getType(uri) ?: "application/octet-stream"
         val contentType = normalise(rawType)
-        if (contentType !in SUPPORTED) return@withContext null
-
         val displayName = queryName(context, uri) ?: "attachment"
+        if (isBlocked(contentType, displayName)) return@withContext null
+
         val outbox = File(context.filesDir, "chat_outbox").apply { mkdirs() }
         val dest = File(outbox, "${UUID.randomUUID()}_${displayName.take(60).replace('/', '_')}")
 
@@ -50,6 +67,12 @@ object Attachments {
         resolver.openInputStream(uri)?.use { input ->
             dest.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
         } ?: return@withContext null
+
+        // Shrunk here, before it is queued, rather than in the upload worker. A
+        // photo waiting on wifi should already be its final size, so that what
+        // the outbox is holding is what will actually go over the wire — and so
+        // a retry never re-does the work.
+        ImageScaler.scaleInPlace(dest, contentType)
 
         Picked(
             file = dest,
@@ -63,12 +86,16 @@ object Attachments {
     fun fromCapture(file: File): Picked =
         Picked(file = file, contentType = "image/jpeg", kind = "image", displayName = file.name)
 
+    /** Mirrors the server's `_kind_for`, so the optimistic row matches the acked one. */
     fun kindFor(contentType: String): String = when {
         contentType.startsWith("image/") -> "image"
         contentType.startsWith("video/") -> "video"
         contentType.startsWith("audio/") -> "audio"
-        else -> "image" // PDFs render as a document card
+        else -> "file"
     }
+
+    private fun isBlocked(contentType: String, displayName: String): Boolean =
+        contentType in BLOCKED_TYPES || displayName.substringAfterLast('.', "").lowercase() in BLOCKED_EXTENSIONS
 
     /** Strip any `;charset=` suffix and normalise the couple of aliases we see. */
     private fun normalise(raw: String): String = when (val t = raw.substringBefore(';').trim().lowercase()) {

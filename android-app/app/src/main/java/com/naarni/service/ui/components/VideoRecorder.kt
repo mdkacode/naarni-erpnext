@@ -1,0 +1,272 @@
+package com.naarni.service.ui.components
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
+import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
+import java.io.File
+import java.util.concurrent.Executors
+
+/**
+ * Full-screen video capture for chat.
+ *
+ * **Recorded small rather than shrunk afterwards.** The recorder is pinned to
+ * 720p and a ~90-second ceiling, so what lands on disk is already close to what
+ * goes over the wire. Transcoding a 4K clip down costs a minute of CPU and a
+ * generation of quality; never producing one costs nothing. The compressor
+ * still exists for clips picked out of the gallery, which arrive at whatever
+ * size the phone's own camera app chose.
+ *
+ * Unlike [StampingCamera] the frames are not stamped. Burning a legible overlay
+ * into every frame needs a video effect pipeline, and a stamp that is only on
+ * the first frame is worse than none — it implies the whole clip is covered.
+ * The message itself still carries who sent it and when.
+ */
+@Composable
+fun VideoRecorderScreen(
+    onRecorded: (File, Long) -> Unit,
+    onClose: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val executor = remember { Executors.newSingleThreadExecutor() }
+
+    /**
+     * Audio is part of the point — a technician narrating what the camera is
+     * looking at is most of a clip's value — so it is requested up front rather
+     * than at the moment of recording.
+     */
+    fun granted(permission: String) =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    var hasCamera by remember { mutableStateOf(granted(Manifest.permission.CAMERA)) }
+    var hasMic by remember { mutableStateOf(granted(Manifest.permission.RECORD_AUDIO)) }
+
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        hasCamera = result[Manifest.permission.CAMERA] ?: hasCamera
+        hasMic = result[Manifest.permission.RECORD_AUDIO] ?: hasMic
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasCamera || !hasMic) {
+            permLauncher.launch(
+                arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
+            )
+        }
+    }
+
+    if (!hasCamera) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Camera access is needed to record a video.")
+                Button(
+                    onClick = {
+                        permLauncher.launch(
+                            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
+                        )
+                    },
+                    modifier = Modifier.padding(top = 12.dp),
+                ) { Text("Grant access") }
+            }
+        }
+        return
+    }
+
+    val recorder = remember {
+        Recorder.Builder()
+            // HD is 720p. FallbackStrategy matters on the cheap handsets this
+            // ships to: several do not offer HD on the back camera at all, and
+            // without a fallback binding simply fails and the screen is black.
+            .setQualitySelector(
+                QualitySelector.from(
+                    Quality.HD,
+                    androidx.camera.video.FallbackStrategy.lowerQualityOrHigherThan(Quality.HD),
+                ),
+            )
+            .setExecutor(executor)
+            .build()
+    }
+    val videoCapture = remember { VideoCapture.withOutput(recorder) }
+
+    var recording by remember { mutableStateOf<Recording?>(null) }
+    var seconds by remember { mutableIntStateOf(0) }
+    var target by remember { mutableStateOf<File?>(null) }
+
+    // The clock is driven here rather than off recording events, because
+    // RecordEvent.Status arrives on the encoder's own schedule and stutters
+    // visibly when the encoder is busy — which is exactly while recording.
+    LaunchedEffect(recording) {
+        if (recording == null) return@LaunchedEffect
+        seconds = 0
+        while (seconds < MAX_SECONDS) {
+            delay(1000)
+            seconds += 1
+        }
+        // The ceiling is enforced by stopping, not by refusing to start. A clip
+        // cut off at ninety seconds is still a usable clip; one that never
+        // started because someone held the button too long is not.
+        recording?.stop()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            recording?.stop()
+            executor.shutdown()
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                val previewView = PreviewView(ctx)
+                val providerFuture = ProcessCameraProvider.getInstance(ctx)
+                providerFuture.addListener({
+                    val provider = providerFuture.get()
+                    val preview = Preview.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
+                    provider.unbindAll()
+                    provider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        videoCapture,
+                    )
+                }, ContextCompat.getMainExecutor(ctx))
+                previewView
+            },
+        )
+
+        if (recording != null) {
+            Row(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 56.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0xCCE53935))
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(Color.White))
+                Text(
+                    "%d:%02d".format(seconds / 60, seconds % 60),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 44.dp, start = 24.dp, end = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Button(onClick = { recording?.stop(); onClose() }) { Text("Close") }
+
+            // One disc, always the same size, so the hit target does not shrink
+            // out from under a thumb the moment recording starts. Only the inner
+            // shape changes: a circle to start, a square to stop.
+            Box(
+                Modifier
+                    .size(76.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .clickable {
+                        val active = recording
+                        if (active != null) {
+                            active.stop()
+                        } else {
+                            val outbox = File(context.filesDir, "chat_outbox").apply { mkdirs() }
+                            val file = File(outbox, "video_${System.currentTimeMillis()}.mp4")
+                            target = file
+                            val pending = recorder
+                                .prepareRecording(context, FileOutputOptions.Builder(file).build())
+                                .apply { if (hasMic) withAudioEnabled() }
+                            recording = pending.start(
+                                ContextCompat.getMainExecutor(context),
+                            ) { event ->
+                                if (event is VideoRecordEvent.Finalize) {
+                                    val done = target
+                                    val elapsed = seconds
+                                    recording = null
+                                    // A stop we asked for finalises cleanly;
+                                    // anything else leaves a file not worth
+                                    // sending. Hitting the ceiling counts as
+                                    // clean — it stops the same way.
+                                    if (done != null && !event.hasError() && done.length() > 0) {
+                                        onRecorded(done, elapsed * 1000L)
+                                        onClose()
+                                    }
+                                }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .size(if (recording == null) 62.dp else 28.dp)
+                        .clip(if (recording == null) CircleShape else RoundedCornerShape(6.dp))
+                        .background(Color(0xFFE53935)),
+                )
+            }
+
+            // Balances the row so the shutter sits centred.
+            Box(Modifier.size(64.dp))
+        }
+    }
+}
+
+/** ~90 seconds. Long enough to walk around a bus; short enough to send. */
+private const val MAX_SECONDS = 90

@@ -1,6 +1,16 @@
 package com.naarni.service.ui.screens
 
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +33,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,10 +42,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,8 +55,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import com.naarni.service.core.feedback.LocalFeedback
 import com.naarni.service.data.dto.AttendanceDay
 import com.naarni.service.data.dto.DutyState
@@ -79,10 +94,23 @@ import kotlinx.coroutines.launch
 fun DutyCard(vm: AppViewModel, onOpenDuty: () -> Unit) {
     val scope = rememberCoroutineScope()
     val feedback = LocalFeedback.current
+    val context = LocalContext.current
     var duty by remember { mutableStateOf<DutyState?>(null) }
     var busy by remember { mutableStateOf(false) }
     var warnings by remember { mutableStateOf<List<String>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    // Re-read on every punch attempt rather than caching: the engineer may have
+    // granted the permission in Settings since the card was drawn.
+    var permissionTick by remember { mutableIntStateOf(0) }
+    val hasLocation = remember(permissionTick) { vm.roster.hasLocationPermission() }
+
+    var askLocation by remember { mutableStateOf(false) }
+    // Set when the system declines to show its own dialog — the engineer has
+    // already refused twice, and Android will never prompt again from here.
+    var needsSettings by remember { mutableStateOf(false) }
+
+    val activity = context.findActivity()
 
     suspend fun load() {
         runCatching { vm.roster.myDuty() }.onSuccess { duty = it }
@@ -90,6 +118,45 @@ fun DutyCard(vm: AppViewModel, onOpenDuty: () -> Unit) {
     LaunchedEffect(Unit) { load() }
 
     val state = duty ?: return
+
+    fun punch() {
+        val current = duty ?: return
+        scope.launch {
+            busy = true
+            error = null
+            val result = runCatching {
+                if (current.next_action == RosterRepository.ACTION_CHECK_OUT) vm.roster.checkOut()
+                else vm.roster.checkIn()
+            }
+            result
+                .onSuccess {
+                    duty = it.duty
+                    warnings = it.warnings
+                    feedback.success()
+                }
+                .onFailure {
+                    error = it.message ?: "Could not record that. Try again."
+                    feedback.error()
+                }
+            busy = false
+        }
+    }
+
+    // Both are requested together because Android will hand back only the
+    // coarse one if the engineer picks "Approximate", and a punch located to
+    // the nearest block still tells a depot manager what they need to know.
+    val locationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { granted ->
+        permissionTick++
+        val ok = granted.values.any { it }
+        // Denied *and* the system will not ask again — the only remaining route
+        // is Settings, so say so rather than silently doing nothing next time.
+        if (!ok && activity?.canStillPrompt() == false) needsSettings = true
+        // The punch happens either way. An engineer standing at a gate who
+        // declines a permission must still end up recorded as present.
+        punch()
+    }
     // Roles outside the punch list get no card at all rather than a disabled one:
     // a control you can never use is noise on a screen that has to stay scannable.
     if (!state.can_punch) return
@@ -120,38 +187,92 @@ fun DutyCard(vm: AppViewModel, onOpenDuty: () -> Unit) {
                 state = state,
                 busy = busy,
                 onPunch = {
-                    scope.launch {
-                        busy = true
-                        error = null
-                        val result = runCatching {
-                            if (state.next_action == RosterRepository.ACTION_CHECK_OUT) vm.roster.checkOut()
-                            else vm.roster.checkIn()
-                        }
-                        result
-                            .onSuccess {
-                                duty = it.duty
-                                warnings = it.warnings
-                                feedback.success()
-                            }
-                            .onFailure {
-                                error = it.message ?: "Could not record that. Try again."
-                                feedback.error()
-                            }
-                        busy = false
-                    }
+                    permissionTick++
+                    // Ask at the moment it is needed, not on first launch: a
+                    // permission prompt fired during onboarding, before the
+                    // engineer has any idea what it is for, is the one most
+                    // often refused outright.
+                    if (vm.roster.hasLocationPermission()) punch()
+                    else if (activity?.canStillPrompt() != false) askLocation = true
+                    else needsSettings = true
                 },
             )
 
             error?.let { AdvisoryLine(it, isError = true) }
             warnings.forEach { AdvisoryLine(it, isError = false) }
 
-            if (!vm.roster.hasLocationPermission()) {
+            if (!hasLocation) {
                 AdvisoryLine(
                     "Location is off, so your punches will not carry a place. They are still recorded.",
                     isError = false,
+                    action = "Turn on" to {
+                        if (activity?.canStillPrompt() != false) askLocation = true
+                        else needsSettings = true
+                    },
                 )
             }
         }
+    }
+
+    // Google Play requires the reason for location access to be given *before*
+    // the system prompt, and it is the honest thing to do anyway: the engineer
+    // is agreeing to have their whereabouts recorded at work.
+    if (askLocation) {
+        AlertDialog(
+            onDismissRequest = { askLocation = false },
+            icon = { Icon(Icons.Filled.LocationOn, contentDescription = null) },
+            title = { Text("Add your location to this punch?") },
+            text = {
+                Text(
+                    "NaArNi Care records where you check in and out so your depot can " +
+                        "confirm attendance without calling round. The location is read only " +
+                        "at the moment you punch — never in the background.\n\n" +
+                        "You can say no and still check in; the punch is recorded either way, " +
+                        "just without a place.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    askLocation = false
+                    hasAskedLocationBefore = true
+                    locationPermission.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                        ),
+                    )
+                }) { Text("Allow location") }
+            },
+            dismissButton = {
+                TextButton(onClick = { askLocation = false; punch() }) {
+                    Text("Not now")
+                }
+            },
+        )
+    }
+
+    if (needsSettings) {
+        AlertDialog(
+            onDismissRequest = { needsSettings = false },
+            icon = { Icon(Icons.Filled.LocationOff, contentDescription = null) },
+            title = { Text("Location is blocked") },
+            text = {
+                Text(
+                    "Android will not ask again from inside the app. To have your punches " +
+                        "carry a place, turn Location on for NaArNi Care in Settings.\n\n" +
+                        "Your check-ins are still recorded without it.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    needsSettings = false
+                    context.openAppSettings()
+                }) { Text("Open settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { needsSettings = false }) { Text("Not now") }
+            },
+        )
     }
 }
 
@@ -244,7 +365,11 @@ private fun PunchButton(state: DutyState, busy: Boolean, onPunch: () -> Unit) {
 }
 
 @Composable
-private fun AdvisoryLine(text: String, isError: Boolean) {
+private fun AdvisoryLine(
+    text: String,
+    isError: Boolean,
+    action: Pair<String, () -> Unit>? = null,
+) {
     val tint = if (isError) MaterialTheme.colorScheme.error else Warn
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         Icon(
@@ -253,7 +378,60 @@ private fun AdvisoryLine(text: String, isError: Boolean) {
             tint = tint,
             modifier = Modifier.size(16.dp),
         )
-        Text(text, style = MaterialTheme.typography.bodySmall, color = tint)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text, style = MaterialTheme.typography.bodySmall, color = tint)
+            // A warning that names a problem without offering the fix makes the
+            // reader hunt through system settings for it.
+            action?.let { (label, onClick) ->
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable(onClick = onClick),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Whether Android will still show its own permission dialog.
+ *
+ * After two refusals it silently returns "denied" without ever appearing, so a
+ * button wired straight to the launcher would look broken. `false` here means
+ * Settings is the only route left.
+ */
+private fun Activity.canStillPrompt(): Boolean =
+    ActivityCompat.shouldShowRequestPermissionRationale(
+        this,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+    ) || !hasAskedLocationBefore
+
+/**
+ * Whether we have ever asked. `shouldShowRequestPermissionRationale` is false
+ * both before the first ask and after a permanent refusal, so on its own it
+ * cannot tell those apart.
+ */
+private var hasAskedLocationBefore = false
+
+private fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+private fun Context.openAppSettings() {
+    runCatching {
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }
 

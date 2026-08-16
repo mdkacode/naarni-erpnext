@@ -90,7 +90,7 @@ fun OptionalUpdateDialog(message: String?, onUpdate: () -> Unit, onDismiss: () -
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Filled.SystemUpdate, contentDescription = null) },
         title = { Text("Update available") },
-        text = { Text(message?.takeIf { it.isNotBlank() } ?: "A new version of Naarni Service is available.") },
+        text = { Text(message?.takeIf { it.isNotBlank() } ?: "A new version of NaArNi Care is available.") },
         confirmButton = { TextButton(onClick = onUpdate) { Text("Update") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Later") } },
     )

@@ -1,5 +1,6 @@
 package com.naarni.service.ui.chat
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,18 +16,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -34,16 +40,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.naarni.service.core.audio.VoicePlayer
 import com.naarni.service.data.chat.ChatMessageEntity
 import com.naarni.service.data.chat.SendStatus
 import java.text.SimpleDateFormat
@@ -51,6 +60,16 @@ import java.util.Date
 import java.util.Locale
 
 private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+/**
+ * How far every *other* member of the room has got through my messages.
+ *
+ * Room-level rather than per-message because the server keeps one cursor per
+ * member: a message is delivered when everyone's delivery cursor has passed its
+ * seq, and read when everyone's read cursor has. Carrying it per row would mean
+ * rewriting the whole thread every time somebody opened it.
+ */
+data class Receipts(val deliveredUpto: Long = 0, val readUpto: Long = 0)
 
 /**
  * One message row.
@@ -78,6 +97,10 @@ fun MessageBubble(
     modifier: Modifier = Modifier,
     mentionLabels: List<String> = emptyList(),
     onAssignTicket: (String) -> Unit = {},
+    isOpening: Boolean = false,
+    receipts: Receipts = Receipts(),
+    /** Jump to the quoted message. */
+    onOpenQuote: (ChatMessageEntity) -> Unit = {},
 ) {
     // A server-authored notice is about the conversation, not part of it, so it
     // gets no bubble and no side — the same treatment WhatsApp gives "you were
@@ -93,6 +116,9 @@ fun MessageBubble(
     val isMedia = message.kind == "image" || message.kind == "video"
     // No caption → the meta line floats over the photo instead of below it.
     val bare = isMedia && message.body.isBlank()
+    // Plain text can carry the stamp on its last line. A card or an attachment
+    // cannot: the meta would end up beside the card instead of under it.
+    val inlineMeta = message.kind == "text" && message.body.isNotBlank()
 
     // A tail on the outer corner only: cheaper and steadier than drawing a real
     // tail path, and it reads the same at a glance.
@@ -116,7 +142,7 @@ fun MessageBubble(
         modifier = modifier
             .fillMaxWidth()
             .background(selectionBg)
-            .padding(horizontal = 8.dp, vertical = 1.dp),
+            .padding(horizontal = ChatTokens.threadGutter, vertical = 1.dp),
         contentAlignment = if (isMine) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Surface(
@@ -134,12 +160,12 @@ fun MessageBubble(
             // pass per row, and flat bubbles read fine against a tinted canvas.
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
-            modifier = Modifier.widthIn(max = ChatTokens.bubbleMaxWidth),
+            modifier = Modifier.widthIn(max = bubbleMaxWidth),
         ) {
             Column(
                 Modifier.padding(
-                    horizontal = if (bare) 3.dp else 9.dp,
-                    vertical = if (bare) 3.dp else 6.dp,
+                    horizontal = if (bare) 3.dp else ChatTokens.bubblePadH,
+                    vertical = if (bare) 3.dp else ChatTokens.bubblePadV,
                 ),
             ) {
                 if (showAuthor && !isMine) {
@@ -153,18 +179,19 @@ fun MessageBubble(
                     )
                 }
 
-                replyPreview?.let { ReplyQuote(it, textColor) }
+                replyPreview?.let { ReplyQuote(it, textColor) { onOpenQuote(it) } }
 
                 when (message.kind) {
                     "image" -> MediaContent(message, isVideo = false, overlayMeta = bare, onOpen = onOpenMedia) {
-                        MetaRow(message, isMine, Color.White, onRetry)
+                        MetaRow(message, isMine, Color.White, onRetry, receipts = receipts)
                     }
 
                     "video" -> MediaContent(message, isVideo = true, overlayMeta = bare, onOpen = onOpenMedia) {
-                        MetaRow(message, isMine, Color.White, onRetry)
+                        MetaRow(message, isMine, Color.White, onRetry, receipts = receipts)
                     }
 
                     "audio" -> AudioContent(message, textColor)
+                    "file" -> FileCard(message, textColor, isOpening, onOpenMedia)
                     "ticket" -> TicketCard(message, textColor, onAssignTicket)
                     "alert" -> AlertCard(message)
                 }
@@ -172,30 +199,48 @@ fun MessageBubble(
                 // A ticket or alert card already renders its own body.
                 if (message.body.isNotBlank() && message.kind != "ticket" && message.kind != "alert") {
                     if (message.kind != "text") Spacer(Modifier.height(5.dp))
-                    Text(
+                    val rendered =
                         // Only pay for the scan when the message actually names
                         // somebody; the overwhelming majority do not.
                         if (mentionLabels.isEmpty()) {
                             androidx.compose.ui.text.AnnotatedString(message.body)
                         } else {
                             Mentions.annotate(message.body, mentionLabels, mentionTint(isMine))
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = textColor,
-                    )
+                        }
+
+                    if (inlineMeta) {
+                        // Time and ticks tuck in beside the last line rather than
+                        // claiming a line of their own. Weighting the text without
+                        // filling reserves just enough room for the stamp, so it
+                        // lands to the right of the final line whether the message
+                        // is two words or two paragraphs — and a two-word message
+                        // stops being two storeys tall.
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                rendered,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = textColor,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            MetaRow(message, isMine, textColor, onRetry, receipts = receipts)
+                        }
+                    } else {
+                        Text(rendered, style = MaterialTheme.typography.bodyLarge, color = textColor)
+                    }
                 }
 
                 // Tags a technician attached via long-press.
                 message.vehicle?.let {
                     Spacer(Modifier.height(5.dp))
-                    TagChip(Icons.Default.DirectionsBus, it)
+                    TagChip(Icons.Rounded.DirectionsBus, it)
                 }
 
-                if (!bare) {
+                if (!bare && !inlineMeta) {
                     // align(End) rather than fillMaxWidth: filling stretches the
                     // bubble to its full width even for a two-letter message,
                     // which is the least conversational thing a bubble can do.
-                    MetaRow(message, isMine, textColor, onRetry, Modifier.align(Alignment.End))
+                    MetaRow(message, isMine, textColor, onRetry, Modifier.align(Alignment.End), receipts)
                 }
             }
         }
@@ -210,6 +255,7 @@ private fun MetaRow(
     textColor: Color,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    receipts: Receipts = Receipts(),
 ) {
     val muted = mutedOn(textColor)
     // Formatting is not free, and without this it re-runs for every visible row
@@ -217,13 +263,13 @@ private fun MetaRow(
     val stamp = remember(message.createdAt) { timeFmt.format(Date(message.createdAt)) }
 
     Row(
-        modifier.padding(top = 2.dp),
+        modifier,
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (message.geotagged) {
             Icon(
-                Icons.Default.LocationOn,
+                Icons.Rounded.LocationOn,
                 contentDescription = "Location attached",
                 tint = muted,
                 modifier = Modifier.size(11.dp),
@@ -233,23 +279,30 @@ private fun MetaRow(
         Text(stamp, style = MaterialTheme.typography.labelSmall, color = muted)
         if (isMine) {
             Spacer(Modifier.width(4.dp))
-            DeliveryTick(message, muted, onRetry)
+            DeliveryTick(message, muted, onRetry, receipts)
         }
     }
 }
 
 /**
- * Delivery state. Familiar tick grammar, but honest about what we actually
- * know: one tick means the server allocated a seq, two mean every member's read
- * cursor has passed it. There is no "delivered to device" state because nothing
- * in the protocol reports that, and inventing one would be a lie a dispatcher
- * would act on.
+ * Delivery state, in the tick grammar everyone already reads.
+ *
+ * One tick: the server allocated a seq. Two grey: every other member's device
+ * has actually pulled it. Two blue: every one of them has opened the thread
+ * past it. In a group that means the *slowest* member, not the fastest —
+ * otherwise "read" would mean "somebody read it", which is not what a
+ * dispatcher chasing an unanswered instruction needs it to mean.
  */
 @Composable
-private fun DeliveryTick(message: ChatMessageEntity, muted: Color, onRetry: () -> Unit) {
+private fun DeliveryTick(
+    message: ChatMessageEntity,
+    muted: Color,
+    onRetry: () -> Unit,
+    receipts: Receipts,
+) {
     when (message.status) {
         SendStatus.PENDING -> Icon(
-            Icons.Default.Schedule,
+            Icons.Rounded.Schedule,
             contentDescription = "Waiting to send",
             tint = muted,
             modifier = Modifier.size(12.dp),
@@ -262,19 +315,38 @@ private fun DeliveryTick(message: ChatMessageEntity, muted: Color, onRetry: () -
             modifier = Modifier.size(12.dp),
         )
 
-        SendStatus.SENT -> Icon(
-            Icons.Default.Check,
-            contentDescription = "Sent",
-            tint = muted,
-            modifier = Modifier.size(13.dp),
-        )
+        SendStatus.SENT -> {
+            val seq = message.seq ?: 0L
+            when {
+                seq > 0 && seq <= receipts.readUpto -> Icon(
+                    Icons.Rounded.DoneAll,
+                    contentDescription = "Read",
+                    tint = ChatTokens.readTick,
+                    modifier = Modifier.size(14.dp),
+                )
+
+                seq > 0 && seq <= receipts.deliveredUpto -> Icon(
+                    Icons.Rounded.DoneAll,
+                    contentDescription = "Delivered",
+                    tint = muted,
+                    modifier = Modifier.size(14.dp),
+                )
+
+                else -> Icon(
+                    Icons.Rounded.Check,
+                    contentDescription = "Sent",
+                    tint = muted,
+                    modifier = Modifier.size(13.dp),
+                )
+            }
+        }
 
         SendStatus.FAILED -> Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.clickableNoRipple(onRetry),
         ) {
             Icon(
-                Icons.Default.ErrorOutline,
+                Icons.Rounded.ErrorOutline,
                 contentDescription = "Failed to send",
                 tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(13.dp),
@@ -289,7 +361,7 @@ private fun DeliveryTick(message: ChatMessageEntity, muted: Color, onRetry: () -
         }
 
         else -> Icon(
-            Icons.Default.DoneAll,
+            Icons.Rounded.DoneAll,
             contentDescription = "Read",
             tint = ChatTokens.readTick,
             modifier = Modifier.size(13.dp),
@@ -297,14 +369,35 @@ private fun DeliveryTick(message: ChatMessageEntity, muted: Color, onRetry: () -
     }
 }
 
+/**
+ * The quoted message above a reply.
+ *
+ * Tapping it jumps to the original, which is the behaviour that makes replies
+ * worth having at all: without it a quote is a screenshot of context, and the
+ * reader still has to scroll and hunt for what was actually being answered.
+ *
+ * An attachment gets an icon and a word rather than its raw `kind`, because
+ * "Image" is a database value and "Photo" is what the thing is.
+ */
 @Composable
-private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color) {
+private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color, onOpen: () -> Unit) {
     val accent = authorColor(source.author)
+    val (icon, fallback) = when (source.kind) {
+        "image" -> Icons.Rounded.Image to "Photo"
+        "video" -> Icons.Rounded.Videocam to "Video"
+        "audio" -> Icons.Rounded.Mic to "Voice note"
+        "file" -> Icons.Rounded.InsertDriveFile to (source.fileName ?: "Document")
+        "ticket" -> Icons.Rounded.ConfirmationNumber to (source.ticket ?: "Service ticket")
+        else -> null to ""
+    }
+    val summary = source.body.ifBlank { fallback }
+
     Row(
         Modifier
             .padding(bottom = 4.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(onBubble.copy(alpha = 0.07f))
+            .clickable(onClick = onOpen)
             .heightIn(min = 34.dp),
     ) {
         Box(Modifier.width(3.dp).heightIn(min = 34.dp).background(accent))
@@ -315,13 +408,24 @@ private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color) {
                 color = accent,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                source.body.ifBlank { source.kind.replaceFirstChar { it.uppercase() } },
-                style = MaterialTheme.typography.bodySmall,
-                color = mutedOn(onBubble),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                icon?.let {
+                    Icon(
+                        it,
+                        contentDescription = null,
+                        tint = mutedOn(onBubble),
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedOn(onBubble),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -369,7 +473,7 @@ private fun MediaContent(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Default.PlayArrow,
+                    Icons.Rounded.PlayArrow,
                     contentDescription = "Play",
                     tint = Color.White,
                     modifier = Modifier.size(26.dp),
@@ -397,6 +501,76 @@ private fun MediaContent(
 }
 
 /**
+ * A document attachment — anything that is not a photo, video or voice note.
+ *
+ * Name and size only: there is no thumbnail to show and no honest way to
+ * preview a spreadsheet in a bubble, so the card's job is to be unambiguous
+ * about what it is and obviously tappable.
+ */
+@Composable
+private fun FileCard(
+    message: ChatMessageEntity,
+    textColor: Color,
+    isOpening: Boolean,
+    onOpen: () -> Unit,
+) {
+    val meta = listOfNotNull(
+        humanSize(message.fileSize).ifBlank { null },
+        message.fileName?.substringAfterLast('.', "")?.takeIf { it.isNotBlank() }?.uppercase(),
+    ).joinToString(" · ")
+
+    Row(
+        Modifier
+            .widthIn(max = bubbleMaxWidth)
+            .clip(RoundedCornerShape(11.dp))
+            .background(textColor.copy(alpha = 0.06f))
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            // A depot's link can take a while to pull a 40 MB export; without
+            // this the card looks inert and gets tapped again.
+            if (isOpening) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.InsertDriveFile,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f, fill = false)) {
+            Text(
+                message.fileName ?: "Attachment",
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (meta.isNotBlank()) {
+                Spacer(Modifier.height(1.dp))
+                Text(meta, style = MaterialTheme.typography.labelSmall, color = mutedOn(textColor))
+            }
+        }
+    }
+}
+
+/**
  * A shared Service Ticket.
  *
  * The point of sharing one into a thread is that the next action happens here
@@ -411,14 +585,14 @@ private fun TicketCard(message: ChatMessageEntity, textColor: Color, onAssign: (
 
     Column(
         Modifier
-            .widthIn(max = ChatTokens.mediaWidth)
+            .widthIn(max = bubbleMaxWidth)
             .clip(RoundedCornerShape(11.dp))
             .background(textColor.copy(alpha = 0.06f))
             .padding(9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                Icons.Default.ConfirmationNumber,
+                Icons.Rounded.ConfirmationNumber,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(15.dp),
@@ -478,7 +652,7 @@ private fun AlertCard(message: ChatMessageEntity) {
     val critical = head.startsWith("CRITICAL")
     val accent = if (critical) MaterialTheme.colorScheme.error else Color(0xFFF59E0B)
 
-    Row(Modifier.widthIn(max = ChatTokens.mediaWidth).clip(RoundedCornerShape(11.dp))) {
+    Row(Modifier.widthIn(max = bubbleMaxWidth).clip(RoundedCornerShape(11.dp))) {
         Box(Modifier.width(4.dp).heightIn(min = 48.dp).background(accent))
         Column(
             Modifier
@@ -487,7 +661,7 @@ private fun AlertCard(message: ChatMessageEntity) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.WarningAmber,
+                    Icons.Rounded.WarningAmber,
                     contentDescription = null,
                     tint = accent,
                     modifier = Modifier.size(15.dp),
@@ -542,14 +716,81 @@ private fun mentionTint(isMine: Boolean): Color =
 
 @Composable
 private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
+    val context = LocalContext.current
+    val source = message.localPath ?: message.fileUrl?.let { absoluteUrl(it) }
+    val isPlaying = VoicePlayer.playingId == message.clientId
+
+    // Only ticks while this note is the one playing, so an idle thread of forty
+    // voice notes is not running forty timers.
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            VoicePlayer.tick()
+            kotlinx.coroutines.delay(120)
+        }
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-        Icon(Icons.Default.Mic, contentDescription = null, tint = textColor, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(
-            formatDuration(message.durationMs),
-            style = MaterialTheme.typography.bodyMedium,
-            color = textColor,
-        )
+        Box(
+            Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(textColor.copy(alpha = 0.14f))
+                .clickable(enabled = source != null) {
+                    source?.let { VoicePlayer.toggle(context, message.clientId, it) }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (VoicePlayer.loadingId == message.clientId) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = textColor,
+                    modifier = Modifier.size(17.dp),
+                )
+            } else {
+                Icon(
+                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play voice note",
+                    tint = textColor,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+
+        Column {
+            VoiceMeter(
+                progress = if (isPlaying) VoicePlayer.progress else 0f,
+                tint = textColor,
+                modifier = Modifier.width(128.dp).height(20.dp),
+            )
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    formatDuration(message.durationMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedOn(textColor),
+                )
+                // Only on the note that is playing. A speed chip on all forty
+                // voice notes in a breakdown thread is forty controls for a
+                // setting that is global anyway.
+                if (isPlaying) {
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        color = textColor.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(7.dp),
+                        modifier = Modifier.clickable { VoicePlayer.cycleSpeed() },
+                    ) {
+                        Text(
+                            speedLabel(VoicePlayer.speed),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
+        }
         // Transcript arrives later from speech-to-text; shown inline when present.
         message.transcript?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.width(8.dp))
@@ -559,6 +800,55 @@ private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
                 color = mutedOn(textColor),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** "1×", "1.5×", "2×" — no trailing zero on the whole numbers. */
+private fun speedLabel(speed: Float): String =
+    if (speed % 1f == 0f) "${speed.toInt()}×" else "${speed}×"
+
+/**
+ * The bar meter behind a voice note.
+ *
+ * Deliberately **not** a waveform of the audio. Drawing a real one means
+ * decoding the note before it can be displayed — per bubble, for every note in
+ * the thread, most of which will never be played. The alternative some apps take
+ * is to generate bar heights from a hash of the message id, which looks like a
+ * waveform and is not one: it shows the reader a picture of the audio that has
+ * no relationship to the audio. That is a small lie told very often, so this
+ * does neither.
+ *
+ * What it is instead is an honest position indicator with the *shape* of a
+ * waveform — uniform bars that fill as the note plays. It reads at a glance, it
+ * costs one `Canvas` draw, and it never claims to know something it does not.
+ * The live waveform during recording is a different matter: there the amplitude
+ * is real, measured from the microphone, and is drawn as such.
+ */
+@Composable
+private fun VoiceMeter(progress: Float, tint: Color, modifier: Modifier = Modifier) {
+    val played = tint
+    val pending = tint.copy(alpha = 0.24f)
+    Canvas(modifier) {
+        val barW = 2.5.dp.toPx()
+        val gap = 2.5.dp.toPx()
+        val count = ((size.width + gap) / (barW + gap)).toInt().coerceAtLeast(1)
+        val filled = (count * progress).toInt()
+        for (i in 0 until count) {
+            // A gentle rise and fall across the run rather than a flat block, so
+            // it reads as a sound rather than as a loading bar. Fixed by index,
+            // so it does not shimmer as playback advances.
+            val curve = 0.42f + 0.58f * kotlin.math.sin(Math.PI * (i + 0.5) / count).toFloat()
+            val h = size.height * curve
+            drawRoundRect(
+                color = if (i <= filled) played else pending,
+                topLeft = androidx.compose.ui.geometry.Offset(
+                    x = i * (barW + gap),
+                    y = (size.height - h) / 2f,
+                ),
+                size = androidx.compose.ui.geometry.Size(barW, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2f),
             )
         }
     }

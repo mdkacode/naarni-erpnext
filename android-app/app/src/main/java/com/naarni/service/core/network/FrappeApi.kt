@@ -3,6 +3,8 @@ package com.naarni.service.core.network
 import com.naarni.service.data.dto.AlertEventItem
 import com.naarni.service.data.dto.BeginUploadPayload
 import com.naarni.service.data.dto.BusImage
+import com.naarni.service.data.dto.PresencePayload
+import com.naarni.service.data.dto.TypingPayload
 import com.naarni.service.data.dto.ChunkPayload
 import com.naarni.service.data.dto.ChunkStatusPayload
 import com.naarni.service.data.dto.CommitPayload
@@ -585,6 +587,25 @@ interface FrappeApi {
     @GET("api/method/vehicle_maintenance.api.process.my_open_runs")
     suspend fun myOpenProcessRuns(): FrappeWrap<Envelope<List<com.naarni.service.data.dto.OpenRun>>>
 
+    /**
+     * This operator's own inspection record — counts, plus a page of runs.
+     *
+     * Scoped server-side to the calling user, so there is no id to pass and no
+     * way to ask for anyone else's work.
+     */
+    @GET("api/method/vehicle_maintenance.api.process.my_history")
+    suspend fun myProcessHistory(
+        @Query("limit") limit: Int = 30,
+        @Query("offset") offset: Int = 0,
+        @Query("scope") scope: String = "finished",
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessHistory>>
+
+    /** One run as it was filled in, with the photos grouped onto their steps. */
+    @GET("api/method/vehicle_maintenance.api.process.run_report")
+    suspend fun processRunReport(
+        @Query("name") name: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.RunReport>>
+
     // ══════════════════════════════════════════════════════════════════ Chat
 
     @GET("api/method/vehicle_maintenance.api.chat.list_rooms")
@@ -623,12 +644,48 @@ interface FrappeApi {
         @Field("mentions") mentions: String? = null,
     ): FrappeWrap<Envelope<SendPayload>>
 
+    /**
+     * Acknowledge that this device has stored [seq] — the sender's second tick.
+     *
+     * Separate from [chatMarkRead] on purpose: receiving is not reading, and a
+     * message that lands while the app is on another screen is delivered and
+     * unread.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.mark_delivered")
+    suspend fun chatMarkDelivered(
+        @Field("room") room: String,
+        @Field("seq") seq: Long,
+    ): FrappeWrap<Envelope<JsonObject>>
+
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.mark_read")
     suspend fun chatMarkRead(
         @Field("room") room: String,
         @Field("seq") seq: Long,
     ): FrappeWrap<Envelope<MarkReadPayload>>
+
+    /**
+     * Announce that this device is composing in [room], or has stopped.
+     *
+     * Nothing is persisted server-side; the call exists only to fan a realtime
+     * event out to whoever has the thread open.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.set_typing")
+    suspend fun chatSetTyping(
+        @Field("room") room: String,
+        @Field("typing") typing: Int,
+    ): FrappeWrap<Envelope<TypingPayload>>
+
+    /**
+     * Report this device as online and collect who else is.
+     *
+     * Both halves in one call because they run on the same schedule — a client
+     * asking for fresh presence is itself proof of presence.
+     */
+    @POST("api/method/vehicle_maintenance.api.chat.heartbeat")
+    suspend fun chatHeartbeat(): FrappeWrap<Envelope<PresencePayload>>
 
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.set_muted")

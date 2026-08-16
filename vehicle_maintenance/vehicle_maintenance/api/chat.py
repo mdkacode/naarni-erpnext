@@ -357,10 +357,14 @@ def mark_delivered(room: str, seq: int) -> dict:
 
 
 @frappe.whitelist()
-def sync(cursors=None) -> dict:
+def sync(cursors: str | dict | None = None) -> dict:
 	"""Delta sync — the client's correctness path.
 
-	`cursors` is {room_name: highest_seq_held}. Rooms the caller belongs to but
+	`cursors` is {room_name: highest_seq_held}, and arrives either as a dict (a
+	server-side caller) or as a JSON string (over HTTP, where Frappe hands form
+	bodies through unparsed) — `_as_dict` normalises both.
+
+	Rooms the caller belongs to but
 	omits are treated as seq 0, so a fresh install gets recent history for each.
 	Only rooms with something newer appear in the response.
 

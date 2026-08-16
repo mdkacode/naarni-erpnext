@@ -1202,10 +1202,12 @@ class TestChatReceiptBroadcast(ChatTestBase):
 			return self._orig_publish(*args, **kwargs)
 
 		frappe.publish_realtime = capture
-
-	def tearDown(self):
-		frappe.publish_realtime = self._orig_publish
-		super().tearDown()
+		# Undone via addCleanup rather than a tearDown override: CI's semgrep
+		# blocks the override, and addCleanup composes with the base class's own
+		# teardown instead of replacing it. Registered after the patch is applied
+		# and bound to the original, so it restores exactly what it replaced even
+		# if a later setUp step throws.
+		self.addCleanup(setattr, frappe, "publish_realtime", self._orig_publish)
 
 	def _receipts(self):
 		return [p["message"] for p in self.published]

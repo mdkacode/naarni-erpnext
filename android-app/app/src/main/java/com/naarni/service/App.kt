@@ -59,7 +59,10 @@ class App : Application(), ImageLoaderFactory {
                     .build()
             }
             .allowRgb565(true)
-            .crossfade(true)
+            // No crossfade. It puts a 100ms fade in front of every thumbnail,
+            // which on a grid of twenty reads as the whole screen hesitating.
+            // A photo that simply appears feels faster than one that arrives.
+            .crossfade(false)
             .build()
 
     override fun onCreate() {

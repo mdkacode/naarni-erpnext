@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
     entities = [ChatRoomEntity::class, ChatMessageEntity::class, ChatUploadEntity::class],
     // 2: mentions, mentionsMe and alertEvent on a message. No migration is
     // written for it — see the destructive-fallback note below.
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class ChatDatabase : RoomDatabase() {

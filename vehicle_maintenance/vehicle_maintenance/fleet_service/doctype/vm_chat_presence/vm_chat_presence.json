@@ -1,0 +1,49 @@
+{
+ "name": "VM Chat Presence",
+ "module": "Fleet Service",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "field:user",
+ "description": "One row per user holding when they were last reachable. Written by the chat heartbeat, at most once every few minutes per user, and read to render \"last seen\". Deliberately not a child of anything: presence outlives every room the user is in.",
+ "track_changes": 0,
+ "fields": [
+  {
+   "fieldname": "user",
+   "label": "User",
+   "fieldtype": "Link",
+   "options": "User",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "columns": 4
+  },
+  {
+   "fieldname": "seen_at",
+   "label": "Last Seen",
+   "fieldtype": "Datetime",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 3,
+   "description": "Server time of this user's most recent chat heartbeat. Named `seen_at` rather than the obvious `last_seen` on purpose — see the controller."
+  },
+  {
+   "fieldname": "hidden_from_peers",
+   "label": "Hide Last Seen",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "When set, peers are told nothing beyond whether this user is online right now. Presence stays recorded either way — this only governs what is handed out."
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

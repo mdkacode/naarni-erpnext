@@ -18,6 +18,7 @@ Every method returns the app's standard `{success, data, message}` envelope.
 """
 
 import json
+from datetime import datetime
 
 import frappe
 from frappe import _
@@ -213,24 +214,35 @@ def list_rooms() -> dict:
 		limit_page_length=0,
 	)
 
-	cursors = {
-		r["parent"]: r
-		for r in frappe.get_all(
-			"VM Chat Member",
-			filters={"user": user, "parent": ["in", names], "parenttype": "VM Chat Room"},
-			fields=["parent", "last_read_seq", "muted"],
-			limit_page_length=0,
-		)
-	}
-	counts = {}
-	for r in frappe.get_all(
+	# One pass over the member rows instead of three queries.
+	#
+	# The caller's own cursor, the member count, and the receipt marks all come
+	# from the same small set of rows — a room has tens of members, not
+	# thousands — so fetching them once and folding in Python costs one round
+	# trip where separate COUNT and per-user queries cost three.
+	cursors: dict[str, dict] = {}
+	counts: dict[str, int] = {}
+	others_read: dict[str, int] = {}
+	others_delivered: dict[str, int] = {}
+
+	for m in frappe.get_all(
 		"VM Chat Member",
 		filters={"parent": ["in", names], "parenttype": "VM Chat Room"},
-		fields=["parent", "count(name) as n"],
-		group_by="parent",
+		fields=["parent", "user", "last_read_seq", "last_delivered_seq", "muted"],
 		limit_page_length=0,
 	):
-		counts[r["parent"]] = r["n"]
+		parent = m["parent"]
+		counts[parent] = counts.get(parent, 0) + 1
+		if m["user"] == user:
+			cursors[parent] = m
+			continue
+		# The *minimum* across everyone else: a group message is only "read"
+		# once the last person has read it, which is what the two blue ticks
+		# claim. Taking the maximum would turn one reader into "everyone".
+		read = cint(m.get("last_read_seq"))
+		delivered = cint(m.get("last_delivered_seq"))
+		others_read[parent] = min(others_read.get(parent, read), read)
+		others_delivered[parent] = min(others_delivered.get(parent, delivered), delivered)
 
 	# A Direct room's stored title is whatever the creator saw — i.e. the other
 	# person's name from *their* side. Rendering that verbatim would show the
@@ -266,6 +278,15 @@ def list_rooms() -> dict:
 				"last_seq": last_seq,
 				"last_read_seq": last_read,
 				"unread": max(0, last_seq - last_read),
+				# Receipt marks for the caller's *own* messages. Read implies
+				# delivered, so delivered is floored at read: a member whose
+				# delivery cursor lagged would otherwise show a message as read
+				# but not delivered, which the UI would have to special-case.
+				"read_upto": others_read.get(room["name"], 0),
+				"delivered_upto": max(
+					others_delivered.get(room["name"], 0),
+					others_read.get(room["name"], 0),
+				),
 				"muted": bool(cur.get("muted")),
 				"member_count": counts.get(room["name"], 0),
 				"last_message_at": str(room["last_message_at"]) if room.get("last_message_at") else None,
@@ -319,6 +340,7 @@ def sync(cursors=None) -> dict:
 		return {"success": True, "data": {"rooms": {}, "server_time": str(now_datetime())}}
 
 	out: dict[str, dict] = {}
+	delivered: dict[str, int] = {}
 	for room in mine:
 		since = cint(cursors.get(room))
 		last_seq = cint(frappe.db.get_value("VM Chat Room", room, "last_seq"))
@@ -338,8 +360,129 @@ def sync(cursors=None) -> dict:
 			"last_seq": last_seq,
 			"more": bool(rows) and rows[-1]["seq"] < last_seq,
 		}
+		if rows:
+			delivered[room] = cint(rows[-1]["seq"])
 
+	_mark_delivered(user, delivered)
 	return {"success": True, "data": {"rooms": out, "server_time": str(now_datetime())}}
+
+
+def _mark_delivered(user: str, upto: dict[str, int]) -> None:
+	"""Advance the caller's delivery cursor for the rooms just handed over.
+
+	This is the honest definition of "delivered": the device asked for these
+	messages and we returned them. Marking on push would only prove that *we*
+	sent a notification, which says nothing about whether it arrived — and a
+	second tick that appears when the recipient's phone is off is a lie.
+
+	One statement for every room rather than a document write each. These rows
+	are cursors, not records anybody audits, so `update_modified` stays off:
+	touching the parent's timestamp on every sync would invalidate the room
+	cache for all its members every time any one of them polled.
+
+	`GREATEST` keeps it monotonic, so an out-of-order or replayed sync can
+	never walk the cursor backwards and un-deliver a message.
+	"""
+	if not upto:
+		return
+	touched = []
+	for room, seq in upto.items():
+		if seq <= 0:
+			continue
+		frappe.db.sql(
+			"""
+			UPDATE `tabVM Chat Member`
+			   SET last_delivered_seq = GREATEST(COALESCE(last_delivered_seq, 0), %(seq)s)
+			 WHERE parenttype = 'VM Chat Room'
+			   AND parent = %(room)s
+			   AND user = %(user)s
+			   AND COALESCE(last_delivered_seq, 0) < %(seq)s
+			""",
+			{"seq": seq, "room": room, "user": user},
+		)
+		touched.append(room)
+	publish_receipts(touched)
+
+
+# Where the last-published receipt pair for each room is remembered, so that a
+# room whose numbers have not moved costs nothing on the wire.
+_RECEIPT_PUB_KEY = "vm_chat_receipt_pub"
+
+
+def publish_receipts(rooms) -> None:
+	"""Tell each room's open threads how far its slowest member has got.
+
+	Without this the ticks are only as fresh as the last `list_rooms` call, so a
+	sender watching the thread they just sent into — the exact moment anybody
+	looks at a tick — would never see it turn. The list screen would show the
+	blue tick that the conversation itself refused to.
+
+	Two things make this cheap enough to fire on every read and every sync:
+
+	* **One aggregate query for every room at once**, not one per room. A sync
+	  that touched thirty rooms still costs a single round trip.
+	* **Publish only on change.** Cursors advance far more often than the
+	  *minimum* across members moves — in a group of twenty, nineteen reads
+	  change nothing anybody can see. The last published pair is kept in the
+	  cache and compared before anything goes out.
+
+	The minimum is taken across *all* members rather than all-but-the-viewer,
+	which is what `list_rooms` computes. That looks like a discrepancy and is
+	deliberate: this payload has one shape for every recipient, so it cannot
+	depend on who receives it. Including the viewer can only ever hold the
+	number *back*, never inflate it, and for the person actually looking at the
+	thread the two agree anyway — reading it is what advanced their own cursor
+	to the top. So the tick can lag by one refresh, but it can never claim a
+	message was read when it was not, which is the only error that matters.
+	"""
+	rooms = [r for r in dict.fromkeys(rooms or []) if r]
+	if not rooms:
+		return
+
+	try:
+		rows = frappe.db.sql(
+			"""
+			SELECT parent AS room,
+			       MIN(COALESCE(last_read_seq, 0)) AS read_upto,
+			       MIN(COALESCE(last_delivered_seq, 0)) AS delivered_upto
+			  FROM `tabVM Chat Member`
+			 WHERE parenttype = 'VM Chat Room'
+			   AND parent IN %(rooms)s
+			 GROUP BY parent
+			""",
+			{"rooms": tuple(rooms)},
+			as_dict=True,
+		)
+	except Exception:
+		frappe.log_error(title="Chat receipt aggregate failed", message=frappe.get_traceback())
+		return
+
+	cache = frappe.cache()
+	for row in rows:
+		read = cint(row["read_upto"])
+		# A member who has read a message plainly received it. Flooring here
+		# spares every client from having to know that and render "read but not
+		# delivered" — a state that cannot exist.
+		delivered = max(cint(row["delivered_upto"]), read)
+		room = row["room"]
+
+		stamp = f"{read}:{delivered}"
+		if cache.hget(_RECEIPT_PUB_KEY, room) == stamp:
+			continue
+		cache.hset(_RECEIPT_PUB_KEY, room, stamp)
+
+		try:
+			frappe.publish_realtime(
+				event="vm_chat_receipt",
+				message={"room": room, "read_upto": read, "delivered_upto": delivered},
+				doctype="VM Chat Room",
+				docname=room,
+				# The cursor row is already written; waiting for commit would
+				# hold a tick behind a transaction that has nothing to do with it.
+				after_commit=False,
+			)
+		except Exception:
+			frappe.log_error(title=f"Chat receipt publish failed ({room})", message=frappe.get_traceback())
 
 
 # -------------------------------------------------------------------- sending
@@ -444,30 +587,52 @@ def mark_read(room: str, seq: int) -> dict:
 	Returns: {success, data: {room, last_read_seq}}.
 	"""
 	_room_checked(room)
-	new_seq = _advance_cursor(room, frappe.session.user, cint(seq))
+	new_seq, moved = _advance_cursor(room, frappe.session.user, cint(seq))
+	# Only when this call actually moved something. A thread left open re-marks
+	# the same seq on every foreground, and none of those need to reach anyone.
+	if moved:
+		publish_receipts([room])
 	return {"success": True, "data": {"room": room, "last_read_seq": new_seq}}
 
 
-def _advance_cursor(room: str, user: str, seq: int) -> int:
-	"""Monotonic read-cursor update; returns the resulting value.
+def _advance_cursor(room: str, user: str, seq: int) -> tuple[int, bool]:
+	"""Monotonic read-cursor update; returns (resulting value, whether it moved).
 
 	Clamped forward-only because messages can be marked read out of order — a
 	push tap opens the newest message while older ones are still unseen, and the
 	badge must not resurrect them.
+
+	Delivery is carried along with it. Reading a message is proof of having
+	received it, and a sender is holding the message they just sent — without
+	this the author's own delivery cursor would sit at zero for a thread they
+	are actively typing in, and since the room's second tick is the *minimum*
+	across its members, one author would hold the whole room at one tick
+	forever.
 	"""
 	row = frappe.db.get_value(
 		"VM Chat Member",
 		{"parent": room, "parenttype": "VM Chat Room", "user": user},
-		["name", "last_read_seq"],
+		["name", "last_read_seq", "last_delivered_seq"],
 		as_dict=True,
 	)
 	if not row:
-		return 0
+		return 0, False
 	current = cint(row["last_read_seq"])
 	if seq <= current:
-		return current
-	frappe.db.set_value("VM Chat Member", row["name"], "last_read_seq", seq, update_modified=False)
-	return seq
+		# The read cursor has not moved, but delivery may still owe a catch-up
+		# if this row predates the delivered column.
+		if cint(row["last_delivered_seq"]) < current:
+			frappe.db.set_value(
+				"VM Chat Member", row["name"], "last_delivered_seq", current, update_modified=False
+			)
+		return current, False
+	frappe.db.set_value(
+		"VM Chat Member",
+		row["name"],
+		{"last_read_seq": seq, "last_delivered_seq": max(seq, cint(row["last_delivered_seq"]))},
+		update_modified=False,
+	)
+	return seq, True
 
 
 # ------------------------------------------------------------ room management
@@ -869,3 +1034,251 @@ def set_muted(room: str, muted: int = 1) -> dict:
 	value = 1 if cint(muted) else 0
 	frappe.db.set_value("VM Chat Member", row, "muted", value, update_modified=False)
 	return {"success": True, "data": {"muted": bool(value)}}
+
+
+# ------------------------------------------------------- presence and typing
+
+# How long a typing signal stands before the reader should discard it. The
+# client re-sends while a key is still being pressed, so this only has to
+# outlive the gap between two keystrokes — long enough to survive a slow link,
+# short enough that a composer abandoned mid-word stops claiming to be active.
+TYPING_TTL_SECONDS = 8
+
+# How long after a heartbeat a user is still considered reachable. Deliberately
+# a multiple of the client's heartbeat interval: one missed beat on a depot's
+# link must not blink somebody offline in front of the person messaging them.
+PRESENCE_TTL_SECONDS = 75
+
+# Where the live beat is kept. Being *online* is a cache-only fact: it is
+# worthless the moment it is stale, and a restart that forgets it costs one
+# heartbeat interval to rebuild.
+_PRESENCE_KEY = "vm_chat_presence"
+
+# "Last seen", unlike "online", is worth keeping — it is the answer when
+# somebody is *not* reachable, which is exactly when the cache has nothing to
+# say. So the beat is also written down, but at a fraction of its rate.
+_PERSIST_KEY = "vm_chat_presence_saved"
+
+# How stale the written-down copy is allowed to get. At three minutes a user
+# online all day costs twenty writes rather than the thousand-odd a write per
+# beat would cost, and "last seen" is a phrase nobody reads to the second.
+# Precision is not lost while Redis is warm: reads take the later of the two.
+PRESENCE_PERSIST_SECONDS = 180
+
+
+@frappe.whitelist()
+def set_typing(room: str, typing: int = 1) -> dict:
+	"""Tell the rest of `room` that the caller is (or has stopped) composing.
+
+	Fire-and-forget from the client's point of view: nothing is persisted, and
+	the event is published straight to the doc room so only people with the
+	thread actually open pay for it.
+
+	Args:
+	        room: the room being typed in. Membership is enforced.
+	        typing: 1 while composing, 0 on send/clear/blur.
+
+	Returns: {success, data: {room, typing}}.
+	"""
+	_room_checked(room)
+	is_typing = 1 if cint(typing) else 0
+
+	try:
+		frappe.publish_realtime(
+			event="vm_chat_typing",
+			message={
+				"room": room,
+				"user": frappe.session.user,
+				"user_name": frappe.db.get_value("User", frappe.session.user, "full_name")
+				or frappe.session.user,
+				"typing": is_typing,
+				"ttl": TYPING_TTL_SECONDS,
+			},
+			doctype="VM Chat Room",
+			docname=room,
+			# Not after_commit: there is no transaction worth waiting for, and a
+			# typing dot that arrives after the message it was predicting is
+			# worse than no typing dot at all.
+			after_commit=False,
+		)
+	except Exception:
+		# A failed typing publish is never worth failing a request over.
+		frappe.log_error(title=f"Chat typing publish failed ({room})", message=frappe.get_traceback())
+
+	return {"success": True, "data": {"room": room, "typing": bool(is_typing)}}
+
+
+@frappe.whitelist()
+def heartbeat() -> dict:
+	"""Record that the caller is online, and report who else is.
+
+	One call does both halves because they happen on the same schedule: a client
+	that wants fresh presence is by definition still running, and splitting it
+	would double the request count for no extra information.
+
+	Only people the caller actually shares a room with are returned — presence is
+	a fact about a conversation, not a directory of who is at work today.
+
+	Returns: {success, data: {online: [user_id, …], last_seen: {user: iso}, ttl}}.
+	"""
+	user = frappe.session.user
+	if user in NON_HUMAN_USERS:
+		return {"success": True, "data": {"online": [], "last_seen": {}, "ttl": PRESENCE_TTL_SECONDS}}
+
+	cache = frappe.cache()
+	now_ts = now_datetime().timestamp()
+	cache.hset(_PRESENCE_KEY, user, now_ts)
+	_persist_last_seen(user, now_ts)
+
+	rooms = _my_room_names(user)
+	if not rooms:
+		return {"success": True, "data": {"online": [], "last_seen": {}, "ttl": PRESENCE_TTL_SECONDS}}
+
+	# Everyone who shares at least one room with the caller. One query rather
+	# than one per room — a depot manager is in dozens.
+	peers = frappe.get_all(
+		"VM Chat Member",
+		filters={"parenttype": "VM Chat Room", "parent": ["in", rooms]},
+		fields=["distinct user as user"],
+		limit_page_length=0,
+	)
+
+	# One hgetall rather than an hget per peer: a depot manager shares rooms with
+	# dozens of people, and this is called by every client every 30 seconds.
+	#
+	# Frappe's RedisWrapper.hgetall un-pickles the *values* but leaves the keys as
+	# raw bytes, so a str lookup silently misses every entry — which presents as
+	# "presence works but nobody is ever online". Encoded lookup, and float() to
+	# tolerate either a pickled float or a raw string.
+	stamps = cache.hgetall(_PRESENCE_KEY) or {}
+
+	peer_ids = [row["user"] for row in peers if row["user"] != user and row["user"] not in NON_HUMAN_USERS]
+
+	# The written-down copy, for everyone the cache has nothing recent about —
+	# and the opt-out, which is read here rather than at write time so that
+	# turning it on immediately hides the history already recorded.
+	stored: dict[str, object] = {}
+	hidden: set[str] = set()
+	if peer_ids:
+		for row in frappe.get_all(
+			"VM Chat Presence",
+			filters={"user": ["in", peer_ids]},
+			# `seen_at`, never `last_seen` — Frappe drops any fieldname
+			# containing `_seen` from the result. See the doctype controller.
+			fields=["user", "seen_at", "hidden_from_peers"],
+			limit_page_length=0,
+		):
+			if cint(row.get("hidden_from_peers")):
+				hidden.add(row["user"])
+			elif row.get("seen_at"):
+				stored[row["user"]] = row["seen_at"]
+
+	online = []
+	last_seen: dict[str, str] = {}
+	for peer in peer_ids:
+		seen = _cached_stamp(stamps, peer)
+		if seen is not None and now_ts - seen <= PRESENCE_TTL_SECONDS:
+			online.append(peer)
+			continue
+		if peer in hidden:
+			continue
+		# Whichever is later: the cache is precise but forgetful, the row is
+		# durable but up to PRESENCE_PERSIST_SECONDS behind.
+		candidates = []
+		if seen is not None:
+			candidates.append(str(datetime.fromtimestamp(seen)))
+		if peer in stored:
+			candidates.append(str(stored[peer]))
+		if candidates:
+			last_seen[peer] = max(candidates)
+
+	return {
+		"success": True,
+		"data": {"online": online, "last_seen": last_seen, "ttl": PRESENCE_TTL_SECONDS},
+	}
+
+
+def _cached_stamp(stamps: dict, peer: str) -> float | None:
+	"""Read one user's beat out of a `hgetall` result.
+
+	Frappe's RedisWrapper.hgetall un-pickles the *values* but leaves the keys as
+	raw bytes, so a str lookup silently misses every entry — which presents as
+	"presence works but nobody is ever online". Both spellings are tried, and
+	float() tolerates either a pickled float or a raw string.
+	"""
+	raw = stamps.get(peer.encode())
+	if raw is None:
+		raw = stamps.get(peer)
+	if raw is None:
+		return None
+	try:
+		return float(raw)
+	except (TypeError, ValueError):
+		return None
+
+
+def _persist_last_seen(user: str, now_ts: float) -> None:
+	"""Write the beat down, but only every PRESENCE_PERSIST_SECONDS.
+
+	The throttle is what makes a heartbeat affordable: without it, every client
+	in every depot would be issuing a database write every thirty seconds for a
+	field whose whole purpose is to be read approximately.
+	"""
+	cache = frappe.cache()
+	saved = cache.hget(_PERSIST_KEY, user)
+	try:
+		if saved is not None and now_ts - float(saved) < PRESENCE_PERSIST_SECONDS:
+			return
+	except (TypeError, ValueError):
+		pass
+
+	stamp = datetime.fromtimestamp(now_ts)
+	try:
+		if frappe.db.exists("VM Chat Presence", user):
+			frappe.db.set_value("VM Chat Presence", user, "seen_at", stamp, update_modified=False)
+		else:
+			frappe.get_doc({"doctype": "VM Chat Presence", "user": user, "seen_at": stamp}).insert(
+				ignore_permissions=True
+			)
+		# Committed explicitly because a heartbeat is a read as far as the caller
+		# is concerned, and Frappe discards writes made during one. Safe here
+		# only because this runs before the endpoint touches anything else —
+		# there is no other pending work for the commit to sweep up.
+		frappe.db.commit()
+	except Exception:
+		# Losing a heartbeat write costs at most one stale "last seen". It must
+		# never cost the caller their presence response.
+		# Losing a heartbeat write costs at most one stale "last seen". It must
+		# never cost the caller their presence response.
+		frappe.db.rollback()
+		frappe.log_error(title=f"Chat presence write failed ({user})", message=frappe.get_traceback())
+		return
+
+	cache.hset(_PERSIST_KEY, user, now_ts)
+
+
+@frappe.whitelist()
+def set_last_seen_visible(visible: int = 1) -> dict:
+	"""Choose whether peers may see when the caller was last reachable.
+
+	Last seen is mutual by nature — a technician can see a manager's and a
+	manager can see a technician's — so it comes with a way out. Hiding it does
+	not stop presence being recorded, and does not hide the green dot: someone
+	with the thread open is visibly there either way, and pretending otherwise
+	would be the kind of half-truth that makes people distrust the whole screen.
+
+	Returns: {success, data: {visible}}.
+	"""
+	user = frappe.session.user
+	if user in NON_HUMAN_USERS:
+		frappe.throw(_("Not available for this account."))
+
+	hidden = 0 if cint(visible) else 1
+	if frappe.db.exists("VM Chat Presence", user):
+		frappe.db.set_value("VM Chat Presence", user, "hidden_from_peers", hidden, update_modified=False)
+	else:
+		frappe.get_doc({"doctype": "VM Chat Presence", "user": user, "hidden_from_peers": hidden}).insert(
+			ignore_permissions=True
+		)
+
+	return {"success": True, "data": {"visible": not hidden}}

@@ -33,6 +33,7 @@ KIND_PREVIEW = {
 	"image": "\U0001f4f7 Photo",
 	"video": "\U0001f3a5 Video",
 	"audio": "\U0001f3a4 Voice note",
+	"file": "\U0001f4ce Document",
 	"system": "",
 	"ticket": "\U0001f3ab",
 	"alert": "⚠️",

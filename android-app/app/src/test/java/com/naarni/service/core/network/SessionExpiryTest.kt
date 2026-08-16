@@ -204,4 +204,32 @@ class FrappeErrorMessageTest {
         assertNull(parseFrappeError("<html>502 Bad Gateway</html>"))
         assertNull(parseFrappeError(""))
     }
+
+    // ------------------------------------------------- codes that are not errors
+
+    @Test
+    fun `304 is not an error — it is Coil revalidating a cached photo`() {
+        // Treating this as a failure blanked every image the app had already
+        // cached, so photos vanished the more the chat was used.
+        assertTrue(isPassThroughStatus(304))
+    }
+
+    @Test
+    fun `101 is not an error — it is the chat socket upgrading`() {
+        assertTrue(isPassThroughStatus(101))
+    }
+
+    @Test
+    fun `real failures are still failures`() {
+        listOf(400, 401, 403, 404, 417, 500, 502).forEach { code ->
+            assertFalse("HTTP $code must not pass through", isPassThroughStatus(code))
+        }
+    }
+
+    @Test
+    fun `ordinary success is not routed through the pass-through list`() {
+        // 200 is handled by isSuccessful; this only guards the exceptions to it.
+        assertFalse(isPassThroughStatus(200))
+        assertFalse(isPassThroughStatus(204))
+    }
 }

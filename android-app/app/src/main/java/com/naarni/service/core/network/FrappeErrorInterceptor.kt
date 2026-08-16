@@ -25,11 +25,7 @@ class FrappeErrorInterceptor(private val session: SessionManager) : Interceptor 
     override fun intercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())
 
-        // A WebSocket upgrade answers 101 Switching Protocols, which is not
-        // "successful" by OkHttp's 200..299 definition. The chat socket shares
-        // this client (so the session cookie is attached), so without this the
-        // interceptor throws on every upgrade and the socket can never connect.
-        if (response.code == HTTP_SWITCHING_PROTOCOLS) return response
+        if (isPassThroughStatus(response.code)) return response
 
         if (response.isSuccessful) return response
 
@@ -46,16 +42,41 @@ class FrappeErrorInterceptor(private val session: SessionManager) : Interceptor 
             throw FrappeHttpException(SESSION_EXPIRED_MESSAGE)
         }
 
+        // The status is carried in the fallback because a response with no
+        // Frappe error body is, by definition, one we could not explain — and
+        // "Something went wrong" with nothing else attached is unactionable for
+        // whoever has to work out why a depot's photos are blank.
         val message = body?.let(::parseFrappeError)
-            ?: "Something went wrong. Please try again."
+            ?: "Something went wrong (HTTP ${response.code}). Please try again."
         throw FrappeHttpException(message)
     }
 
     private companion object {
         const val MAX_PEEK = 1L * 1024 * 1024
-        const val HTTP_SWITCHING_PROTOCOLS = 101
     }
 }
+
+private const val HTTP_SWITCHING_PROTOCOLS = 101
+private const val HTTP_NOT_MODIFIED = 304
+
+/**
+ * Responses that are fine despite falling outside OkHttp's 200..299.
+ *
+ * `isSuccessful` is the wrong question for this interceptor, and answering it
+ * as though it were the right one broke two features:
+ *
+ * * **101 Switching Protocols** — the chat socket shares this client so its
+ *   upgrade carries `sid`. Throwing here meant the socket could never connect.
+ * * **304 Not Modified** — Coil revalidates every image it has on disk, and the
+ *   server rightly answers 304 with an empty body. Throwing here meant a photo
+ *   rendered the *first* time and was blank on every later visit, so the chat
+ *   appeared to lose its images the more it was used. Found on a handset with
+ *   the gallery showing one thumbnail out of five.
+ *
+ * Neither is an error, and neither carries a Frappe error body to parse.
+ */
+internal fun isPassThroughStatus(code: Int): Boolean =
+    code == HTTP_SWITCHING_PROTOCOLS || code == HTTP_NOT_MODIFIED
 
 internal fun parseFrappeError(body: String): String? {
     if (body.isBlank()) return null

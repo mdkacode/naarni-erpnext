@@ -48,14 +48,18 @@ CHUNK_MAX = 8 * 1024 * 1024
 # Block size for streaming copies and digests. Never the whole file.
 IO_BLOCK = 1024 * 1024
 
-# Chat's own allow-list. Core's ALLOWED_MIMETYPES (frappe/handler.py) is enforced
-# for users without desk access and contains no audio/* entry at all, so voice
-# notes are impossible through the core path. We bypass it, which means we owe
-# our own list.
-ALLOWED_CONTENT_TYPES = {
+# Extensions we know, so a download lands with a name the OS can open. Anything
+# absent falls back to the extension of the original filename.
+#
+# Core's ALLOWED_MIMETYPES (frappe/handler.py) is enforced for users without
+# desk access and contains no audio/* entry at all, so voice notes are
+# impossible through the core path. We bypass it, which means we owe our own
+# rules — see BLOCKED_* below.
+KNOWN_EXTENSIONS = {
 	"image/jpeg": ".jpg",
 	"image/png": ".png",
 	"image/webp": ".webp",
+	"image/heic": ".heic",
 	"video/mp4": ".mp4",
 	"video/quicktime": ".mov",
 	"audio/mp4": ".m4a",
@@ -70,6 +74,7 @@ CONTENT_TYPE_KIND = {
 	"image/jpeg": "image",
 	"image/png": "image",
 	"image/webp": "image",
+	"image/heic": "image",
 	"video/mp4": "video",
 	"video/quicktime": "video",
 	"audio/mp4": "audio",
@@ -77,8 +82,75 @@ CONTENT_TYPE_KIND = {
 	"audio/mpeg": "audio",
 	"audio/ogg": "audio",
 	"audio/opus": "audio",
-	"application/pdf": "image",  # rendered as a document card client-side
 }
+
+# A deny-list, not an allow-list.
+#
+# Field work produces spreadsheets, CAD exports, diagnostic logs, zipped bundles
+# — an allow-list means someone hits "cannot be sent" for a perfectly ordinary
+# document and goes back to WhatsApp, which is the outcome this whole module
+# exists to prevent. So anything is accepted except what could be talked into
+# executing on a handset: the realistic attack here is a colleague being
+# persuaded to install an APK that arrived in a work thread.
+BLOCKED_CONTENT_TYPES = {
+	"application/vnd.android.package-archive",
+	"application/x-msdownload",
+	"application/x-msdos-program",
+	"application/x-executable",
+	"application/x-sh",
+	"application/x-shellscript",
+	"text/x-shellscript",
+	"application/x-dosexec",
+}
+
+BLOCKED_EXTENSIONS = {
+	".apk",
+	".apex",
+	".dex",
+	".exe",
+	".msi",
+	".bat",
+	".cmd",
+	".com",
+	".scr",
+	".sh",
+	".bash",
+}
+
+
+def _extension_of(file_name: str) -> str:
+	"""The original file's extension, sanitised, or "" if it has none worth keeping."""
+	raw = os.path.splitext(file_name or "")[1].lower()
+	# Only plain alphanumeric extensions survive: the value is concatenated into
+	# a path, so anything with a separator or a dot in it is refused outright
+	# rather than cleaned up and trusted.
+	if 1 < len(raw) <= 10 and raw.startswith(".") and raw[1:].isalnum():
+		return raw
+	return ""
+
+
+def _reject_if_executable(content_type: str, file_name: str) -> None:
+	"""Refuse only what a handset could be talked into running. See BLOCKED_*."""
+	if content_type in BLOCKED_CONTENT_TYPES:
+		frappe.throw(_("Files of type {0} cannot be sent in chat.").format(content_type))
+	if _extension_of(file_name) in BLOCKED_EXTENSIONS:
+		frappe.throw(_("Installable and executable files cannot be sent in chat."))
+
+
+def _publish_extension(content_type: str, file_name: str) -> str:
+	"""Extension to publish under: the known one for this type, else the original's."""
+	return KNOWN_EXTENSIONS.get(content_type) or _extension_of(file_name)
+
+
+def _kind_for(content_type: str) -> str:
+	"""Fall back to the type's family, so a new image/* subtype still shows inline."""
+	if content_type.startswith("image/"):
+		return "image"
+	if content_type.startswith("video/"):
+		return "video"
+	if content_type.startswith("audio/"):
+		return "audio"
+	return "file"
 
 
 def _max_upload_bytes() -> int:
@@ -108,9 +180,8 @@ def begin_upload(
 	"""
 	_room_checked(room)
 
-	content_type = (content_type or "").strip().lower()
-	if content_type not in ALLOWED_CONTENT_TYPES:
-		frappe.throw(_("Files of type {0} cannot be sent in chat.").format(content_type or "unknown"))
+	content_type = (content_type or "").strip().lower() or "application/octet-stream"
+	_reject_if_executable(content_type, file_name)
 
 	total_size = cint(total_size)
 	if total_size <= 0:
@@ -311,7 +382,7 @@ def commit_upload(
 
 	# Move into the site's private files. Same volume, so this is a rename, not a
 	# copy — a 500 MB file must not be duplicated on disk to be published.
-	ext = ALLOWED_CONTENT_TYPES.get(doc.content_type, "")
+	ext = _publish_extension(doc.content_type, doc.file_name)
 	disk_name = f"chat_{frappe.generate_hash(length=12)}{ext}"
 	target = get_files_path(disk_name, is_private=True)
 	try:
@@ -329,7 +400,8 @@ def commit_upload(
 		room=doc.room,
 	)
 
-	kind = CONTENT_TYPE_KIND.get(doc.content_type, "image")
+	# Anything not obviously media renders as a document card client-side.
+	kind = CONTENT_TYPE_KIND.get(doc.content_type) or _kind_for(doc.content_type)
 
 	from vehicle_maintenance.api.chat import _advance_cursor
 

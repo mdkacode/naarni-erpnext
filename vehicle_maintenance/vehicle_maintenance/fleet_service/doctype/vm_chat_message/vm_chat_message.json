@@ -53,7 +53,7 @@
       "fieldname": "kind",
       "label": "Kind",
       "fieldtype": "Select",
-      "options": "text\nimage\nvideo\naudio\nsystem\nticket\nalert",
+      "options": "text\nimage\nvideo\naudio\nfile\nsystem\nticket\nalert",
       "default": "text",
       "reqd": 1,
       "in_standard_filter": 1

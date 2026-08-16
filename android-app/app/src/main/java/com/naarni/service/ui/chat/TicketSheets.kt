@@ -21,8 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -201,7 +202,7 @@ private fun SheetSearchField(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Default.Search,
+                Icons.Rounded.Search,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
@@ -249,11 +250,11 @@ private fun TicketRow(ticket: ChatTicketDto, busy: Boolean, onClick: () -> Unit)
             Modifier
                 .size(38.dp)
                 .clip(CircleShape)
-                .background(severityColor(ticket.severity).copy(alpha = 0.15f)),
+                .background(com.naarni.service.ui.theme.Semantic.tint(severityColor(ticket.severity))),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Default.ConfirmationNumber,
+                Icons.Rounded.ConfirmationNumber,
                 contentDescription = null,
                 tint = severityColor(ticket.severity),
                 modifier = Modifier.size(19.dp),
@@ -302,11 +303,14 @@ fun StatusPill(status: String) {
     }
 }
 
+/**
+ * Ticket severity, delegated to the app-wide ramp.
+ *
+ * This used to be its own four-colour mapping, which meant a "High" ticket was
+ * orange in a chat sheet and amber on the Tickets screen. Same word, same
+ * urgency, so it is now the same colour.
+ */
 @Composable
-fun severityColor(severity: String?): Color = when (severity) {
-    "Critical" -> MaterialTheme.colorScheme.error
-    "High" -> Color(0xFFF97316)
-    "Medium" -> Color(0xFFF59E0B)
-    "Low" -> Color(0xFF10B981)
-    else -> MaterialTheme.colorScheme.primary
-}
+@ReadOnlyComposable
+fun severityColor(severity: String?): Color =
+    com.naarni.service.ui.components.severityColor(severity)

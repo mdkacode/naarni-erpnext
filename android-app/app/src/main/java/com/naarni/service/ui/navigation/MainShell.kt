@@ -1,5 +1,6 @@
 package com.naarni.service.ui.navigation
 
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
@@ -9,10 +10,12 @@ import androidx.compose.material3.BadgedBox
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.naarni.service.ui.chat.ChatLifecycle
+import com.naarni.service.ui.chat.ChatGalleryScreen
 import com.naarni.service.ui.chat.ChatListScreen
 import com.naarni.service.ui.chat.ChatThreadScreen
 import com.naarni.service.ui.chat.ChatViewModel
 import com.naarni.service.ui.chat.NewChatScreen
+import com.naarni.service.ui.chat.NewGroupScreen
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -116,14 +119,34 @@ fun MainShell(vm: AppViewModel) {
         tabs.any { it.route == current } ||
         current in setOf(HiddenRoute.JOB_CARDS, HiddenRoute.FLEET, HiddenRoute.TICKETS)
 
+    /**
+     * Chat keeps the status bar.
+     *
+     * Hiding it suits a screen you look at once — a job card, a report. A
+     * conversation is not that: people sit in it, and taking away the clock,
+     * the battery and the signal bars for the whole time they are messaging is
+     * a real cost for a strip of screen. Every messaging app keeps it, which is
+     * also what makes its absence feel like a fault rather than a choice.
+     */
+    val isChatRoute = current != null && (
+        current == Tab.Chat.route ||
+            current.startsWith("thread/") ||
+            current.startsWith("gallery/") ||
+            current == "newchat" ||
+            current == "newgroup"
+        )
+
     val view = LocalView.current
-    LaunchedEffect(isTopLevel) {
+    LaunchedEffect(isTopLevel, isChatRoute) {
         val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
         val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
         controller.systemBarsBehavior =
             androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        if (isTopLevel) controller.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
-        else controller.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        if (isTopLevel || isChatRoute) {
+            controller.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        } else {
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        }
     }
 
     Scaffold(
@@ -161,7 +184,16 @@ fun MainShell(vm: AppViewModel) {
         NavHost(
             navController = nav,
             startDestination = Tab.Home.route,
-            modifier = Modifier.padding(padding),
+            // `padding` alone insets the content but does not tell anything
+            // inside that the insets are already paid for, so a screen that
+            // handles its own — the chat thread, which must track the keyboard —
+            // applies the navigation bar a second time and leaves a dead band of
+            // canvas under its composer. Consuming it makes the inner
+            // `windowInsetsPadding` subtract what has already been applied and
+            // add only the remainder, which is what it is designed to do.
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding),
         ) {
             composable(Tab.Home.route) {
                 HomeScreen(
@@ -282,10 +314,23 @@ fun MainShell(vm: AppViewModel) {
                     onNewChat = { nav.navigate("newchat") },
                 )
             }
+            composable("newgroup") {
+                NewGroupScreen(
+                    chatVm,
+                    onBack = { nav.popBackStack() },
+                    onCreated = { room ->
+                        // Replace both pickers in the back stack: leaving a new
+                        // group should land on the list, not back in the form
+                        // that would create a second one.
+                        nav.navigate("thread/$room") { popUpTo("newchat") { inclusive = true } }
+                    },
+                )
+            }
             composable("newchat") {
                 NewChatScreen(
                     chatVm,
                     onBack = { nav.popBackStack() },
+                    onNewGroup = { nav.navigate("newgroup") },
                     onOpenRoom = { room ->
                         // Replace the picker in the back stack: coming back from a
                         // thread should land on the chat list, not the directory.
@@ -294,13 +339,22 @@ fun MainShell(vm: AppViewModel) {
                 )
             }
             composable("thread/{room}") { entry ->
+                val room = entry.arguments?.getString("room").orEmpty()
                 ChatThreadScreen(
                     vm = chatVm,
-                    roomName = entry.arguments?.getString("room").orEmpty(),
+                    roomName = room,
                     onBack = { nav.popBackStack() },
                     // A field observation becomes a Service Ticket without leaving
                     // the thread — the reason chat lives in this app at all.
                     onRaiseTicket = { msg -> nav.navigate("ticket/${msg.ticket ?: ""}") },
+                    onOpenGallery = { nav.navigate("gallery/$room") },
+                )
+            }
+            composable("gallery/{room}") { entry ->
+                ChatGalleryScreen(
+                    vm = chatVm,
+                    roomName = entry.arguments?.getString("room").orEmpty(),
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable(Tab.Profile.route) { ProfileScreen(vm) }

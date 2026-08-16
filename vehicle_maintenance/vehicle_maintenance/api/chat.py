@@ -319,18 +319,16 @@ def list_messages(room: str, before_seq: int | None = None, limit: int = DEFAULT
 	has_more = len(rows) > limit
 	page = rows[:limit]
 
-	# Opening a thread is a delivery. Until this was here, `_mark_delivered` ran
-	# only from `sync`, so a recipient could read a message on screen while the
-	# sender still saw a single tick — the delivery mark waited for the next
-	# delta sync, which might be minutes away or, on a device sitting in an open
-	# thread, not come at all.
+	# Opening a thread is a delivery, but this is deliberately NOT where that is
+	# recorded. The client fetches this endpoint with GET, and Frappe rolls back
+	# the transaction for every safe method (`app.py::sync_database`), so a
+	# cursor advanced here is discarded on the way out — proven against the
+	# running bench: after a GET the member row stayed at delivered 0, and the
+	# same message marked through the POST endpoint moved it to 1.
 	#
-	# `GREATEST` in the update makes this safe on a backwards page too: those
-	# rows are older than what the caller already holds, so the cursor cannot go
-	# backwards.
-	if page:
-		top = max(cint(r["seq"]) for r in page)
-		_mark_delivered(frappe.session.user, {room: top})
+	# Writing here would therefore be code that reads as if it works, passes a
+	# test that calls the function directly, and does nothing at all in the app.
+	# `mark_delivered` below is the POST the client actually uses.
 
 	return {
 		"success": True,
@@ -381,6 +379,20 @@ def sync(cursors: str | dict | None = None) -> dict:
 	for room in mine:
 		since = cint(cursors.get(room))
 		last_seq = cint(frappe.db.get_value("VM Chat Room", room, "last_seq"))
+		# The cursor is the client stating what it already holds, and a device
+		# cannot hold a message it never received — so a cursor *is* a delivery
+		# receipt, for every room, whether or not anything new comes back.
+		#
+		# This is the path that was missing. A phone handed a message over the
+		# socket or a push, whose ack was lost with the connection that carried
+		# it, would stay undelivered until it happened to be given a fresh row —
+		# so the sender sat on one tick while the recipient had the message on
+		# screen. Now every sync repairs it.
+		#
+		# Clamped to the room's own last_seq: a cursor is client-supplied, and a
+		# delivery for a message that does not exist yet must not be writable.
+		if since > 0:
+			delivered[room] = min(since, last_seq)
 		if last_seq <= since:
 			continue
 		rows = frappe.get_all(
@@ -480,12 +492,12 @@ def publish_receipts(rooms) -> None:
 		rows = frappe.db.sql(
 			"""
 			SELECT parent AS room,
-			       MIN(COALESCE(last_read_seq, 0)) AS read_upto,
-			       MIN(COALESCE(last_delivered_seq, 0)) AS delivered_upto
+			       user,
+			       COALESCE(last_read_seq, 0) AS read_seq,
+			       COALESCE(last_delivered_seq, 0) AS delivered_seq
 			  FROM `tabVM Chat Member`
 			 WHERE parenttype = 'VM Chat Room'
 			   AND parent IN %(rooms)s
-			 GROUP BY parent
 			""",
 			{"rooms": tuple(rooms)},
 			as_dict=True,
@@ -494,32 +506,73 @@ def publish_receipts(rooms) -> None:
 		frappe.log_error(title="Chat receipt aggregate failed", message=frappe.get_traceback())
 		return
 
-	cache = frappe.cache()
+	# Folded here rather than with GROUP BY because the same rows carry both the
+	# minimum and the membership, and the membership is who has to be told.
+	marks: dict[str, dict] = {}
 	for row in rows:
-		read = cint(row["read_upto"])
+		mark = marks.setdefault(row["room"], {"read": None, "delivered": None, "members": []})
+		mark["members"].append(row["user"])
+		read = cint(row["read_seq"])
+		delivered = cint(row["delivered_seq"])
+		mark["read"] = read if mark["read"] is None else min(mark["read"], read)
+		mark["delivered"] = delivered if mark["delivered"] is None else min(mark["delivered"], delivered)
+
+	cache = frappe.cache()
+	for room, mark in marks.items():
+		read = cint(mark["read"])
 		# A member who has read a message plainly received it. Flooring here
 		# spares every client from having to know that and render "read but not
 		# delivered" — a state that cannot exist.
-		delivered = max(cint(row["delivered_upto"]), read)
-		room = row["room"]
+		delivered = max(cint(mark["delivered"]), read)
 
 		stamp = f"{read}:{delivered}"
 		if cache.hget(_RECEIPT_PUB_KEY, room) == stamp:
 			continue
 		cache.hset(_RECEIPT_PUB_KEY, room, stamp)
 
+		_emit_receipt({"room": room, "read_upto": read, "delivered_upto": delivered}, mark["members"])
+
+
+def _emit_receipt(payload: dict, members: list[str]) -> None:
+	"""Send one receipt to the open thread *and* to each member's own socket.
+
+	The doc room alone is where the tick was being lost. It reaches only clients
+	that have `doc_subscribe`d — i.e. somebody with that exact thread on screen.
+	A sender who has gone back to the conversation list, or moved to another
+	thread, has already unsubscribed, so their ticks froze until the next
+	`list_rooms` — which the app runs on foreground and network changes, not on
+	a timer. The list screen is precisely where people look at ticks.
+
+	Every socket joins `user:{name}` automatically on connect, so the per-member
+	publish needs no subscribe round-trip and survives every reconnect. Clients
+	apply receipts with a MAX, so receiving both copies is a no-op.
+	"""
+	room = payload["room"]
+	try:
+		frappe.publish_realtime(
+			event="vm_chat_receipt",
+			message=payload,
+			doctype="VM Chat Room",
+			docname=room,
+			# The cursor row is already written; waiting for commit would
+			# hold a tick behind a transaction that has nothing to do with it.
+			after_commit=False,
+		)
+	except Exception:
+		frappe.log_error(title=f"Chat receipt publish failed ({room})", message=frappe.get_traceback())
+
+	for user in members:
 		try:
 			frappe.publish_realtime(
 				event="vm_chat_receipt",
-				message={"room": room, "read_upto": read, "delivered_upto": delivered},
-				doctype="VM Chat Room",
-				docname=room,
-				# The cursor row is already written; waiting for commit would
-				# hold a tick behind a transaction that has nothing to do with it.
+				message=payload,
+				user=user,
 				after_commit=False,
 			)
 		except Exception:
-			frappe.log_error(title=f"Chat receipt publish failed ({room})", message=frappe.get_traceback())
+			frappe.log_error(
+				title=f"Chat receipt user publish failed ({room})", message=frappe.get_traceback()
+			)
 
 
 # -------------------------------------------------------------------- sending

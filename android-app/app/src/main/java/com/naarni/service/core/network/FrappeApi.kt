@@ -644,6 +644,20 @@ interface FrappeApi {
         @Field("mentions") mentions: String? = null,
     ): FrappeWrap<Envelope<SendPayload>>
 
+    /**
+     * Acknowledge that this device has stored [seq] — the sender's second tick.
+     *
+     * Separate from [chatMarkRead] on purpose: receiving is not reading, and a
+     * message that lands while the app is on another screen is delivered and
+     * unread.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.mark_delivered")
+    suspend fun chatMarkDelivered(
+        @Field("room") room: String,
+        @Field("seq") seq: Long,
+    ): FrappeWrap<Envelope<JsonObject>>
+
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.mark_read")
     suspend fun chatMarkRead(

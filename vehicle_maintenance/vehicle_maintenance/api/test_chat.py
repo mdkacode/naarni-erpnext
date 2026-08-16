@@ -15,6 +15,7 @@ import types
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import cint
 
 from vehicle_maintenance.api import chat, chat_upload
 
@@ -1200,10 +1201,12 @@ class TestChatReceiptBroadcast(ChatTestBase):
 			return self._orig_publish(*args, **kwargs)
 
 		frappe.publish_realtime = capture
-
-	def tearDown(self):
-		frappe.publish_realtime = self._orig_publish
-		super().tearDown()
+		# Undone via addCleanup rather than a tearDown override: CI's semgrep
+		# blocks the override, and addCleanup composes with the base class's own
+		# teardown instead of replacing it. Registered after the patch is applied
+		# and bound to the original, so it restores exactly what it replaced even
+		# if a later setUp step throws.
+		self.addCleanup(setattr, frappe, "publish_realtime", self._orig_publish)
 
 	def _receipts(self):
 		return [p["message"] for p in self.published]
@@ -1333,14 +1336,37 @@ class TestChatLastSeen(ChatTestBase):
 		self.assertIn(self.bob, chat.heartbeat()["data"]["last_seen"])
 
 	def test_the_write_is_throttled(self):
+		# `seen_at`, not `last_seen`. Watching the wrong column here made this
+		# test vacuous — it passed with the throttle disabled entirely, because
+		# the heartbeat was writing one column while the assertion read another,
+		# and it only ran at all because a dropped `last_seen` column lingered
+		# in this database from before the rename. On a fresh site it errored.
 		frappe.set_user(self.bob)
 		chat.heartbeat()
 
 		sentinel = "2020-01-01 00:00:00"
-		frappe.db.set_value("VM Chat Presence", self.bob, "last_seen", sentinel, update_modified=False)
+		frappe.db.set_value("VM Chat Presence", self.bob, "seen_at", sentinel, update_modified=False)
 		chat.heartbeat()
 
-		self.assertEqual(str(frappe.db.get_value("VM Chat Presence", self.bob, "last_seen")), sentinel)
+		self.assertEqual(str(frappe.db.get_value("VM Chat Presence", self.bob, "seen_at")), sentinel)
+
+	def test_the_throttle_is_what_holds_the_write_back(self):
+		"""The negative half: with the window closed, the beat does write.
+
+		Without this the test above passes just as happily against a heartbeat
+		that never persists anything at all.
+		"""
+		frappe.set_user(self.bob)
+		chat.heartbeat()
+
+		sentinel = "2020-01-01 00:00:00"
+		frappe.db.set_value("VM Chat Presence", self.bob, "seen_at", sentinel, update_modified=False)
+		# Forget that we recently wrote, which is exactly what the passage of
+		# PRESENCE_PERSIST_SECONDS does.
+		frappe.cache().hdel(chat._PERSIST_KEY, self.bob)
+		chat.heartbeat()
+
+		self.assertNotEqual(str(frappe.db.get_value("VM Chat Presence", self.bob, "seen_at")), sentinel)
 
 	def test_hiding_it_withholds_the_time_but_not_the_dot(self):
 		frappe.set_user(self.bob)
@@ -1379,3 +1405,131 @@ class TestChatLastSeen(ChatTestBase):
 
 		frappe.set_user(self.alice)
 		self.assertNotIn(self.mallory, chat.heartbeat()["data"]["last_seen"])
+
+
+class TestDeliveryReceipts(ChatTestBase):
+	"""The second tick — the one that says the message reached a device.
+
+	Read receipts were already covered; delivery was not, and it was broken in a
+	way no test could see: `_mark_delivered` ran only from `sync`, so a recipient
+	could have a message on screen while the sender still saw one tick.
+	"""
+
+	def _send_from_alice(self) -> int:
+		frappe.set_user(self.alice)
+		sent = chat.send_message(room=self.room, body="tick", client_id=frappe.generate_hash(length=12))
+		return cint(sent["data"]["message"]["seq"])
+
+	def _marks(self) -> tuple:
+		"""What Alice's own list_rooms says about her outgoing messages."""
+		frappe.set_user(self.alice)
+		for r in chat.list_rooms()["data"]["rooms"]:
+			if r["name"] == self.room:
+				return cint(r["delivered_upto"]), cint(r["read_upto"])
+		raise AssertionError("room not visible to alice")
+
+	def test_a_message_starts_undelivered_and_unread(self):
+		self._send_from_alice()
+
+		self.assertEqual(self._marks(), (0, 0))
+
+	def test_opening_the_thread_marks_it_delivered(self):
+		# Opening a thread runs a sync (ChatViewModel.openThread), and it is the
+		# sync that records delivery. Asserted through sync rather than through
+		# list_messages: see the test below for why marking inside the history
+		# fetch cannot work.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.sync(cursors={})
+
+		delivered, read = self._marks()
+
+		self.assertEqual(delivered, seq)
+		self.assertEqual(read, 0)
+
+	def test_fetching_history_does_not_mark_delivery(self):
+		"""list_messages must stay a read, however tempting it is.
+
+		The client fetches it with GET, and Frappe rolls back the transaction
+		for every safe method, so a cursor advanced in there is discarded on the
+		way out — verified against the running bench, where a GET left the
+		member row at delivered 0 while the POST endpoint moved it to 1. A test
+		calling the function directly would never notice, because there is no
+		request to roll back; hence this one, which locks the decision in.
+		"""
+		self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.list_messages(room=self.room)
+
+		self.assertEqual(self._marks(), (0, 0))
+
+	def test_delivery_does_not_imply_read(self):
+		# Collapsing the two would turn every push into a false blue tick.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+
+		delivered, read = self._marks()
+
+		self.assertEqual(delivered, seq)
+		self.assertEqual(read, 0)
+
+	def test_reading_marks_both(self):
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=seq)
+
+		self.assertEqual(self._marks(), (seq, seq))
+
+	def test_the_delivery_cursor_never_goes_backwards(self):
+		# Pages arrive out of order — an older page must not un-deliver newer
+		# messages the device already holds.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+		chat.mark_delivered(room=self.room, seq=1)
+
+		delivered, _ = self._marks()
+
+		self.assertEqual(delivered, seq)
+
+	def test_a_non_member_cannot_mark_delivery(self):
+		seq = self._send_from_alice()
+		frappe.set_user(self.mallory)
+
+		with self.assertRaises(frappe.PermissionError):
+			chat.mark_delivered(room=self.room, seq=seq)
+
+	def test_delivered_is_the_slowest_member_not_the_fastest(self):
+		# Two blue ticks in a group must mean everyone, or a dispatcher chasing
+		# an unanswered instruction is being told something untrue.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+
+		delivered, _ = self._marks()
+		self.assertEqual(delivered, seq)
+
+		# Add a third member who has received nothing.
+		frappe.set_user("Administrator")
+		room = frappe.get_doc("VM Chat Room", self.room)
+		room.append("members", {"user": self.mallory})
+		room.save(ignore_permissions=True)
+
+		delivered, _ = self._marks()
+
+		self.assertEqual(delivered, 0)
+
+	def test_delivery_reflects_what_the_device_holds_not_the_newest_message(self):
+		first = self._send_from_alice()
+		second = self._send_from_alice()
+		frappe.set_user(self.bob)
+		# The device acknowledges only what it actually received — a client that
+		# has paged back to an older message has not thereby received the newer
+		# one, and must not claim to have.
+		chat.mark_delivered(room=self.room, seq=first)
+
+		delivered, _ = self._marks()
+
+		self.assertEqual(delivered, first)
+		self.assertLess(delivered, second)

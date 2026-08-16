@@ -317,17 +317,52 @@ def list_messages(room: str, before_seq: int | None = None, limit: int = DEFAULT
 		limit_page_length=limit + 1,
 	)
 	has_more = len(rows) > limit
+	page = rows[:limit]
+
+	# Opening a thread is a delivery, but this is deliberately NOT where that is
+	# recorded. The client fetches this endpoint with GET, and Frappe rolls back
+	# the transaction for every safe method (`app.py::sync_database`), so a
+	# cursor advanced here is discarded on the way out — proven against the
+	# running bench: after a GET the member row stayed at delivered 0, and the
+	# same message marked through the POST endpoint moved it to 1.
+	#
+	# Writing here would therefore be code that reads as if it works, passes a
+	# test that calls the function directly, and does nothing at all in the app.
+	# `mark_delivered` below is the POST the client actually uses.
+
 	return {
 		"success": True,
-		"data": {"room": room, "messages": _serialise(rows[:limit]), "has_more": has_more},
+		"data": {"room": room, "messages": _serialise(page), "has_more": has_more},
 	}
 
 
 @frappe.whitelist()
-def sync(cursors=None) -> dict:
+def mark_delivered(room: str, seq: int) -> dict:
+	"""The client acknowledging it has stored a message it was pushed.
+
+	The socket and FCM hand a message to the device without the server learning
+	anything about it, so without this the only delivery evidence is a later
+	`sync` or `list_messages` — which is why a phone that had already displayed
+	a message could still show the sender one tick.
+
+	Deliberately separate from `mark_read`: receiving is not reading. A message
+	that arrives while the app is on another screen is delivered and unread, and
+	collapsing the two would turn every push into a false blue tick.
+	"""
+	_room_checked(room)
+	_mark_delivered(frappe.session.user, {room: cint(seq)})
+	return {"success": True, "data": {"room": room, "seq": cint(seq)}}
+
+
+@frappe.whitelist()
+def sync(cursors: str | dict | None = None) -> dict:
 	"""Delta sync — the client's correctness path.
 
-	`cursors` is {room_name: highest_seq_held}. Rooms the caller belongs to but
+	`cursors` is {room_name: highest_seq_held}, and arrives either as a dict (a
+	server-side caller) or as a JSON string (over HTTP, where Frappe hands form
+	bodies through unparsed) — `_as_dict` normalises both.
+
+	Rooms the caller belongs to but
 	omits are treated as seq 0, so a fresh install gets recent history for each.
 	Only rooms with something newer appear in the response.
 

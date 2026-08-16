@@ -188,6 +188,17 @@ class ChatRepository(
                     .getOrNull() ?: return sync().let {}
                 dao.upsertMessage(dto.toEntity())
                 dao.touchRoom(room, dto.seq, previewOf(dto.toEntity()))
+                // The message is now on this device, which is exactly what the
+                // sender's second tick claims. Nothing else tells the server
+                // that: a socket push leaves no trace, so without this the mark
+                // waits for the next sync and the sender sits on one tick while
+                // the recipient is already looking at the message.
+                //
+                // Not for our own messages — a sender delivering to themselves
+                // would tick their own message on send.
+                if (dto.author != session.user) {
+                    markDelivered(room, dto.seq)
+                }
             }
             // The envelope is intentionally lightweight — enough to move the badge
             // without a round-trip. The body arrives via the doc room if the
@@ -343,6 +354,16 @@ class ChatRepository(
     }
 
     // ------------------------------------------------------------------ reads
+
+    /**
+     * Tell the server this device holds [seq]. Best-effort and never throws:
+     * a tick is not worth failing a message store over, and the next `sync`
+     * carries the same information anyway.
+     */
+    suspend fun markDelivered(room: String, seq: Long) {
+        if (seq <= 0) return
+        runCatching { api.chatMarkDelivered(room, seq) }
+    }
 
     suspend fun markRead(room: String, seq: Long) {
         dao.advanceReadCursor(room, seq)

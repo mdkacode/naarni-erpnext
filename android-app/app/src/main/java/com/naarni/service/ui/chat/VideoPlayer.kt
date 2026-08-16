@@ -70,7 +70,14 @@ fun VideoPage(
 
     // Only the page actually on screen plays. Without this the pager's
     // neighbours — which stay composed — would play their audio underneath.
-    LaunchedEffect(active) {
+    //
+    // Keyed on the player as well as on `active`. `player` is rebuilt whenever
+    // the model changes, and it does change mid-playback: watch a clip you have
+    // just sent and the delta sync replaces the row's local outbox path with
+    // the server URL. Keyed on `active` alone the effect would not re-run, the
+    // fresh player would sit at position zero with playWhenReady false, and
+    // playback would simply stop dead.
+    LaunchedEffect(player, active) {
         if (active) player.play() else player.pause()
     }
 

@@ -16,6 +16,8 @@ import types
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from frappe.utils import cint
+
 from vehicle_maintenance.api import chat, chat_upload
 
 
@@ -1379,3 +1381,114 @@ class TestChatLastSeen(ChatTestBase):
 
 		frappe.set_user(self.alice)
 		self.assertNotIn(self.mallory, chat.heartbeat()["data"]["last_seen"])
+
+
+class TestDeliveryReceipts(ChatTestBase):
+	"""The second tick — the one that says the message reached a device.
+
+	Read receipts were already covered; delivery was not, and it was broken in a
+	way no test could see: `_mark_delivered` ran only from `sync`, so a recipient
+	could have a message on screen while the sender still saw one tick.
+	"""
+
+	def _send_from_alice(self) -> int:
+		frappe.set_user(self.alice)
+		sent = chat.send_message(
+			room=self.room, body="tick", client_id=frappe.generate_hash(length=12)
+		)
+		return cint(sent["data"]["message"]["seq"])
+
+	def _marks(self) -> tuple:
+		"""What Alice's own list_rooms says about her outgoing messages."""
+		frappe.set_user(self.alice)
+		for r in chat.list_rooms()["data"]["rooms"]:
+			if r["name"] == self.room:
+				return cint(r["delivered_upto"]), cint(r["read_upto"])
+		raise AssertionError("room not visible to alice")
+
+	def test_a_message_starts_undelivered_and_unread(self):
+		self._send_from_alice()
+
+		self.assertEqual(self._marks(), (0, 0))
+
+	def test_opening_the_thread_marks_it_delivered(self):
+		# The regression this class exists for. Fetching history *is* delivery;
+		# before this, only `sync` said so.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.list_messages(room=self.room)
+
+		delivered, read = self._marks()
+
+		self.assertEqual(delivered, seq)
+		self.assertEqual(read, 0)
+
+	def test_delivery_does_not_imply_read(self):
+		# Collapsing the two would turn every push into a false blue tick.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+
+		delivered, read = self._marks()
+
+		self.assertEqual(delivered, seq)
+		self.assertEqual(read, 0)
+
+	def test_reading_marks_both(self):
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=seq)
+
+		self.assertEqual(self._marks(), (seq, seq))
+
+	def test_the_delivery_cursor_never_goes_backwards(self):
+		# Pages arrive out of order — an older page must not un-deliver newer
+		# messages the device already holds.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+		chat.mark_delivered(room=self.room, seq=1)
+
+		delivered, _ = self._marks()
+
+		self.assertEqual(delivered, seq)
+
+	def test_a_non_member_cannot_mark_delivery(self):
+		seq = self._send_from_alice()
+		frappe.set_user(self.mallory)
+
+		with self.assertRaises(frappe.PermissionError):
+			chat.mark_delivered(room=self.room, seq=seq)
+
+	def test_delivered_is_the_slowest_member_not_the_fastest(self):
+		# Two blue ticks in a group must mean everyone, or a dispatcher chasing
+		# an unanswered instruction is being told something untrue.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+
+		delivered, _ = self._marks()
+		self.assertEqual(delivered, seq)
+
+		# Add a third member who has received nothing.
+		frappe.set_user("Administrator")
+		room = frappe.get_doc("VM Chat Room", self.room)
+		room.append("members", {"user": self.mallory})
+		room.save(ignore_permissions=True)
+
+		delivered, _ = self._marks()
+
+		self.assertEqual(delivered, 0)
+
+	def test_paging_backwards_still_reports_the_highest_page_seq(self):
+		first = self._send_from_alice()
+		second = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.list_messages(room=self.room, before_seq=second)
+
+		delivered, _ = self._marks()
+
+		# The backwards page contains `first` only; delivery reflects what was
+		# actually handed over, not the newest message in the room.
+		self.assertEqual(delivered, first)
+		self.assertLess(delivered, second)

@@ -317,10 +317,43 @@ def list_messages(room: str, before_seq: int | None = None, limit: int = DEFAULT
 		limit_page_length=limit + 1,
 	)
 	has_more = len(rows) > limit
+	page = rows[:limit]
+
+	# Opening a thread is a delivery. Until this was here, `_mark_delivered` ran
+	# only from `sync`, so a recipient could read a message on screen while the
+	# sender still saw a single tick — the delivery mark waited for the next
+	# delta sync, which might be minutes away or, on a device sitting in an open
+	# thread, not come at all.
+	#
+	# `GREATEST` in the update makes this safe on a backwards page too: those
+	# rows are older than what the caller already holds, so the cursor cannot go
+	# backwards.
+	if page:
+		top = max(cint(r["seq"]) for r in page)
+		_mark_delivered(frappe.session.user, {room: top})
+
 	return {
 		"success": True,
-		"data": {"room": room, "messages": _serialise(rows[:limit]), "has_more": has_more},
+		"data": {"room": room, "messages": _serialise(page), "has_more": has_more},
 	}
+
+
+@frappe.whitelist()
+def mark_delivered(room: str, seq: int) -> dict:
+	"""The client acknowledging it has stored a message it was pushed.
+
+	The socket and FCM hand a message to the device without the server learning
+	anything about it, so without this the only delivery evidence is a later
+	`sync` or `list_messages` — which is why a phone that had already displayed
+	a message could still show the sender one tick.
+
+	Deliberately separate from `mark_read`: receiving is not reading. A message
+	that arrives while the app is on another screen is delivered and unread, and
+	collapsing the two would turn every push into a false blue tick.
+	"""
+	_room_checked(room)
+	_mark_delivered(frappe.session.user, {room: cint(seq)})
+	return {"success": True, "data": {"room": room, "seq": cint(seq)}}
 
 
 @frappe.whitelist()

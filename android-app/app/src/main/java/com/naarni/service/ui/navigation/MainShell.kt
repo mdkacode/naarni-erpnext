@@ -42,6 +42,13 @@ import androidx.compose.ui.unit.dp
 import com.naarni.service.ui.components.HairlineDivider
 import com.naarni.service.ui.theme.AppSurface
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -252,6 +259,20 @@ fun MainShell(vm: AppViewModel) {
             }
         },
     ) { padding ->
+        // A brand-new account goes through onboarding first — but only an account
+        // that has never answered, and only once. `has_name` is the test rather
+        // than `profile_complete`: a phone-provisioned user starts named after
+        // its own number, and somebody who deliberately skipped the photo must
+        // not be asked again on every cold start.
+        val myProfile = com.naarni.service.ui.screens.rememberMyProfile()
+        var onboarded by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(myProfile?.has_name) {
+            if (!onboarded && myProfile != null && !myProfile.has_name) {
+                onboarded = true
+                nav.navigate("onboarding") { launchSingleTop = true }
+            }
+        }
+
         NavHost(
             navController = nav,
             startDestination = Tab.Home.route,
@@ -267,13 +288,34 @@ fun MainShell(vm: AppViewModel) {
                 .consumeWindowInsets(padding),
         ) {
             composable(Tab.Home.route) {
-                HomeScreen(
-                    vm = vm,
-                    onCreateJobCard = { nav.navigate("create") },
-                    onOpenNotifications = { nav.navigate("notifications") },
-                    onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
-                    onOpenDuty = { nav.navigate("duty") },
-                )
+                val profile = com.naarni.service.ui.screens.rememberMyProfile()
+                var promptDismissed by rememberSaveable { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
+                val ctx = LocalContext.current
+                Column(Modifier.fillMaxSize()) {
+                    // Above the screen rather than inside it: the prompt is about
+                    // the account, not about anything on the home screen, and it
+                    // must never push a job card out of reach.
+                    if (!promptDismissed) {
+                        com.naarni.service.ui.screens.ProfilePromptBanner(
+                            profile = profile,
+                            onOpen = { nav.navigate("editprofile") },
+                            onDismiss = {
+                                promptDismissed = true
+                                scope.launch {
+                                    runCatching { ctx.appContainer.profileRepo.snoozePrompt() }
+                                }
+                            },
+                        )
+                    }
+                    HomeScreen(
+                        vm = vm,
+                        onCreateJobCard = { nav.navigate("create") },
+                        onOpenNotifications = { nav.navigate("notifications") },
+                        onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                        onOpenDuty = { nav.navigate("duty") },
+                    )
+                }
             }
 
             // Roster + attendance history. Reached from the duty card rather than
@@ -443,7 +485,29 @@ fun MainShell(vm: AppViewModel) {
                     onBack = { nav.popBackStack() },
                 )
             }
-            composable(Tab.Profile.route) { ProfileScreen(vm) }
+            composable(Tab.Profile.route) {
+                ProfileScreen(
+                    vm,
+                    onEditProfile = { nav.navigate("editprofile") },
+                    onSounds = { nav.navigate("sounds") },
+                )
+            }
+            composable("editprofile") {
+                com.naarni.service.ui.screens.EditProfileScreen(onBack = { nav.popBackStack() })
+            }
+            composable("sounds") {
+                com.naarni.service.ui.screens.NotificationSoundsScreen(onBack = { nav.popBackStack() })
+            }
+            composable("onboarding") {
+                com.naarni.service.ui.screens.OnboardingFlow(
+                    onDone = {
+                        nav.navigate(Tab.Home.route) {
+                            popUpTo("onboarding") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
             composable("create") {
                 CreateJobCardScreen(
                     vm,

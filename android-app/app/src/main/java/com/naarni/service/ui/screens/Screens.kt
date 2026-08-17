@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.rounded.Assignment
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Business
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ConfirmationNumber
@@ -557,8 +558,14 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
 }
 
 @Composable
-fun ProfileScreen(vm: AppViewModel) {
-    val name = vm.session.fullName ?: vm.session.user ?: "—"
+fun ProfileScreen(
+    vm: AppViewModel,
+    onEditProfile: () -> Unit = {},
+    onSounds: () -> Unit = {},
+) {
+    val profile = rememberMyProfile()
+    val name = profile?.full_name?.takeIf { it.isNotBlank() }
+        ?: vm.session.fullName ?: vm.session.user ?: "—"
     val context = LocalContext.current
     val feedback = com.naarni.service.core.feedback.LocalFeedback.current
     var showDelete by remember { mutableStateOf(false) }
@@ -582,24 +589,20 @@ fun ProfileScreen(vm: AppViewModel) {
         Text("Profile", style = MaterialTheme.typography.titleLarge)
         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Box(
-                    // Neutral: an avatar is who you are, not something to press,
-                    // and the accent is reserved for things that are.
-                    Modifier.size(56.dp).background(AppSurface.sunken, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        name.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                Column {
+                ProfileFace(profile, size = 56)
+                Column(Modifier.weight(1f)) {
                     Text(name, style = MaterialTheme.typography.titleMedium)
+                    profile?.designation?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     StatusChip(vm.session.primaryRole)
                 }
+                TextButton(onClick = onEditProfile) { Text("Edit") }
             }
         }
 
@@ -608,6 +611,8 @@ fun ProfileScreen(vm: AppViewModel) {
         // Legal, privacy & account management (Play Store requirements)
         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
             Column {
+                ProfileRow(Icons.Rounded.MusicNote, "Notification sounds") { onSounds() }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 ProfileRow(Icons.Rounded.PrivacyTip, "Privacy Policy") { openPage("privacy-policy") }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 ProfileRow(Icons.Rounded.Description, "Terms & Conditions") { openPage("terms-and-conditions") }

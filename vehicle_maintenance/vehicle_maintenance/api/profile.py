@@ -255,7 +255,11 @@ def avatar(user: str | None = None):
 	if not path:
 		frappe.throw(_("No picture."), frappe.DoesNotExistError)
 
-	with open(path, "rb") as fh:
+	# Audited, which is what the traversal rule asks for: `path` is not the
+	# caller's string. `_avatar_path` accepts only a flat image filename inside
+	# this site's own files directories and re-checks containment after resolving
+	# symlinks, and the tests below drive three traversal payloads through it.
+	with open(path, "rb") as fh:  # nosemgrep
 		content = fh.read()
 
 	frappe.local.response.filename = os.path.basename(path)

@@ -98,6 +98,11 @@ after_migrate = [
 	# The pack number is digits; raise the digits keypad for it. Fills a blank
 	# only, so an admin's own choice in Desk survives the next migrate.
 	"vehicle_maintenance.patches.v2_4.battery_qc_number_pad.execute",
+	# One-time: removes the inspections opened against packs that do not exist,
+	# plus the rows a device test left on one real pack. Named runs only, with a
+	# count interlock, every deletion logged, and marker-tracked so a later
+	# migrate cannot delete a pack legitimately given one of these labels.
+	"vehicle_maintenance.patches.v2_5.remove_test_inspections.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

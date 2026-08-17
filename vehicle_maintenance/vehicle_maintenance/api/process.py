@@ -43,22 +43,37 @@ def _ok(data=None, message=None) -> dict:
 	return {"success": True, "data": data if data is not None else {}, "message": message}
 
 
-# How many times a write that lost a deadlock is replayed before giving up.
+# How many times a write that lost a race is replayed before giving up.
 # Six, not four: at four, a 20-operator shift still lost 1.5% of answers, and a
 # retry costs nothing on the path that does not need it.
 DEADLOCK_ATTEMPTS = 6
 
+#: The two ways a write to a Process Run loses a race it should simply re-run.
+#:
+#: **QueryDeadlockError** — InnoDB killed the transaction to break a deadlock.
+#: Saving an answer rewrites the run's child tables, so concurrent operators
+#: contend for the same index gaps in `tabProcess Run Result`.
+#:
+#: **TimestampMismatchError** — Frappe's optimistic lock: another request saved
+#: the same document between our read and our write. Added after the offline
+#: sync stress harness found it, and it is the more dangerous of the two because
+#: it is *not* a database error and nothing was retrying it. Measured: 30
+#: concurrent replays of one batch produced **27 failures**, and 24 concurrent
+#: batches against one run landed 11 of 121 answers.
+#:
+#: Both mean the same thing — the transaction was rejected whole, nothing was
+#: written, and the correct response is to read the document again and redo the
+#: work. Neither is a reason to hand an error to somebody who has already done
+#: the tapping.
+_CONTENDED_WRITE = (frappe.QueryDeadlockError, frappe.TimestampMismatchError)
+
 
 def with_deadlock_retry(work, attempts: int = DEADLOCK_ATTEMPTS):
-	"""Run `work`, replaying it if InnoDB kills it to break a deadlock.
+	"""Run `work`, replaying it when it loses a race with a concurrent write.
 
-	Saving an answer rewrites the run's child tables — Frappe deletes the rows it
-	does not recognise and re-inserts the rest — so a shift of operators saving
-	at the same moment contends for the same index gaps in `tabProcess Run
-	Result`. InnoDB resolves that by killing one transaction with error 1213 and
-	saying, in as many words, "try restarting transaction". It is not a
-	corruption or a bug in the statement; it is the interleaving, and the correct
-	response is to run it again.
+	See `_CONTENDED_WRITE` for what counts and why. Everything else propagates
+	untouched — a validation error replayed six times is six times the wrong
+	answer, and that property is what makes this safe to wrap whole endpoints in.
 
 	Measured against a laptop bench at 20 concurrent operators driving a full
 	59-step inspection: **195 of 1180 answers** — one in six — came back as a 500
@@ -66,28 +81,28 @@ def with_deadlock_retry(work, attempts: int = DEADLOCK_ATTEMPTS):
 	3 of 1180. Not zero: the residue is the write amplification itself, and the
 	real cure is to stop rewriting every child row to save one answer.
 
-	`work` must be re-runnable, so it re-reads the document itself: the deadlock
-	has already rolled the transaction back, and anything held in memory from the
-	failed attempt describes a world that no longer exists.
+	`work` must be re-runnable, so it re-reads the document itself: the failed
+	attempt has already been rolled back, and anything held in memory from it
+	describes a world that no longer exists.
 	"""
 	for attempt in range(attempts):
 		try:
 			return work()
-		except frappe.QueryDeadlockError:
+		except _CONTENDED_WRITE:
 			frappe.db.rollback()
 			if attempt == attempts - 1:
 				# Best-effort: a logger that throws here would replace the real
 				# cause with its own, and the real cause is the whole point.
 				try:
 					frappe.log_error(
-						title="Process engine: deadlock survived retries",
+						title="Process engine: contended write survived retries",
 						message=frappe.get_traceback(),
 					)
 				except Exception:
 					pass
 				raise
 			# Back off with jitter. Two transactions that retry in lockstep
-			# simply deadlock again, which is how a retry loop turns one lost
+			# simply collide again, which is how a retry loop turns one lost
 			# answer into four.
 			time.sleep(0.05 * (2**attempt) + random.uniform(0, 0.05))
 

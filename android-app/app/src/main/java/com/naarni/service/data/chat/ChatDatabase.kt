@@ -17,9 +17,13 @@ import androidx.room.RoomDatabase
     // 2: mentions, mentionsMe and alertEvent on a message.
     // 3: deliveredUpto and readUpto on a room — the second and third tick.
     // 4: reactions on a message.
+    // 5: no shape change — a forced re-sync, because every row written before
+    //    this carries the moment it was stored instead of the moment it was
+    //    sent, and delta sync only ever returns messages *above* the cursor, so
+    //    nothing would ever go back and correct them.
     // No migrations are written for any of them — see the destructive-fallback
     // note below.
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class ChatDatabase : RoomDatabase() {

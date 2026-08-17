@@ -593,7 +593,7 @@ def send_message(
 	lon: float | None = None,
 	vehicle: str | None = None,
 	ticket: str | None = None,
-	mentions=None,
+	mentions: str | list | None = None,
 ) -> dict:
 	"""Post a message. Idempotent on `client_id`.
 

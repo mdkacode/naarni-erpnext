@@ -4,6 +4,7 @@ import com.naarni.service.data.dto.AlertEventItem
 import com.naarni.service.data.dto.BeginUploadPayload
 import com.naarni.service.data.dto.BusImage
 import com.naarni.service.data.dto.PresencePayload
+import com.naarni.service.data.dto.ReactionsPayload
 import com.naarni.service.data.dto.TypingPayload
 import com.naarni.service.data.dto.ChunkPayload
 import com.naarni.service.data.dto.ChunkStatusPayload
@@ -606,6 +607,55 @@ interface FrappeApi {
         @Query("name") name: String,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.RunReport>>
 
+    // ------------------------------------------------------------ offline sync
+    //
+    // The three calls that let an engineer work with no network at all. See
+    // `data/inspection/` for the store they drain, and the module docstring on
+    // `api/process_sync.py` for why a batch is a description of state rather
+    // than a list of operations.
+
+    /**
+     * Everything needed to run every permitted process offline, in one call.
+     *
+     * Fetched while there *is* a network, so that when there is not, the app
+     * already holds the definitions. Without this an engineer who opens the app
+     * for the first time inside a shed cannot start the inspection they are
+     * standing in front of.
+     */
+    @GET("api/method/vehicle_maintenance.api.process_sync.bootstrap")
+    suspend fun processBootstrap(
+        @Query("app_capability") appCapability: Int = 1,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessBootstrap>>
+
+    /**
+     * Push one handset-held inspection. Safe to send twice — and it will be.
+     *
+     * The batch goes as a single JSON field rather than as form parameters
+     * because it carries nested lists, and because one request that either
+     * lands whole or does not land at all is far easier to reason about on a
+     * link that drops mid-upload.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process_sync.sync_run")
+    suspend fun syncProcessRun(
+        @Field("payload") payload: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.SyncRunResponse>>
+
+    /** Attach a photo taken offline, keyed so a replayed upload cannot duplicate it. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process_sync.attach_photo_synced")
+    suspend fun attachProcessPhotoSynced(
+        @Field("run") run: String,
+        @Field("step_code") stepCode: String,
+        @Field("file_url") fileUrl: String,
+        @Field("client_uuid") clientUuid: String,
+        @Field("captured_at") capturedAt: String? = null,
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+        @Field("accuracy_m") accuracyM: Double? = null,
+        @Field("location_source") locationSource: String = "Unavailable",
+    ): FrappeWrap<Envelope<JsonObject>>
+
     // ══════════════════════════════════════════════════════════════════ Chat
 
     @GET("api/method/vehicle_maintenance.api.chat.list_rooms")
@@ -671,6 +721,20 @@ interface FrappeApi {
      * Nothing is persisted server-side; the call exists only to fan a realtime
      * event out to whoever has the thread open.
      */
+    /**
+     * Put a reaction on a message, or take it off — one call for both.
+     *
+     * `reaction` is a server-defined code (`like`, `love`, …), never the emoji
+     * itself: MariaDB's collation treats every emoji as equal to every other,
+     * so the glyph cannot be an identity.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.toggle_reaction")
+    suspend fun chatToggleReaction(
+        @Field("message") message: String,
+        @Field("reaction") reaction: String,
+    ): FrappeWrap<Envelope<ReactionsPayload>>
+
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.set_typing")
     suspend fun chatSetTyping(
@@ -834,4 +898,61 @@ interface FrappeApi {
         @Query("from_date") fromDate: String? = null,
         @Query("to_date") toDate: String? = null,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.MyAttendance>>
+
+    // ── Profile & onboarding ─────────────────────────────────────────────────
+    // The face is fetched from `profile.avatar`, not from a file path: pictures
+    // live in the private bucket, where the raw url is readable only by their
+    // owner. See ProfileRepository.avatarUrl.
+
+    /**
+     * A standalone private upload — no doctype to hang off.
+     *
+     * The other `uploadFile` attaches to a Job Card, and Frappe uses that
+     * attachment to decide who may read the file back. A profile picture has no
+     * such parent, which is exactly why it is served through `profile.avatar`
+     * rather than by its url.
+     */
+    @Multipart
+    @POST("api/method/upload_file")
+    suspend fun uploadStandaloneFile(
+        @Part file: MultipartBody.Part,
+        @Part("is_private") isPrivate: RequestBody,
+        @Part("folder") folder: RequestBody,
+    ): FrappeWrap<FileUploadData>
+
+    @GET("api/method/vehicle_maintenance.api.profile.get_my_profile")
+    suspend fun getMyProfile(): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.update_my_profile")
+    suspend fun updateMyProfile(
+        @Field("full_name") fullName: String? = null,
+        @Field("designation") designation: String? = null,
+        @Field("about") about: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.set_profile_photo")
+    suspend fun setProfilePhoto(
+        @Field("file_url") fileUrl: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @POST("api/method/vehicle_maintenance.api.profile.remove_profile_photo")
+    suspend fun removeProfilePhoto(): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @GET("api/method/vehicle_maintenance.api.profile.list_designations")
+    suspend fun listDesignations(
+        @Query("query") query: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.DesignationsPayload>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.set_notification_tones")
+    suspend fun setNotificationTones(
+        @Field("chat_tone") chatTone: String? = null,
+        @Field("alert_tone") alertTone: String? = null,
+        @Field("vibrate") vibrate: Int? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.TonesPayload>>
+
+    @POST("api/method/vehicle_maintenance.api.profile.snooze_profile_prompt")
+    suspend fun snoozeProfilePrompt(): FrappeWrap<Envelope<kotlinx.serialization.json.JsonObject>>
 }

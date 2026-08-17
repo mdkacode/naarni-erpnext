@@ -26,6 +26,7 @@ from vehicle_maintenance.process_engine import (
 	actions as engine_actions,
 )
 from vehicle_maintenance.process_engine import (
+	collaboration,
 	computed,
 	conditions,
 	evaluation,
@@ -43,22 +44,37 @@ def _ok(data=None, message=None) -> dict:
 	return {"success": True, "data": data if data is not None else {}, "message": message}
 
 
-# How many times a write that lost a deadlock is replayed before giving up.
+# How many times a write that lost a race is replayed before giving up.
 # Six, not four: at four, a 20-operator shift still lost 1.5% of answers, and a
 # retry costs nothing on the path that does not need it.
 DEADLOCK_ATTEMPTS = 6
 
+#: The two ways a write to a Process Run loses a race it should simply re-run.
+#:
+#: **QueryDeadlockError** — InnoDB killed the transaction to break a deadlock.
+#: Saving an answer rewrites the run's child tables, so concurrent operators
+#: contend for the same index gaps in `tabProcess Run Result`.
+#:
+#: **TimestampMismatchError** — Frappe's optimistic lock: another request saved
+#: the same document between our read and our write. Added after the offline
+#: sync stress harness found it, and it is the more dangerous of the two because
+#: it is *not* a database error and nothing was retrying it. Measured: 30
+#: concurrent replays of one batch produced **27 failures**, and 24 concurrent
+#: batches against one run landed 11 of 121 answers.
+#:
+#: Both mean the same thing — the transaction was rejected whole, nothing was
+#: written, and the correct response is to read the document again and redo the
+#: work. Neither is a reason to hand an error to somebody who has already done
+#: the tapping.
+_CONTENDED_WRITE = (frappe.QueryDeadlockError, frappe.TimestampMismatchError)
+
 
 def with_deadlock_retry(work, attempts: int = DEADLOCK_ATTEMPTS):
-	"""Run `work`, replaying it if InnoDB kills it to break a deadlock.
+	"""Run `work`, replaying it when it loses a race with a concurrent write.
 
-	Saving an answer rewrites the run's child tables — Frappe deletes the rows it
-	does not recognise and re-inserts the rest — so a shift of operators saving
-	at the same moment contends for the same index gaps in `tabProcess Run
-	Result`. InnoDB resolves that by killing one transaction with error 1213 and
-	saying, in as many words, "try restarting transaction". It is not a
-	corruption or a bug in the statement; it is the interleaving, and the correct
-	response is to run it again.
+	See `_CONTENDED_WRITE` for what counts and why. Everything else propagates
+	untouched — a validation error replayed six times is six times the wrong
+	answer, and that property is what makes this safe to wrap whole endpoints in.
 
 	Measured against a laptop bench at 20 concurrent operators driving a full
 	59-step inspection: **195 of 1180 answers** — one in six — came back as a 500
@@ -66,28 +82,28 @@ def with_deadlock_retry(work, attempts: int = DEADLOCK_ATTEMPTS):
 	3 of 1180. Not zero: the residue is the write amplification itself, and the
 	real cure is to stop rewriting every child row to save one answer.
 
-	`work` must be re-runnable, so it re-reads the document itself: the deadlock
-	has already rolled the transaction back, and anything held in memory from the
-	failed attempt describes a world that no longer exists.
+	`work` must be re-runnable, so it re-reads the document itself: the failed
+	attempt has already been rolled back, and anything held in memory from it
+	describes a world that no longer exists.
 	"""
 	for attempt in range(attempts):
 		try:
 			return work()
-		except frappe.QueryDeadlockError:
+		except _CONTENDED_WRITE:
 			frappe.db.rollback()
 			if attempt == attempts - 1:
 				# Best-effort: a logger that throws here would replace the real
 				# cause with its own, and the real cause is the whole point.
 				try:
 					frappe.log_error(
-						title="Process engine: deadlock survived retries",
+						title="Process engine: contended write survived retries",
 						message=frappe.get_traceback(),
 					)
 				except Exception:
 					pass
 				raise
 			# Back off with jitter. Two transactions that retry in lockstep
-			# simply deadlock again, which is how a retry loop turns one lost
+			# simply collide again, which is how a retry loop turns one lost
 			# answer into four.
 			time.sleep(0.05 * (2**attempt) + random.uniform(0, 0.05))
 
@@ -250,6 +266,27 @@ def _live_definition(process_code_or_family: str):
 	return frappe.get_cached_doc("Process Definition", name)
 
 
+def _definition_family(definition) -> list[str]:
+	"""Every version of this process, current and superseded.
+
+	Runs are stamped with the definition version that was live when they
+	started, so "is this pack already being inspected?" has to be asked across
+	all of them. Republishing a definition mid-shift otherwise orphans the pack
+	sitting on the bench: the second operator's scan would find nothing and open
+	a second record of the same battery.
+	"""
+	family = (definition.family or "").strip()
+	if not family:
+		return [definition.name]
+	names = frappe.get_all(
+		"Process Definition",
+		filters={"family": family},
+		fields=["name"],
+		limit_page_length=50,
+	)
+	return sorted({definition.name} | {row["name"] for row in names})
+
+
 # ----------------------------------------------------------------- definitions
 
 
@@ -350,6 +387,11 @@ def get_definition(process: str, app_capability: int = 1) -> dict:
 			"subject_label": definition.subject_label,
 			"identifier_mode": definition.identifier_mode,
 			"identifier_pattern": definition.identifier_pattern,
+			# Which keyboard the app raises for the pack number. A serial that is
+			# all digits typed on a full QWERTY keyboard is slower, and every
+			# mistyped character opens a second inspection of a battery that does
+			# not exist.
+			"identifier_keypad": definition.get("identifier_keypad") or "Text",
 			"allow_offline": cint(definition.allow_offline),
 			"allow_resume": cint(definition.allow_resume),
 			"expected_minutes": cint(definition.expected_minutes),
@@ -415,6 +457,28 @@ def start_run(
 				_("'{0}' does not look like a valid {1}.").format(
 					identifier, definition.subject_label or _("identifier")
 				)
+			)
+
+	identifier = collaboration.run_key(identifier) or None
+
+	# One pack, one record. A battery is 59 checks and a shift puts more than one
+	# person on it, so the second operator to scan a label must land *in* the
+	# inspection that is already running rather than opening a rival copy of it.
+	# Before this, two people at one bench produced two runs of one battery, each
+	# holding half the answers and neither able to see the other's — and the pack
+	# had two verdicts, which is worse than having none.
+	#
+	# A test run is exempt: that is somebody proving a definition works, and it
+	# must never attach itself to real work on the floor.
+	if identifier and not cint(is_test_run):
+		siblings = _definition_family(definition)
+		joined = collaboration.open_run_for(siblings, identifier)
+		if joined:
+			return _ok(
+				get_run(joined)["data"],
+				_("Joined the inspection already open for this {0}.").format(
+					definition.subject_label or _("item")
+				),
 			)
 
 	if is_test_run and not (_user_roles() & {C.ROLE_AUTHOR, "System Manager"}):
@@ -507,6 +571,10 @@ def _serialise_run(run) -> dict:
 		"started_at": str(run.started_at) if run.started_at else None,
 		"completed_at": str(run.completed_at) if run.completed_at else None,
 		"is_test_run": cint(run.is_test_run),
+		# Who has actually worked this pack. Carried on the run itself rather than
+		# fetched separately, because the one moment it matters most is the moment
+		# a second operator opens the record — and that is one request, not two.
+		"participants": collaboration.participants(run),
 		"results": [
 			{
 				"step_code": r.step_code,
@@ -576,6 +644,222 @@ def get_run(name: str) -> dict:
 
 
 @frappe.whitelist()
+def run_board(run: str) -> dict:
+	"""The modules of one run, with progress and the last pair of hands on each.
+
+	What the app draws *before* it draws a question. An operator arriving at a
+	pack somebody else has been working needs three facts in this order: which
+	modules are done, which is being worked right now, and which is free for
+	them — and a stepper that opens on question one can tell them none of it.
+
+	Cheap enough to poll: one document read and no joins.
+	"""
+	doc = frappe.get_doc("Process Run", run)
+	frappe.has_permission("Process Run", doc=doc, throw=True)
+	definition = frappe.get_cached_doc("Process Definition", doc.process_definition)
+	return _ok(
+		{
+			"run": doc.name,
+			"run_identifier": doc.run_identifier,
+			"process_name": doc.process_name,
+			"stage_label": definition.stage_label or _("Stage"),
+			"status": doc.status,
+			"current_stage": doc.current_stage,
+			"answered_count": cint(doc.answered_count),
+			"quarantine_reason": doc.quarantine_reason,
+			"stages": collaboration.board(doc, definition),
+			"participants": collaboration.participants(doc),
+		}
+	)
+
+
+@frappe.whitelist()
+def find_open_run(process: str, identifier: str) -> dict:
+	"""Is this pack already being inspected, and how far along is it?
+
+	Called the instant a label is scanned, before anything is created. Answering
+	"yes, and Ravi is in Module 3" is the difference between two people working
+	one battery together and two people each recording half of it.
+
+	Returns ``{found: False}`` rather than throwing when there is nothing open —
+	not finding a run is the ordinary case, not an error.
+	"""
+	definition = _live_definition(process)
+	_assert_can_run(definition)
+
+	name = collaboration.open_run_for(_definition_family(definition), identifier)
+	if not name:
+		return _ok({"found": False, "run_identifier": collaboration.run_key(identifier)})
+
+	doc = frappe.get_doc("Process Run", name)
+	return _ok(
+		{
+			"found": True,
+			"run": doc.name,
+			"run_identifier": doc.run_identifier,
+			"process_name": doc.process_name,
+			"stage_label": definition.stage_label or _("Stage"),
+			"status": doc.status,
+			"current_stage": doc.current_stage,
+			"answered_count": cint(doc.answered_count),
+			"started_at": str(doc.started_at) if doc.started_at else None,
+			"stages": collaboration.board(doc, definition),
+			"participants": collaboration.participants(doc),
+		}
+	)
+
+
+#: Fields whose change makes an answer a *different* answer.
+#:
+#: Replaying an offline batch must not re-fire a step's actions, or one dropped
+#: response would raise a second deviation and notify the supervisor twice for
+#: work the operator did once. `photo_count` is deliberately absent: a photo
+#: arriving later changes the row without changing the answer.
+_ANSWER_IDENTITY = (
+	"response",
+	"value_numeric",
+	"value_text",
+	"is_pass",
+	"is_skipped",
+	"skip_reason",
+	"remark",
+)
+
+#: Compared as numbers, not as values.
+#:
+#: Frappe's Float and Check columns are non-nullable, so a judged `None` is
+#: stored and read back as `0.0`. Comparing the two directly made *every* replay
+#: look like a changed answer — which is precisely the bug `_ANSWER_IDENTITY`
+#: exists to prevent, and it passed unnoticed until a test asserted `changed`
+#: rather than asserting the row count.
+_NUMERIC_IDENTITY = ("value_numeric", "is_pass", "is_skipped")
+
+
+def _same_answer(existing, row_values: dict) -> bool:
+	"""Whether the stored row already says exactly what this answer says."""
+	for field in _ANSWER_IDENTITY:
+		was, now = existing.get(field), row_values[field]
+		if field in _NUMERIC_IDENTITY:
+			if flt(was) != flt(now):
+				return False
+		elif (was or "") != (now or ""):
+			# Empty string and None are the same absence of a remark.
+			return False
+	return True
+
+
+def apply_answer(
+	doc,
+	definition,
+	step_code: str,
+	response: str | None = None,
+	value: float | str | None = None,
+	remark: str | None = None,
+	skipped: int = 0,
+	skip_reason: str | None = None,
+	seconds_spent: int | None = None,
+	answered_at=None,
+) -> dict:
+	"""Judge one answer and write it onto `doc` **in memory** — no save, no commit.
+
+	The single place an answer is turned into a result row. `save_step_result`
+	calls it once per request; `process_sync.sync_run` calls it once per queued
+	answer in a batch. Keeping one implementation is the point: two evaluators
+	would agree the day they were written and disagree by the time it mattered.
+
+	Args:
+	    doc: The `Process Run` document, loaded and open.
+	    definition: Its cached `Process Definition`.
+	    step_code: Which step this answers.
+	    answered_at: When the operator answered, for a batch replaying work done
+	        offline hours ago. Defaults to now, which is right for a live save.
+
+	Returns ``{row, judged, outcome, chosen, changed}``. `changed` is False when
+	the row already said exactly this, and the caller uses it to decide whether
+	the step's actions should fire — see `_ANSWER_IDENTITY`.
+	"""
+	step = definition.expanded_step(step_code)
+	if not step:
+		frappe.throw(_("Step '{0}' is not part of {1}.").format(step_code, definition.process_name))
+
+	photo_count = len([p for p in doc.photos or [] if p.step_code == step_code])
+	scan_count = len([s for s in doc.scans or [] if s.step_code == step_code])
+
+	if step["response_type"] == C.COMPUTED:
+		# Derived server-side from earlier answers — the client's posted value is
+		# ignored, so a computed result can never disagree with its inputs.
+		value = computed.evaluate_expression(step.get("computed_expression"), _answer_map(doc))
+		skipped = 0 if value is not None else skipped
+
+	judged = evaluation.evaluate(
+		step,
+		response=response,
+		value=value,
+		skipped=bool(cint(skipped)),
+		photo_count=photo_count,
+		scan_count=scan_count,
+	)
+
+	threshold = flt(frappe.db.get_single_value("Process Engine Settings", "fast_entry_threshold_pct") or 25)
+	row_values = {
+		"step_code": step["step_code"],
+		"stage": step.get("stage"),
+		"display_no": step.get("display_no"),
+		"section": step.get("section"),
+		"label": step.get("label"),
+		"response_type": step["response_type"],
+		"method_label": step.get("method_label"),
+		"unit": step.get("unit"),
+		"spec_summary": judged["spec_summary"],
+		"response": judged["response"],
+		"value_numeric": judged["value_numeric"],
+		"value_text": judged["value_text"],
+		"is_pass": 1 if judged["is_pass"] else 0,
+		"is_deviation": 1 if judged["is_deviation"] else 0,
+		"is_critical": 1 if judged["is_critical"] else 0,
+		"is_skipped": cint(skipped),
+		"skip_reason": skip_reason,
+		"remark": remark,
+		"weight": flt(step.get("weight")),
+		"answered_by": frappe.session.user,
+		"answered_at": answered_at or frappe.utils.now_datetime(),
+		"seconds_spent": cint(seconds_spent),
+		"entry_flag": scoring.entry_flag(step, seconds_spent, threshold),
+		"photo_count": photo_count,
+	}
+
+	existing = next((r for r in doc.results or [] if r.step_code == step_code), None)
+	changed = True
+	if existing:
+		changed = not _same_answer(existing, row_values)
+		existing.update(row_values)
+	else:
+		doc.append("results", row_values)
+
+	outcome = {"client_hints": [], "warnings": []}
+	if changed:
+		judged_with_meta = {**judged, **row_values, "is_answered": judged["is_answered"]}
+		outcome = engine_actions.dispatch(doc, step, judged_with_meta, step.get("actions") or [])
+
+	chosen = next(
+		(
+			o
+			for o in step.get("options") or []
+			if (o.get("value") or "").strip() == (judged["response"] or "").strip()
+		),
+		None,
+	)
+	return {
+		"row": row_values,
+		"judged": judged,
+		"outcome": outcome,
+		"chosen": chosen,
+		"changed": changed,
+		"step": step,
+	}
+
+
+@frappe.whitelist()
 def save_step_result(
 	run: str,
 	step_code: str,
@@ -592,92 +876,36 @@ def save_step_result(
 	prompt for a photo or remark in place, rather than the operator discovering
 	the requirement at submit time.
 	"""
+
 	# Re-read inside the closure: a deadlock rolls the transaction back, so a
 	# retry must start from the run as it now is, not as it was.
 	def _apply():
-		# A Computed step overwrites both of these, which would otherwise make
-		# them closure-locals and unreadable on every *other* step.
-		nonlocal value, skipped
-
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
 		doc.ensure_open()
 
 		definition = frappe.get_cached_doc("Process Definition", doc.process_definition)
-		step = definition.expanded_step(step_code)
-		if not step:
-			frappe.throw(_("Step '{0}' is not part of {1}.").format(step_code, definition.process_name))
-
-		photo_count = len([p for p in doc.photos or [] if p.step_code == step_code])
-		scan_count = len([s for s in doc.scans or [] if s.step_code == step_code])
-
-		if step["response_type"] == C.COMPUTED:
-			# Derived server-side from earlier answers — the client's posted value is
-			# ignored, so a computed result can never disagree with its inputs.
-			value = computed.evaluate_expression(step.get("computed_expression"), _answer_map(doc))
-			skipped = 0 if value is not None else skipped
-
-		judged = evaluation.evaluate(
-			step,
+		applied = apply_answer(
+			doc,
+			definition,
+			step_code,
 			response=response,
 			value=value,
-			skipped=bool(cint(skipped)),
-			photo_count=photo_count,
-			scan_count=scan_count,
+			remark=remark,
+			skipped=skipped,
+			skip_reason=skip_reason,
+			seconds_spent=seconds_spent,
 		)
-
-		threshold = flt(frappe.db.get_single_value("Process Engine Settings", "fast_entry_threshold_pct") or 25)
-		row_values = {
-			"step_code": step["step_code"],
-			"stage": step.get("stage"),
-			"display_no": step.get("display_no"),
-			"section": step.get("section"),
-			"label": step.get("label"),
-			"response_type": step["response_type"],
-			"method_label": step.get("method_label"),
-			"unit": step.get("unit"),
-			"spec_summary": judged["spec_summary"],
-			"response": judged["response"],
-			"value_numeric": judged["value_numeric"],
-			"value_text": judged["value_text"],
-			"is_pass": 1 if judged["is_pass"] else 0,
-			"is_deviation": 1 if judged["is_deviation"] else 0,
-			"is_critical": 1 if judged["is_critical"] else 0,
-			"is_skipped": cint(skipped),
-			"skip_reason": skip_reason,
-			"remark": remark,
-			"weight": flt(step.get("weight")),
-			"answered_by": frappe.session.user,
-			"answered_at": frappe.utils.now_datetime(),
-			"seconds_spent": cint(seconds_spent),
-			"entry_flag": scoring.entry_flag(step, seconds_spent, threshold),
-			"photo_count": photo_count,
-		}
-
-		existing = next((r for r in doc.results or [] if r.step_code == step_code), None)
-		if existing:
-			existing.update(row_values)
-		else:
-			doc.append("results", row_values)
-
-		judged_with_meta = {**judged, **row_values, "is_answered": judged["is_answered"]}
-		outcome = engine_actions.dispatch(doc, step, judged_with_meta, step.get("actions") or [])
 
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
 
-		chosen = next(
-			(
-				o
-				for o in step.get("options") or []
-				if (o.get("value") or "").strip() == (judged["response"] or "").strip()
-			),
-			None,
-		)
+		judged, row_values = applied["judged"], applied["row"]
+		chosen, outcome = applied["chosen"], applied["outcome"]
 		return _ok(
 			{
 				"result": row_values,
-				"needs_photo": evaluation.photo_required(step, judged["is_pass"], chosen),
+				"needs_photo": evaluation.photo_required(applied["step"], judged["is_pass"], chosen),
 				"needs_remark": bool(chosen and cint(chosen.get("requires_remark"))) and not remark,
 				"client_hints": outcome["client_hints"],
 				"run": {
@@ -731,6 +959,7 @@ def record_scan(
 	reported per the entity type's policy — Warn by default, because a
 	legitimate rework re-scan must not be blocked at the station.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -788,10 +1017,10 @@ def record_scan(
 	return with_deadlock_retry(_apply)
 
 
-
 @frappe.whitelist()
 def delete_scan(run: str, serial_no: str, entity_type: str) -> dict:
 	"""Remove a mis-scanned component from a run."""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -828,7 +1057,6 @@ def _geofence_status(latitude, longitude) -> str:
 	return "Inside" if metres <= cint(settings.geofence_radius_m) else "Outside"
 
 
-
 @frappe.whitelist()
 def attach_photo(
 	run: str,
@@ -850,6 +1078,7 @@ def attach_photo(
 	burnt into the image by the app: the burn-in survives screenshots, the EXIF
 	survives resizing, and neither alone is enough.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -878,7 +1107,9 @@ def attach_photo(
 		)
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
-		return _ok({"photo_count": len([p for p in doc.photos if p.step_code == step_code])}, _("Photo saved."))
+		return _ok(
+			{"photo_count": len([p for p in doc.photos if p.step_code == step_code])}, _("Photo saved.")
+		)
 
 	return with_deadlock_retry(_apply)
 
@@ -895,6 +1126,7 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 	exactly what is missing. Everything else — missing photos, missing scans —
 	is recorded and reported, never blocked.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -954,6 +1186,33 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 		elif remaining:
 			doc.current_stage = remaining[0].stage_code
 		else:
+			# Last stage in order — but "last" is not "finished". Anything still
+			# outstanding anywhere in the run keeps it open and pointed at the
+			# work, rather than stamping a verdict on a half-done inspection.
+			outstanding = outstanding_work(doc, definition)
+			if outstanding["stages"] or outstanding["steps"]:
+				doc.status = C.STATUS_IN_PROGRESS
+				first_open = next(
+					(
+						s.stage_code
+						for s in sorted(definition.stages or [], key=lambda x: cint(x.sequence))
+						if not doc.stage_is_blocked(s.stage_code)
+						and not doc.signoff_for(s.stage_code, "Operator")
+					),
+					doc.current_stage,
+				)
+				doc.current_stage = first_open
+				doc.save(ignore_permissions=True)
+				# Same contract as every other write here: the operator's signoff
+				# and the moved stage pointer are persisted before we answer, so
+				# a dropped response never costs them the work.
+				frappe.db.commit()  # nosemgrep
+				return _ok(
+					{**_serialise_run(doc), "outstanding": outstanding},
+					_("Saved. {0} still to finish before this can be completed.").format(
+						", ".join(outstanding["stages"] + outstanding["steps"])
+					),
+				)
 			_finalise(doc, definition)
 
 		doc.save(ignore_permissions=True)
@@ -961,7 +1220,6 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 		return _ok(_serialise_run(doc), _("{0} submitted.").format(stage_def.label))
 
 	return with_deadlock_retry(_apply)
-
 
 
 @frappe.whitelist()
@@ -973,6 +1231,7 @@ def verify_stage(
 	Mirrors the operator / line-inspector split that Indian assembly lines
 	already run, and the KM Report L1/L2 checker pattern already in this app.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -1021,19 +1280,60 @@ def verify_stage(
 				_finalise(doc, definition)
 
 		doc.save(ignore_permissions=True)
-		frappe.db.commit()
+		# A verification decision is the point of the request; it is persisted
+		# before answering so a dropped response never loses a sign-off somebody
+		# has already given. Same contract as every other write in this file.
+		frappe.db.commit()  # nosemgrep
 		return _ok(_serialise_run(doc), _("Stage {0}.").format(decision.lower()))
 
 	return with_deadlock_retry(_apply)
 
 
+def outstanding_work(doc, definition) -> dict:
+	"""What is still missing before this run may be called finished.
+
+	Checked across the *whole* run, not the stage in hand. `submit_stage` only
+	ever looked at the stage being submitted and at the stages after it, so a
+	run whose first stage was never submitted — or was submitted out of order —
+	could reach the end and be stamped Passed with an entire stage unanswered.
+
+	Returns ``{stages: [...], steps: [...]}`` of labels, empty when complete.
+	"""
+	answers = _answer_map(doc)
+
+	missing_steps = []
+	for step in definition.expanded_steps():
+		if not cint(step.get("is_active", 1)) or not cint(step.get("is_mandatory")):
+			continue
+		if not conditions.is_visible(step, answers):
+			continue
+		if step["step_code"] not in answers:
+			missing_steps.append(step.get("display_no") or step["step_code"])
+
+	missing_stages = []
+	for stage in sorted(definition.stages or [], key=lambda x: cint(x.sequence)):
+		if doc.stage_is_blocked(stage.stage_code):
+			# Blocked pending review of an earlier failure. Not the operator's to
+			# finish, and not a reason to hold the run open for ever.
+			continue
+		if not doc.signoff_for(stage.stage_code, "Operator"):
+			missing_stages.append(stage.label or stage.stage_code)
+
+	return {"stages": missing_stages, "steps": missing_steps}
+
 
 def _finalise(doc, definition) -> None:
 	"""Close a run: stamp completion, then fire the process-level actions."""
 	doc.completed_at = frappe.utils.now_datetime()
+	# Stamped first: `_recompute` only writes a verdict once the run is closed,
+	# which is what keeps a half-finished inspection from carrying one.
 	doc._recompute()
 	if doc.status != C.STATUS_QUARANTINED:
-		doc.status = C.STATUS_PASSED if doc.result != "Fail" else C.STATUS_QUARANTINED
+		# A reason recorded by a quarantine action during the run decides this
+		# regardless of the score. Deferring the *status* to completion must not
+		# make a critical failure survivable by finishing well afterwards.
+		failed = doc.result == "Fail" or bool((doc.quarantine_reason or "").strip())
+		doc.status = C.STATUS_QUARANTINED if failed else C.STATUS_PASSED
 	if doc.status == C.STATUS_QUARANTINED and not doc.quarantine_reason:
 		doc.quarantine_reason = _("Run did not meet the pass criteria.")
 	engine_actions.dispatch_completion(doc, [a.as_dict() for a in definition.completion_actions or []])
@@ -1154,27 +1454,100 @@ def subject_history(subject_doctype: str, subject_name: str) -> dict:
 
 @frappe.whitelist()
 def my_open_runs(limit: int = 20) -> dict:
-	"""Runs this user started and has not finished — the app's resume list."""
-	runs = frappe.get_all(
+	"""Unfinished inspections this user is part of — the app's resume list.
+
+	"Part of" is wider than "started". Now that several people share one pack,
+	the run an operator most needs to come back to is often one a colleague
+	opened — they scanned the label, did two modules, and went to lunch. Keying
+	this list on `started_by` alone made that work disappear from the phone that
+	did it.
+	"""
+	cap = cint(limit) or 20
+	fields = [
+		"name",
+		"process_definition",
+		"process_name",
+		"run_identifier",
+		"status",
+		"current_stage",
+		"answered_count",
+		"started_at",
+		"started_by",
+		"modified",
+	]
+	# Unfinished is `completed_at is null`, not a list of statuses. A run that
+	# tripped a critical check part-way is still editable — a quarantine is not a
+	# terminal status — but it used to vanish from this list, so the operator
+	# could neither finish it nor see it again. It is the one they most need.
+	open_filters = {
+		"completed_at": ["is", "not set"],
+		"status": ["not in", [C.STATUS_CANCELLED, C.STATUS_AWAITING_VERIFICATION]],
+	}
+
+	mine = frappe.get_all(
 		"Process Run",
-		filters={
-			"started_by": frappe.session.user,
-			"status": ["in", [C.STATUS_IN_PROGRESS, C.STATUS_DRAFT, C.STATUS_IN_REWORK]],
-		},
-		fields=[
-			"name",
-			"process_definition",
-			"process_name",
-			"run_identifier",
-			"status",
-			"current_stage",
-			"answered_count",
-			"started_at",
-		],
+		filters={**open_filters, "started_by": frappe.session.user},
+		fields=fields,
 		order_by="modified desc",
-		limit_page_length=cint(limit) or 20,
+		limit_page_length=cap,
 	)
+
+	# Runs somebody else started that this user has answered into. A second query
+	# rather than an `or_filters` join, because the condition lives on the child
+	# table and Frappe's or_filters cannot reach it.
+	touched = frappe.get_all(
+		"Process Run Result",
+		filters={"answered_by": frappe.session.user, "parenttype": "Process Run"},
+		fields=["parent"],
+		group_by="parent",
+		order_by="modified desc",
+		limit_page_length=cap * 3,
+	)
+	others = [row["parent"] for row in touched if row["parent"] not in {r["name"] for r in mine}]
+	joined = (
+		frappe.get_all(
+			"Process Run",
+			filters={**open_filters, "name": ["in", others]},
+			fields=fields,
+			order_by="modified desc",
+			limit_page_length=cap,
+		)
+		if others
+		else []
+	)
+
+	runs = sorted(mine + joined, key=lambda r: str(r.get("modified") or ""), reverse=True)[:cap]
+	_attach_participant_counts(runs)
+	for row in runs:
+		row.pop("modified", None)
 	return _ok(runs)
+
+
+def _attach_participant_counts(runs: list[dict]) -> None:
+	"""How many people have worked each run in a list — one query, not N.
+
+	The count is what makes a shared pack legible in a list: "3 people" against a
+	row is the difference between resuming your own work and joining somebody
+	else's mid-inspection.
+	"""
+	if not runs:
+		return
+	names = [r["name"] for r in runs]
+	rows = frappe.get_all(
+		"Process Run Result",
+		filters={"parent": ["in", names], "parenttype": "Process Run"},
+		fields=["parent", "answered_by"],
+		limit_page_length=0,
+	)
+	by_run: dict[str, set] = {}
+	for row in rows:
+		if row.get("answered_by"):
+			by_run.setdefault(row["parent"], set()).add(row["answered_by"])
+	for run in runs:
+		people = by_run.get(run["name"], set())
+		if run.get("started_by"):
+			people = people | {run["started_by"]}
+		run["participant_count"] = len(people)
 
 
 # ------------------------------------------------------------- operator history
@@ -1192,14 +1565,23 @@ _FINISHED_STATUSES = (
 
 
 @frappe.whitelist()
-def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dict:
-	"""This operator's own inspection record.
+def my_history(limit: int = 30, offset: int = 0, scope: str = "finished", mine: int = 1) -> dict:
+	"""The inspection record — this operator's by default, everyone's on request.
 
-	Answers the two questions an operator actually has about their own work —
-	*how many have I done* and *what did I put on that one* — without giving them
-	a report builder. Deliberately scoped to `started_by = session.user`: this is
-	a personal record, not a supervisor's console, so it needs no role gate and
-	leaks nothing about anyone else's work.
+	Answers the two questions an operator has about their own work — *how many
+	have I done* and *what did I put on that one* — without giving them a report
+	builder.
+
+	`mine=0` widens the list to every inspection on the site. Asked for directly,
+	and it is the right call now that a pack is worked by several people: an
+	operator who did four modules of a battery somebody else started would
+	otherwise not find that battery anywhere in the app. Each row carries
+	`participant_count`, so a shared record says plainly that it is shared rather
+	than appearing to be one person's.
+
+	The `stats` block stays personal whatever the scope. It is the operator's own
+	tally on their own screen, and a number that silently became the whole plant's
+	output would be worse than useless.
 
 	`scope` is "finished" (the default), "open", or "all".
 
@@ -1216,7 +1598,9 @@ def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dic
 		"open": ["in", [C.STATUS_IN_PROGRESS, C.STATUS_DRAFT, C.STATUS_IN_REWORK]],
 	}.get(scope)
 
-	filters: dict = {"started_by": user, "is_test_run": 0}
+	filters: dict = {"is_test_run": 0}
+	if cint(mine):
+		filters["started_by"] = user
 	if status_filter:
 		filters["status"] = status_filter
 
@@ -1238,6 +1622,7 @@ def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dic
 			"answered_count",
 			"trace_completeness_pct",
 			"started_at",
+			"started_by",
 			"completed_at",
 		],
 		order_by="ifnull(completed_at, started_at) desc, modified desc",
@@ -1246,6 +1631,7 @@ def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dic
 	)
 
 	_attach_photo_summary(runs)
+	_attach_participant_counts(runs)
 
 	return _ok({"stats": _history_stats(user), "runs": runs})
 
@@ -1350,9 +1736,7 @@ def _assert_inspection_admin() -> None:
 	if frappe.session.user == "Administrator":
 		return
 	if not (set(ADMIN_ROLES) & _user_roles()):
-		frappe.throw(
-			_("You do not have access to the inspection overview."), frappe.PermissionError
-		)
+		frappe.throw(_("You do not have access to the inspection overview."), frappe.PermissionError)
 
 
 @frappe.whitelist()

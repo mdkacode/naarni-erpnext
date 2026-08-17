@@ -61,6 +61,10 @@ class NaarniMessagingService : FirebaseMessagingService() {
                 authorName = data["author_name"] ?: body.substringBefore(":", "").trim(),
                 body = data["preview"] ?: body.substringAfter(": ", body),
                 mention = data["mention"] == "1",
+                // Empty for everything that is not a photo, and null-safe all
+                // the way down — an older server that does not send the field
+                // simply produces the text notification it always did.
+                imagePath = data["image_url"]?.takeIf { it.isNotBlank() },
             )
             // A suppressed tray still needs the message pulled down, so opening
             // the app later does not show a gap.
@@ -106,7 +110,10 @@ class NaarniMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(this, App.CHANNEL_JOB_CARDS)
+        val notification = NotificationCompat.Builder(
+            this,
+            NotificationTones.channelId(this, NotificationTones.KIND_ALERT),
+        )
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setContentTitle(title)
             .setContentText(body)

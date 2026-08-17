@@ -205,7 +205,13 @@ fun Avatar(
     ) {
         if (!imageUrl.isNullOrBlank()) {
             AsyncImage(
-                model = absoluteUrl(imageUrl),
+                // The *endpoint*, not the stored path. Profile pictures live in
+                // the private bucket, where Frappe checks the file against the
+                // User it hangs off — so the raw url renders for its owner and
+                // nobody else. `seed` is the user id at every call site that
+                // passes a person; groups pass no image at all.
+                model = com.naarni.service.data.repo.ProfileRepository.avatarUrl(seed)
+                    ?: absoluteUrl(imageUrl),
                 contentDescription = displayName,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.size(size.dp).clip(CircleShape),

@@ -4,6 +4,8 @@ import com.naarni.service.core.network.FrappeApi
 import com.naarni.service.core.network.payload
 import com.naarni.service.data.dto.OpenRun
 import com.naarni.service.data.dto.ProcessDefinition
+import com.naarni.service.data.dto.ProcessHistory
+import com.naarni.service.data.dto.RunReport
 import com.naarni.service.data.dto.ProcessRun
 import com.naarni.service.data.dto.ProcessStep
 import com.naarni.service.data.dto.ProcessSummary
@@ -23,6 +25,12 @@ import com.naarni.service.data.dto.SaveResultResponse
  * prompt instead of crashing. Without that, the first new step type published
  * would break every phone on the floor at once.
  */
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+
 class ProcessRepository(private val api: FrappeApi) {
 
     private val definitions = mutableMapOf<String, ProcessDefinition>()
@@ -62,6 +70,12 @@ class ProcessRepository(private val api: FrappeApi) {
     suspend fun run(name: String): ProcessRun = api.getProcessRun(name).payload()
 
     suspend fun openRuns(): List<OpenRun> = api.myOpenProcessRuns().payload()
+
+    /** This operator's own record — never cached, because the point is the tally. */
+    suspend fun history(limit: Int = 30, offset: Int = 0, scope: String = "finished"): ProcessHistory =
+        api.myProcessHistory(limit, offset, scope).payload()
+
+    suspend fun report(name: String): RunReport = api.processRunReport(name).payload()
 
     suspend fun saveResult(
         run: String,
@@ -122,6 +136,52 @@ class ProcessRepository(private val api: FrappeApi) {
             longitude = longitude,
             accuracyM = accuracyM,
             locationSource = locationSource,
+        )
+    }
+
+    /**
+     * Upload a stamped photo and map it to a step, in one call.
+     *
+     * Two round trips, deliberately sequenced: Frappe's `upload_file` stores the
+     * bytes and hands back a File URL, and only then can `attach_photo` record
+     * what that URL *is*. Doing it the other way round would leave a Process Run
+     * Photo row pointing at a file that may never arrive.
+     *
+     * The coordinates are not passed here because they are already burnt into
+     * the image by `PhotoStamper` at capture time; the server row keeps its own
+     * copy for querying, which the caller supplies when it has a fix.
+     */
+    suspend fun uploadStepPhoto(
+        run: String,
+        stepCode: String,
+        file: File,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        accuracyM: Double? = null,
+    ) {
+        val part = MultipartBody.Part.createFormData(
+            "file", file.name, file.asRequestBody("image/jpeg".toMediaType()),
+        )
+        fun text(v: String) = v.toRequestBody("text/plain".toMediaType())
+        // `upload_file` returns its payload in `message`, not the app's own
+        // `{success,data}` envelope — it is Frappe's endpoint, not ours.
+        val fileUrl = api.uploadFile(
+            part,
+            text("Process Run"),
+            text(run),
+            // Private: an inspection photo carries a serial, a location and a
+            // person's name, and none of that belongs on a public URL.
+            text("1"),
+        ).message?.file_url ?: error("Photo upload failed")
+        attachPhoto(
+            run = run,
+            stepCode = stepCode,
+            fileUrl = fileUrl,
+            capturedAt = null,
+            latitude = latitude,
+            longitude = longitude,
+            accuracyM = accuracyM,
+            locationSource = if (latitude != null) "GPS" else "Unavailable",
         )
     }
 

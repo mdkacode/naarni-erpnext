@@ -88,6 +88,16 @@ after_migrate = [
 	# 100 m one. Self-guarded, and self-arming — it does nothing until at least
 	# one Depot has coordinates, then applies itself on the next migrate.
 	"vehicle_maintenance.patches.v2_2.enforce_depot_geofence.execute",
+	# Designation picklist, plus an Accepted invite for everyone who already had
+	# access — without that back-fill, switching on invite-only would leave the
+	# existing depot with no record of who was let in and no way to re-provision.
+	"vehicle_maintenance.patches.v2_3.seed_onboarding.execute",
+	# Moves any world-readable profile picture into the private bucket. A face
+	# behind a public url needs no login and cannot be recalled once shared.
+	"vehicle_maintenance.patches.v2_3.privatise_avatars.execute",
+	# The pack number is digits; raise the digits keypad for it. Fills a blank
+	# only, so an admin's own choice in Desk survives the next migrate.
+	"vehicle_maintenance.patches.v2_4.battery_qc_number_pad.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

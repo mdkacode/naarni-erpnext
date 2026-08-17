@@ -63,6 +63,19 @@ class ProcessRun(Document):
 		for field, value in totals.items():
 			setattr(self, field, value)
 
+		# A verdict belongs to a *finished* inspection, and this method runs on
+		# every single answer. Without this, a run carried a Pass or a Fail from
+		# its first tap onwards — computed against a threshold on the two checks
+		# done so far — and every screen that reads `result` showed a decision
+		# nobody had made about a battery nobody had finished inspecting.
+		#
+		# The numbers above stay live on purpose: score, counts and progress are
+		# how an operator sees where they are. It is only the judgement that
+		# waits for the end.
+		if not self.completed_at:
+			self.result = ""
+			self.is_first_pass = 0
+
 		expected = scanning.expected_counts(list(steps_by_code.values()))
 		self.trace_completeness_pct = scoring.trace_completeness(
 			expected, [s.as_dict() for s in self.scans or []]
@@ -107,9 +120,9 @@ class ProcessRun(Document):
 
 #: Roles that may see and act on *anyone's* inspection.
 #:
-#: Everything outside this set — in practice a plain `Process Operator` — sees
-#: only the runs it started. That is the whole isolation rule, and it lives here
-#: rather than in each API method so no endpoint can forget it.
+#: Kept, and still meaningful, even though runs are no longer private: it is what
+#: distinguishes somebody who may *verify* and administer inspections from
+#: somebody who may only perform them.
 SUPERVISOR_ROLES = frozenset(
 	{
 		"System Manager",
@@ -131,33 +144,32 @@ def is_process_supervisor(user: str | None = None) -> bool:
 
 
 def get_permission_query_conditions(user: str | None = None) -> str:
-	"""SQL predicate limiting run *lists* to the operator's own work.
+	"""No row-level narrowing: an inspection is the plant's record, not a diary.
 
-	The DocType grants `Process Operator` read and write on Process Run with
-	`if_owner = 0`, which by itself lets any operator open — and answer into —
-	somebody else's inspection. Narrowing it here rather than tightening the role
-	is deliberate: a supervisor genuinely needs to read every run to verify one,
-	so the distinction is per-user, not per-row-owner, and `if_owner` cannot
-	express it.
+	This deliberately reverses the isolation added in August 2026, which scoped
+	every run to `started_by`. That fix was right about the symptom and wrong
+	about the cause. The problem was never that operators could *see* each
+	other's inspections — it was that nothing said who had done what, so two
+	people at one pack could not tell their work apart.
 
-	Scoped on `started_by` rather than `owner`. They are the same person today,
-	but `owner` is a Frappe bookkeeping field that a data import or a support
-	fix can change, and who *performed* an inspection is a fact about the plant.
+	The fix for that is attribution, not walls, and the attribution now exists:
+	`answered_by` on every result row, `user` on every sign-off, and a
+	participant list on the run. A battery is fifty-nine checks across several
+	modules; hiding a colleague's half of it meant the second operator scanned
+	the same label and started a rival record of the same physical pack.
+
+	Frappe's role permissions still decide who reaches Process Run at all. What
+	this no longer does is decide *whose* runs they are.
 	"""
-	user = user or frappe.session.user
-	if is_process_supervisor(user):
-		return ""
-	return f"`tabProcess Run`.started_by = {frappe.db.escape(user)}"
+	return ""
 
 
 def has_permission(doc, ptype: str = "read", user: str | None = None) -> bool:
-	"""Document-level twin of the query condition.
+	"""Document-level twin of the query condition — see it for the reasoning.
 
-	Frappe consults this only after the role check has already passed, so it can
-	narrow access but never widen it — which is the property that makes it safe
-	to put the whole rule in one place.
+	Kept as a hook rather than deleted so there is still exactly one place to
+	express a per-document rule if one is ever needed again. `ensure_open` is
+	what stops a finished run being edited; that is a different question from
+	whose run it is, and it has not changed.
 	"""
-	user = user or frappe.session.user
-	if is_process_supervisor(user):
-		return True
-	return (doc.started_by or doc.owner) == user
+	return True

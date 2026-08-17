@@ -6,7 +6,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -43,7 +42,18 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         captureDeepLink(intent)
-        enableEdgeToEdge()
+        // Deliberately *not* edge-to-edge.
+        //
+        // `enableEdgeToEdge()` calls `setDecorFitsSystemWindows(window, false)`,
+        // and that quietly turns the manifest's `adjustResize` into a no-op: the
+        // window stops resizing for the keyboard and every screen becomes
+        // responsible for consuming `WindowInsets.ime` itself. Exactly one did.
+        // Everywhere else — login, the inspection runner, job cards, onboarding
+        // — the keyboard came up over the field being typed into, which is about
+        // as fundamental as a bug gets on a phone that exists to be typed into.
+        //
+        // Letting the system inset the window is the fix. Drawing under the
+        // status bar was never worth a field an engineer cannot see.
         setContent {
             NaarniTheme {
                 CompositionLocalProvider(LocalFeedback provides rememberFeedback()) {

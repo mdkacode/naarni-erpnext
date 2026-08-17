@@ -11,8 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -70,7 +70,7 @@ fun SmartSelect(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(value?.label ?: placeholder, fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Normal)
-                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                Icon(Icons.Rounded.ArrowDropDown, contentDescription = null)
             }
         }
     }
@@ -105,7 +105,7 @@ fun SmartSelect(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("Search $label…") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )

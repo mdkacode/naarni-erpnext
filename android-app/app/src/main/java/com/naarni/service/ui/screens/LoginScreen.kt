@@ -19,9 +19,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -87,7 +87,7 @@ fun LoginScreen(vm: AppViewModel) {
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                BrandLogo(icon = Icons.Filled.DirectionsBus, size = 84)
+                BrandLogo(icon = Icons.Rounded.DirectionsBus, size = 84)
                 Spacer(Modifier.height(18.dp))
                 Text("NaArNi Care", style = MaterialTheme.typography.headlineLarge, color = Color.White)
                 Text(
@@ -169,7 +169,7 @@ private fun PhoneStep(
         onValueChange = { if (it.length <= 10 && it.all(Char::isDigit)) onPhoneChange(it) },
         label = { Text("Mobile number") },
         prefix = { Text("+91 ") },
-        leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+        leadingIcon = { Icon(Icons.Rounded.Phone, contentDescription = null) },
         singleLine = true,
         shape = MaterialTheme.shapes.medium,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -203,7 +203,7 @@ private fun OtpStep(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onChangeNumber, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Change number", Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Change number", Modifier.size(20.dp))
             Spacer(Modifier.size(4.dp))
             Text("Change")
         }

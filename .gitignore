@@ -30,3 +30,6 @@ naarni-care-firebase-adminsdk-*.json
 
 # Live credentials pasted for local wiring — never commit these.
 token.json
+
+# Kotlin compiler session files — per-build, never shared.
+android-app/.kotlin/

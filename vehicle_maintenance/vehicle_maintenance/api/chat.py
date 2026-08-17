@@ -146,6 +146,20 @@ def _serialise(rows: list[dict]) -> list[dict]:
 		):
 			mentions.setdefault(row["parent"], []).append(row["user"])
 
+	# Reactions, likewise in one query for the whole page. Grouped by emoji with
+	# the reactors named, so the client can render "👍 3" and know whether the
+	# viewer is one of the three without a second call.
+	reactions: dict[str, dict[str, list[str]]] = {}
+	if rows:
+		for row in frappe.get_all(
+			"VM Chat Reaction",
+			filters={"message": ["in", [r["name"] for r in rows]]},
+			fields=["message", "emoji", "user"],
+			order_by="creation asc",
+			limit_page_length=0,
+		):
+			reactions.setdefault(row["message"], {}).setdefault(row["emoji"], []).append(row["user"])
+
 	out = []
 	for r in rows:
 		deleted = bool(r.get("deleted"))
@@ -169,6 +183,7 @@ def _serialise(rows: list[dict]) -> list[dict]:
 				"ticket": r.get("ticket"),
 				"alert_event": r.get("alert_event"),
 				"mentions": mentions.get(r["name"], []),
+				"reactions": _reaction_payload(reactions.get(r["name"])),
 				"geotagged": bool(r.get("geotagged")),
 				"lat": r.get("lat"),
 				"lon": r.get("lon"),
@@ -177,6 +192,174 @@ def _serialise(rows: list[dict]) -> list[dict]:
 			}
 		)
 	return out
+
+
+# ------------------------------------------------------------------- reactions
+
+# What may be put on a message, as `code -> glyph`.
+#
+# **Stored by code, never by the emoji itself.** MariaDB's `utf8mb4_unicode_ci`
+# — the collation every Data column in this app gets — assigns no weight to
+# emoji, so it considers them all equal to one another: `SELECT '👍' = '🙏'`
+# returns 1. Keying on the glyph therefore meant the unique index treated any
+# two reactions as the same one, and a lookup by emoji matched the wrong row —
+# so a second reaction from the same person silently deleted their first. An
+# ASCII code has ordinary collation behaviour and sidesteps the whole thing.
+#
+# An allow-list rather than free text, and a short one: an open field is one
+# somebody eventually pastes a paragraph into, a fixed set lets every client
+# draw the same chips in the same order without negotiating, and six is about
+# what fits under a bubble on a phone held in one hand.
+REACTIONS: dict[str, str] = {
+	"like": "👍",
+	"love": "❤️",
+	"haha": "😂",
+	"wow": "😮",
+	"sad": "😢",
+	"thanks": "🙏",
+}
+
+
+def _reaction_payload(by_code: dict[str, list[str]] | None) -> list[dict]:
+	"""Shape one message's reactions for the wire.
+
+	Ordered by the allow-list rather than by count, so a chip does not jump
+	sideways under the finger as other people react. The glyph travels with the
+	code so that every client renders the same thing and changing one is a
+	server-side edit.
+	"""
+	if not by_code:
+		return []
+	out = []
+	for code, glyph in REACTIONS.items():
+		users = by_code.get(code)
+		if users:
+			out.append({"code": code, "emoji": glyph, "users": users, "count": len(users)})
+	return out
+
+
+def _reactions_for(message: str) -> list[dict]:
+	grouped: dict[str, list[str]] = {}
+	for row in frappe.get_all(
+		"VM Chat Reaction",
+		filters={"message": message},
+		fields=["emoji", "user"],
+		order_by="creation asc",
+		limit_page_length=0,
+	):
+		grouped.setdefault(row["emoji"], []).append(row["user"])
+	return _reaction_payload(grouped)
+
+
+@frappe.whitelist()
+def toggle_reaction(message: str, reaction: str) -> dict:
+	"""Put a reaction on a message, or take it off again.
+
+	`reaction` is a code from `REACTIONS`, not a glyph — see the note there.
+
+	One call for both directions, because that is how the control behaves: a
+	tap on a chip you are already part of removes you. Splitting it would make
+	every client read the current state first to decide which endpoint to call,
+	and race with anybody else reacting at the same moment.
+
+	Returns: {success, data: {message, reactions: [{code, emoji, count, users}]}}.
+	"""
+	if reaction not in REACTIONS:
+		frappe.throw(_("That reaction is not available."))
+
+	row = frappe.db.get_value("VM Chat Message", message, ["name", "room", "deleted"], as_dict=True)
+	if not row:
+		frappe.throw(_("Message not found."), frappe.DoesNotExistError)
+	# Membership of the room the message is in — not of the message, which has
+	# no permissions of its own.
+	_room_checked(row["room"])
+	if cint(row["deleted"]):
+		frappe.throw(_("That message was deleted."))
+
+	user = frappe.session.user
+	existing = frappe.db.get_value(
+		"VM Chat Reaction", {"message": message, "user": user, "emoji": reaction}, "name"
+	)
+
+	if existing:
+		# Deleted at the database rather than through `frappe.delete_doc`, which
+		# takes a `FOR UPDATE ... NOWAIT` lock on the row and raises
+		# QueryTimeoutError the moment two taps land together — turning an
+		# ordinary double-tap into an HTTP 500. There is nothing for the document
+		# API to do here: the row is four fields with no children, no links and
+		# no controller hooks.
+		frappe.db.delete("VM Chat Reaction", {"name": existing})
+	else:
+		# A savepoint, so that losing a race costs only this statement. Without
+		# one the failed INSERT poisons the whole request transaction.
+		savepoint = "vm_chat_reaction"
+		try:
+			frappe.db.savepoint(savepoint)
+			frappe.get_doc(
+				{
+					"doctype": "VM Chat Reaction",
+					"message": message,
+					"room": row["room"],
+					"user": user,
+					"emoji": reaction,
+				}
+			).insert(ignore_permissions=True)
+		except Exception as exc:
+			frappe.db.rollback(save_point=savepoint)
+			# Somebody's identical tap got there first. That is not an error —
+			# the state the user asked for is the state they now have.
+			#
+			# Recognised from the exception rather than by re-reading, because a
+			# read here would still be inside the snapshot that could not see
+			# their row in the first place. That is exactly how the previous
+			# version of this guard came to re-raise in the one race it was
+			# written to absorb: nine of ten simultaneous taps returned 417.
+			if not _is_duplicate_row(exc):
+				raise
+
+	# See the note in `publish_receipts`: the count has to be read outside the
+	# snapshot that predates everybody else's tap, or eight people reacting at
+	# once are each told the total is one — and that figure is what gets
+	# broadcast and stored on every open thread.
+	frappe.db.commit()
+
+	reactions = _reactions_for(message)
+	_publish_reaction(row["room"], message, reactions)
+	return {"success": True, "data": {"message": message, "reactions": reactions}}
+
+
+def _is_duplicate_row(exc: Exception) -> bool:
+	"""Did this exception come from the unique index refusing a second row?
+
+	Checked three ways because the answer arrives in three shapes: Frappe raises
+	its own `UniqueValidationError` for some paths, hands the raw pymysql
+	IntegrityError through on others, and `is_unique_key_violation` only
+	recognises the latter.
+	"""
+	if isinstance(exc, frappe.UniqueValidationError):
+		return True
+	try:
+		if frappe.db.is_unique_key_violation(exc):
+			return True
+	except Exception:
+		pass
+	return "Duplicate entry" in str(exc)
+
+
+def _publish_reaction(room: str, message: str, reactions: list[dict]) -> None:
+	"""Tell the open thread. Never worth failing the tap over."""
+	try:
+		frappe.publish_realtime(
+			event="vm_chat_reaction",
+			message={"room": room, "message": message, "reactions": reactions},
+			doctype="VM Chat Room",
+			docname=room,
+			# The write is already committed by the time we get here, so there is
+			# no transaction left to ride on — after_commit would never fire.
+			after_commit=False,
+		)
+	except Exception:
+		frappe.log_error(title=f"Chat reaction publish failed ({room})", message=frappe.get_traceback())
 
 
 # ----------------------------------------------------------------------- rooms
@@ -488,6 +671,22 @@ def publish_receipts(rooms) -> None:
 	if not rooms:
 		return
 
+	# Committed first, and this is load-bearing rather than tidy.
+	#
+	# MariaDB gives each request REPEATABLE READ, so the snapshot this
+	# transaction reads from was fixed by its *first* statement — before any of
+	# the other people marking the same room read committed theirs. The
+	# aggregate below would therefore see only this caller's own cursor and
+	# compute a minimum of zero. Nine people opening a thread at once produced
+	# exactly one broadcast, carrying read_upto=0, and because the dedup cache
+	# then remembered that value, every later correct one was suppressed: the
+	# ticks stayed grey until something forced a room-list refresh.
+	#
+	# Committing ends the snapshot, so the SELECT that follows runs in a fresh
+	# transaction and sees everyone. Safe because the only pending work at this
+	# point is the cursor advance this function exists to announce.
+	frappe.db.commit()
+
 	try:
 		rows = frappe.db.sql(
 			"""
@@ -593,7 +792,7 @@ def send_message(
 	lon: float | None = None,
 	vehicle: str | None = None,
 	ticket: str | None = None,
-	mentions=None,
+	mentions: str | list | None = None,
 ) -> dict:
 	"""Post a message. Idempotent on `client_id`.
 
@@ -637,6 +836,11 @@ def send_message(
 	member_users = set(room_doc.member_users())
 	mention_users = [u for u in dict.fromkeys(_as_list(mentions, "mentions")) if u in member_users]
 
+	# Taken before the seq is reserved, so giving up the attempt gives the number
+	# back with it. A hole in a room's numbering is the one defect a client never
+	# recovers from — it reads a gap as "I have missed a message" and hunts for
+	# it forever.
+	frappe.db.savepoint("chat_send_insert")
 	seq = room_doc.allocate_seq()
 
 	msg = frappe.get_doc(
@@ -661,7 +865,41 @@ def send_message(
 			"mentions": [{"user": u} for u in mention_users],
 		}
 	)
-	msg.insert(ignore_permissions=True)  # membership already enforced above + in validate
+	try:
+		msg.insert(ignore_permissions=True)  # membership already enforced above + in validate
+	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
+		# Two retries of the same send arrived together. The check at the top is
+		# a read and this is a write, with nothing holding the gap between them,
+		# so the unique index on client_id is what actually enforces idempotency.
+		# Losing that race is a success: the message exists, and it is ours.
+		#
+		# Measured before this existed: 20 simultaneous retries of one client_id
+		# produced 1 message and 19 errors — and an error here is worse than it
+		# sounds, because the app marks the message failed and shows the sender a
+		# red retry on something the room has already received.
+		#
+		# Two rollbacks, and each earns its place.
+		#
+		# The savepoint undoes this attempt — the seq and the insert — and is
+		# enough whenever the winner is visible to us, which is the case for any
+		# caller sharing our transaction.
+		#
+		# The full one is what makes it work against a real second request:
+		# under REPEATABLE READ our snapshot predates their commit, so the row
+		# that just rejected our insert is invisible until the transaction ends.
+		# A locking read is *not* a way around this — it finds the name, and
+		# then the ordinary read inside `get_doc` still cannot see the row.
+		# Measured under 20-way concurrency: that version turned 19
+		# UniqueValidationErrors into 19 DoesNotExistErrors.
+		frappe.db.rollback(save_point="chat_send_insert")
+		twin = frappe.db.get_value("VM Chat Message", {"client_id": client_id}, "name")
+		if not twin:
+			frappe.db.rollback()
+			twin = frappe.db.get_value("VM Chat Message", {"client_id": client_id}, "name")
+		if not twin:
+			raise
+		doc = frappe.get_doc("VM Chat Message", twin)
+		return {"success": True, "data": {"message": doc.as_payload(), "duplicate": True}}
 
 	room_doc.touch_last_message(preview_for(msg), msg.creation)
 	# The sender has by definition read their own message.

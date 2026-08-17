@@ -135,6 +135,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             return@collect
                         }
 
+                        // Reactions carry no seq either, and there is nothing to
+                        // fetch: the frame holds the complete set for the message.
+                        if (event.name == EVENT_REACTION) {
+                            repo.onRealtimeReaction(event.payload)
+                            return@collect
+                        }
+
                         repo.onRealtimeMessage(event.name, event.payload)
                         val author = event.payload["author"]?.toString()?.trim('"')
                         if (room != null && room == openRoom && author != me) {
@@ -203,6 +210,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         typingNames = emptyList()
         typingSweep?.cancel()
         socket.unsubscribeThread(room)
+    }
+
+    /**
+     * Put a reaction on a message, or take it off.
+     *
+     * Silent on failure by design: a reaction is the lowest-stakes thing in the
+     * app, and an error dialog over a mis-tapped thumbs-up would be worse than
+     * the chip simply not appearing.
+     */
+    fun toggleReaction(serverName: String?, code: String) {
+        if (serverName.isNullOrBlank()) return
+        viewModelScope.launch { runCatching { repo.toggleReaction(serverName, code) } }
     }
 
     /** Mark everything up to [seq] read. Forward-only, server-side and locally. */
@@ -504,6 +523,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Realtime event moving the ticks. Matches api/chat.publish_receipts. */
         const val EVENT_RECEIPT = "vm_chat_receipt"
+
+        /** Realtime event carrying a message's reaction chips. */
+        const val EVENT_REACTION = "vm_chat_reaction"
 
         /** Used only if the server omits its own TTL. */
         const val DEFAULT_TYPING_TTL = 8

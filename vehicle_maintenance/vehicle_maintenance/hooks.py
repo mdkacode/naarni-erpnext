@@ -91,6 +91,9 @@ after_migrate = [
 	# Moves any world-readable profile picture into the private bucket. A face
 	# behind a public url needs no login and cannot be recalled once shared.
 	"vehicle_maintenance.patches.v2_3.privatise_avatars.execute",
+	# The pack number is digits; raise the digits keypad for it. Fills a blank
+	# only, so an admin's own choice in Desk survives the next migrate.
+	"vehicle_maintenance.patches.v2_4.battery_qc_number_pad.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

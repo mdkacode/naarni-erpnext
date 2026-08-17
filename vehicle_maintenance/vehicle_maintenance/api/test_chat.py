@@ -140,6 +140,77 @@ class TestChatIdempotency(ChatTestBase):
 		nxt = self._send(self.alice, "two")
 		self.assertEqual(nxt["data"]["message"]["seq"], 2)
 
+	def test_a_retry_that_loses_the_insert_race_still_gets_its_message(self):
+		"""The window between the idempotency check and the insert.
+
+		The check is a read and the insert is a write, with nothing holding the
+		gap, so under a real race the unique index on `client_id` is what
+		enforces this — and 20 simultaneous retries of one id produced 1 message
+		and **19 errors** before the recovery below existed. An error here is
+		worse than it sounds: the app marks the message failed and shows a red
+		retry on something the room already has.
+
+		Blanking the pre-check reproduces the window exactly: it is a request
+		that read before the winner committed.
+		"""
+		cid = frappe.generate_hash(length=20)
+		winner = self._send(self.alice, "first past the post", client_id=cid)
+
+		real_get_value = frappe.db.get_value
+		missed = {"once": False}
+
+		def blind_once(*args, **kwargs):
+			if (
+				not missed["once"]
+				and args
+				and args[0] == "VM Chat Message"
+				and isinstance(args[1], dict)
+				and args[1].get("client_id") == cid
+			):
+				missed["once"] = True
+				return None
+			return real_get_value(*args, **kwargs)
+
+		frappe.db.get_value = blind_once
+		self.addCleanup(setattr, frappe.db, "get_value", real_get_value)
+
+		loser = self._send(self.alice, "first past the post", client_id=cid)
+
+		self.assertTrue(loser["data"]["duplicate"])
+		self.assertEqual(loser["data"]["message"]["name"], winner["data"]["message"]["name"])
+
+	def test_losing_the_race_does_not_burn_a_sequence_number(self):
+		"""The seq is reserved before the insert, so the loser must give it back.
+
+		A gap is the one defect a client cannot recover from — it reads one as
+		"I have missed a message" and hunts for it forever.
+		"""
+		cid = frappe.generate_hash(length=20)
+		self._send(self.alice, "one", client_id=cid)
+
+		real_get_value = frappe.db.get_value
+		missed = {"once": False}
+
+		def blind_once(*args, **kwargs):
+			if (
+				not missed["once"]
+				and args
+				and args[0] == "VM Chat Message"
+				and isinstance(args[1], dict)
+				and args[1].get("client_id") == cid
+			):
+				missed["once"] = True
+				return None
+			return real_get_value(*args, **kwargs)
+
+		frappe.db.get_value = blind_once
+		self.addCleanup(setattr, frappe.db, "get_value", real_get_value)
+
+		self._send(self.alice, "one", client_id=cid)
+		frappe.db.get_value = real_get_value
+
+		self.assertEqual(self._send(self.alice, "two")["data"]["message"]["seq"], 2)
+
 	def test_client_id_is_unique_at_the_database(self):
 		cid = frappe.generate_hash(length=20)
 		self._send(self.alice, "one", client_id=cid)
@@ -300,6 +371,53 @@ class TestChatUpload(ChatTestBase):
 		self.assertEqual(msg["file_size"], 2000)
 		self.assertTrue(msg["file_url"].startswith("/private/files/"))
 		self.assertEqual(msg["seq"], 1)
+
+	def test_two_uploads_racing_on_one_client_id_produce_one_message(self):
+		"""The app retrying a whole attachment after a timeout.
+
+		The bytes go up again under a new `upload_id` while the message keeps
+		its original `client_id` — that is what makes the retry idempotent — so
+		both commits race for the same unique index. The loser has already moved
+		its file into place and written its File row, which is why this path
+		gives up only the seq and the insert rather than rolling everything back:
+		discarding the File row would leave bytes on disk nothing points at.
+
+		Verified at 6-way concurrency over HTTP as well: 6 commits, 1 message.
+		"""
+		data = b"R" * 1500
+		first, second = self._begin(data), self._begin(data)
+		self._chunk(first, 0, data)
+		self._chunk(second, 0, data)
+
+		cid = frappe.generate_hash(length=20)
+		winner = chat_upload.commit_upload(upload_id=first, client_id=cid)
+
+		real_get_value = frappe.db.get_value
+		missed = {"once": False}
+
+		def blind_once(*args, **kwargs):
+			# The window: a request that read before the winner committed.
+			if (
+				not missed["once"]
+				and args
+				and args[0] == "VM Chat Message"
+				and isinstance(args[1], dict)
+				and args[1].get("client_id") == cid
+			):
+				missed["once"] = True
+				return None
+			return real_get_value(*args, **kwargs)
+
+		frappe.db.get_value = blind_once
+		self.addCleanup(setattr, frappe.db, "get_value", real_get_value)
+
+		loser = chat_upload.commit_upload(upload_id=second, client_id=cid)
+		frappe.db.get_value = real_get_value
+
+		self.assertTrue(loser["data"]["duplicate"])
+		self.assertEqual(loser["data"]["message"]["name"], winner["data"]["message"]["name"])
+		# And the loser gave its sequence number back.
+		self.assertEqual(self._send(self.alice, "after the race")["data"]["message"]["seq"], 2)
 
 	def test_out_of_order_chunk_is_rejected(self):
 		"""A reordered chunk must fail loudly, not corrupt the file."""

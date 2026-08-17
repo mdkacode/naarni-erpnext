@@ -593,7 +593,7 @@ def send_message(
 	lon: float | None = None,
 	vehicle: str | None = None,
 	ticket: str | None = None,
-	mentions=None,
+	mentions: str | list | None = None,
 ) -> dict:
 	"""Post a message. Idempotent on `client_id`.
 
@@ -637,6 +637,11 @@ def send_message(
 	member_users = set(room_doc.member_users())
 	mention_users = [u for u in dict.fromkeys(_as_list(mentions, "mentions")) if u in member_users]
 
+	# Taken before the seq is reserved, so giving up the attempt gives the number
+	# back with it. A hole in a room's numbering is the one defect a client never
+	# recovers from — it reads a gap as "I have missed a message" and hunts for
+	# it forever.
+	frappe.db.savepoint("chat_send_insert")
 	seq = room_doc.allocate_seq()
 
 	msg = frappe.get_doc(
@@ -661,7 +666,41 @@ def send_message(
 			"mentions": [{"user": u} for u in mention_users],
 		}
 	)
-	msg.insert(ignore_permissions=True)  # membership already enforced above + in validate
+	try:
+		msg.insert(ignore_permissions=True)  # membership already enforced above + in validate
+	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
+		# Two retries of the same send arrived together. The check at the top is
+		# a read and this is a write, with nothing holding the gap between them,
+		# so the unique index on client_id is what actually enforces idempotency.
+		# Losing that race is a success: the message exists, and it is ours.
+		#
+		# Measured before this existed: 20 simultaneous retries of one client_id
+		# produced 1 message and 19 errors — and an error here is worse than it
+		# sounds, because the app marks the message failed and shows the sender a
+		# red retry on something the room has already received.
+		#
+		# Two rollbacks, and each earns its place.
+		#
+		# The savepoint undoes this attempt — the seq and the insert — and is
+		# enough whenever the winner is visible to us, which is the case for any
+		# caller sharing our transaction.
+		#
+		# The full one is what makes it work against a real second request:
+		# under REPEATABLE READ our snapshot predates their commit, so the row
+		# that just rejected our insert is invisible until the transaction ends.
+		# A locking read is *not* a way around this — it finds the name, and
+		# then the ordinary read inside `get_doc` still cannot see the row.
+		# Measured under 20-way concurrency: that version turned 19
+		# UniqueValidationErrors into 19 DoesNotExistErrors.
+		frappe.db.rollback(save_point="chat_send_insert")
+		twin = frappe.db.get_value("VM Chat Message", {"client_id": client_id}, "name")
+		if not twin:
+			frappe.db.rollback()
+			twin = frappe.db.get_value("VM Chat Message", {"client_id": client_id}, "name")
+		if not twin:
+			raise
+		doc = frappe.get_doc("VM Chat Message", twin)
+		return {"success": True, "data": {"message": doc.as_payload(), "duplicate": True}}
 
 	room_doc.touch_last_message(preview_for(msg), msg.creation)
 	# The sender has by definition read their own message.

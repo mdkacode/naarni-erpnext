@@ -68,11 +68,28 @@ data class ChatMessageDto(
     val alert_event: String? = null,
     /** User ids named with `@`. Already filtered to room members by the server. */
     val mentions: List<String> = emptyList(),
+    /** Grouped by reaction code, in the server's fixed display order. */
+    val reactions: List<ChatReactionDto> = emptyList(),
     val geotagged: Boolean = false,
     val lat: Double? = null,
     val lon: Double? = null,
     val deleted: Boolean = false,
     val created_at: String = "",
+)
+
+/**
+ * One reaction chip: who put which emoji on a message.
+ *
+ * `code` is the identity — `emoji` is only what to draw. The server keys on the
+ * code because MariaDB's collation treats every emoji as equal to every other,
+ * so a glyph cannot be a key.
+ */
+@Serializable
+data class ChatReactionDto(
+    val code: String,
+    val emoji: String = "",
+    val users: List<String> = emptyList(),
+    val count: Int = 0,
 )
 
 /** A Service Ticket as it appears in the in-chat picker and on a shared card. */
@@ -128,6 +145,12 @@ data class CreateRoomPayload(val room: String)
 
 @Serializable
 data class MarkReadPayload(val room: String = "", val last_read_seq: Long = 0)
+
+@Serializable
+data class ReactionsPayload(
+    val message: String = "",
+    val reactions: List<ChatReactionDto> = emptyList(),
+)
 
 @Serializable
 data class TypingPayload(val room: String = "", val typing: Boolean = false)

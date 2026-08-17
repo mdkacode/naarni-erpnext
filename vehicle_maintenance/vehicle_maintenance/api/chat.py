@@ -146,6 +146,20 @@ def _serialise(rows: list[dict]) -> list[dict]:
 		):
 			mentions.setdefault(row["parent"], []).append(row["user"])
 
+	# Reactions, likewise in one query for the whole page. Grouped by emoji with
+	# the reactors named, so the client can render "👍 3" and know whether the
+	# viewer is one of the three without a second call.
+	reactions: dict[str, dict[str, list[str]]] = {}
+	if rows:
+		for row in frappe.get_all(
+			"VM Chat Reaction",
+			filters={"message": ["in", [r["name"] for r in rows]]},
+			fields=["message", "emoji", "user"],
+			order_by="creation asc",
+			limit_page_length=0,
+		):
+			reactions.setdefault(row["message"], {}).setdefault(row["emoji"], []).append(row["user"])
+
 	out = []
 	for r in rows:
 		deleted = bool(r.get("deleted"))
@@ -169,6 +183,7 @@ def _serialise(rows: list[dict]) -> list[dict]:
 				"ticket": r.get("ticket"),
 				"alert_event": r.get("alert_event"),
 				"mentions": mentions.get(r["name"], []),
+				"reactions": _reaction_payload(reactions.get(r["name"])),
 				"geotagged": bool(r.get("geotagged")),
 				"lat": r.get("lat"),
 				"lon": r.get("lon"),
@@ -177,6 +192,136 @@ def _serialise(rows: list[dict]) -> list[dict]:
 			}
 		)
 	return out
+
+
+# ------------------------------------------------------------------- reactions
+
+# What may be put on a message, as `code -> glyph`.
+#
+# **Stored by code, never by the emoji itself.** MariaDB's `utf8mb4_unicode_ci`
+# — the collation every Data column in this app gets — assigns no weight to
+# emoji, so it considers them all equal to one another: `SELECT '👍' = '🙏'`
+# returns 1. Keying on the glyph therefore meant the unique index treated any
+# two reactions as the same one, and a lookup by emoji matched the wrong row —
+# so a second reaction from the same person silently deleted their first. An
+# ASCII code has ordinary collation behaviour and sidesteps the whole thing.
+#
+# An allow-list rather than free text, and a short one: an open field is one
+# somebody eventually pastes a paragraph into, a fixed set lets every client
+# draw the same chips in the same order without negotiating, and six is about
+# what fits under a bubble on a phone held in one hand.
+REACTIONS: dict[str, str] = {
+	"like": "👍",
+	"love": "❤️",
+	"haha": "😂",
+	"wow": "😮",
+	"sad": "😢",
+	"thanks": "🙏",
+}
+
+
+def _reaction_payload(by_code: dict[str, list[str]] | None) -> list[dict]:
+	"""Shape one message's reactions for the wire.
+
+	Ordered by the allow-list rather than by count, so a chip does not jump
+	sideways under the finger as other people react. The glyph travels with the
+	code so that every client renders the same thing and changing one is a
+	server-side edit.
+	"""
+	if not by_code:
+		return []
+	out = []
+	for code, glyph in REACTIONS.items():
+		users = by_code.get(code)
+		if users:
+			out.append({"code": code, "emoji": glyph, "users": users, "count": len(users)})
+	return out
+
+
+def _reactions_for(message: str) -> list[dict]:
+	grouped: dict[str, list[str]] = {}
+	for row in frappe.get_all(
+		"VM Chat Reaction",
+		filters={"message": message},
+		fields=["emoji", "user"],
+		order_by="creation asc",
+		limit_page_length=0,
+	):
+		grouped.setdefault(row["emoji"], []).append(row["user"])
+	return _reaction_payload(grouped)
+
+
+@frappe.whitelist()
+def toggle_reaction(message: str, reaction: str) -> dict:
+	"""Put a reaction on a message, or take it off again.
+
+	`reaction` is a code from `REACTIONS`, not a glyph — see the note there.
+
+	One call for both directions, because that is how the control behaves: a
+	tap on a chip you are already part of removes you. Splitting it would make
+	every client read the current state first to decide which endpoint to call,
+	and race with anybody else reacting at the same moment.
+
+	Returns: {success, data: {message, reactions: [{code, emoji, count, users}]}}.
+	"""
+	if reaction not in REACTIONS:
+		frappe.throw(_("That reaction is not available."))
+
+	row = frappe.db.get_value("VM Chat Message", message, ["name", "room", "deleted"], as_dict=True)
+	if not row:
+		frappe.throw(_("Message not found."), frappe.DoesNotExistError)
+	# Membership of the room the message is in — not of the message, which has
+	# no permissions of its own.
+	_room_checked(row["room"])
+	if cint(row["deleted"]):
+		frappe.throw(_("That message was deleted."))
+
+	user = frappe.session.user
+	existing = frappe.db.get_value(
+		"VM Chat Reaction", {"message": message, "user": user, "emoji": reaction}, "name"
+	)
+
+	if existing:
+		frappe.delete_doc("VM Chat Reaction", existing, ignore_permissions=True, force=True)
+	else:
+		try:
+			frappe.get_doc(
+				{
+					"doctype": "VM Chat Reaction",
+					"message": message,
+					"room": row["room"],
+					"user": user,
+					"emoji": reaction,
+				}
+			).insert(ignore_permissions=True)
+		except Exception:
+			# Two taps in flight at once is the expected way to get here: the
+			# unique index refuses the second. Confirmed rather than assumed —
+			# if the row is genuinely absent, something else went wrong and
+			# swallowing it would leave the user tapping a chip that never
+			# appears.
+			if not frappe.db.exists(
+				"VM Chat Reaction", {"message": message, "user": user, "emoji": reaction}
+			):
+				raise
+
+	reactions = _reactions_for(message)
+	_publish_reaction(row["room"], message, reactions)
+	return {"success": True, "data": {"message": message, "reactions": reactions}}
+
+
+def _publish_reaction(room: str, message: str, reactions: list[dict]) -> None:
+	"""Tell the open thread. Never worth failing the tap over."""
+	try:
+		frappe.publish_realtime(
+			event="vm_chat_reaction",
+			message={"room": room, "message": message, "reactions": reactions},
+			doctype="VM Chat Room",
+			docname=room,
+			after_commit=True,
+		)
+	except Exception:
+		frappe.log_error(title=f"Chat reaction publish failed ({room})", message=frappe.get_traceback())
 
 
 # ----------------------------------------------------------------------- rooms

@@ -172,6 +172,12 @@ def _enqueue_push(msg, room: VMChatRoom, preview: str, author_name: str, mention
 			author_name=author_name,
 			preview=preview,
 			mention=is_mention,
+			kind=msg.kind,
+			# Only for a photo. The handset fetches it with its own session and
+			# shows it inside the notification; anything else has nothing to
+			# show, and sending a URL the client would only discard wastes a
+			# field on a payload with a 4 KB ceiling.
+			image_url=(msg.file_url or "") if msg.kind == "image" else "",
 		)
 
 
@@ -214,6 +220,8 @@ def push_job(
 	author_name: str,
 	preview: str,
 	mention: bool = False,
+	kind: str = "text",
+	image_url: str = "",
 ) -> None:
 	"""Background worker — one data-only FCM HTTP v1 message.
 
@@ -254,6 +262,16 @@ def push_job(
 							if mention
 							else (f"{author_name}: {preview}" if preview else author_name)
 						),
+						# Sent apart as well as combined. The app renders the
+						# tray as a conversation, which needs the sender and the
+						# text as separate fields; it had been recovering them by
+						# splitting `body` on the first colon, which gets a
+						# message like "brakes: still soft" wrong and attributes
+						# it to a person called "brakes".
+						"author_name": author_name or "",
+						"preview": preview or "",
+						"kind": kind or "text",
+						"image_url": image_url or "",
 						"deeplink": f"naarni://chat/{room}?msg={seq}",
 					},
 					"android": {

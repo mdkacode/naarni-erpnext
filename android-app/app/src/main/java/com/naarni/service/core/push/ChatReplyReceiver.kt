@@ -33,6 +33,30 @@ class ChatReplyReceiver : BroadcastReceiver() {
                 return
             }
 
+            ACTION_MARK_READ -> {
+                ChatNotifications.clear(context, room)
+                val result = goAsync()
+                val app = context.applicationContext
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                    try {
+                        val container = app.appContainer
+                        if (!container.session.isLoggedIn) return@launch
+                        // Read up to what we actually hold. Marking the room's
+                        // server high-water mark instead would clear messages
+                        // this device has never seen, and they would never show
+                        // as unread again.
+                        val held = container.chatRepo.highestSeq(room)
+                        if (held > 0) container.chatRepo.markRead(room, held)
+                    } catch (_: Exception) {
+                        // The tray is already gone; a failed cursor update just
+                        // means the badge reappears on the next sync.
+                    } finally {
+                        result.finish()
+                    }
+                }
+                return
+            }
+
             ACTION_REPLY -> Unit
             else -> return
         }
@@ -84,5 +108,6 @@ class ChatReplyReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_REPLY = "com.naarni.service.CHAT_REPLY"
         const val ACTION_DISMISS = "com.naarni.service.CHAT_DISMISS"
+        const val ACTION_MARK_READ = "com.naarni.service.CHAT_MARK_READ"
     }
 }

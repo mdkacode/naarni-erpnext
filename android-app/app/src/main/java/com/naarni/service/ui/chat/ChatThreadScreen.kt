@@ -553,6 +553,11 @@ fun ChatThreadScreen(
                 onDismiss = { selected = null },
                 onReply = { replyTo = selected; selected = null },
                 onRaiseTicket = { onRaiseTicket(selected!!); selected = null },
+                onReact = { code ->
+                    feedback.tap()
+                    vm.toggleReaction(selected?.serverName, code)
+                    selected = null
+                },
             )
         } else {
             ThreadHeader(
@@ -648,6 +653,8 @@ fun ChatThreadScreen(
                             .orEmpty(),
                         onAssignTicket = { assigning = it },
                         receipts = receipts,
+                        me = vm.me,
+                        onReact = { code -> vm.toggleReaction(message.serverName, code) },
                     )
 
                     // Breathing room above a new speaker, so a busy depot thread
@@ -824,6 +831,8 @@ private fun SwipeableMessage(
     onAssignTicket: (String) -> Unit,
     isOpening: Boolean,
     receipts: Receipts,
+    me: String,
+    onReact: (String) -> Unit,
     onOpenQuote: (ChatMessageEntity) -> Unit,
 ) {
     var dragX by remember { mutableFloatStateOf(0f) }
@@ -884,6 +893,8 @@ private fun SwipeableMessage(
                 isOpening = isOpening,
                 receipts = receipts,
                 onOpenQuote = onOpenQuote,
+                me = me,
+                onReact = onReact,
             )
         }
     }
@@ -1110,12 +1121,17 @@ private fun SelectionBar(
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onRaiseTicket: () -> Unit,
+    onReact: (String) -> Unit,
 ) {
+  Column(
+      Modifier
+          .fillMaxWidth()
+          .background(MaterialTheme.colorScheme.primary)
+          .statusBarsPadding(),
+  ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.primary)
-            .statusBarsPadding()
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1141,6 +1157,18 @@ private fun SelectionBar(
             )
         }
     }
+
+    // The emoji row sits inside the selection bar rather than floating over the
+    // message. A popup anchored to a bubble has to be positioned against a list
+    // that is still settling from the long-press, and it lands off-screen for
+    // the last message in the thread — which is the one people react to most.
+    ReactionPicker(
+        onPick = onReact,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+    )
+  }
 }
 
 @Composable

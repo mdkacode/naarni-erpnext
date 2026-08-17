@@ -4,6 +4,7 @@ import com.naarni.service.data.dto.AlertEventItem
 import com.naarni.service.data.dto.BeginUploadPayload
 import com.naarni.service.data.dto.BusImage
 import com.naarni.service.data.dto.PresencePayload
+import com.naarni.service.data.dto.ReactionsPayload
 import com.naarni.service.data.dto.TypingPayload
 import com.naarni.service.data.dto.ChunkPayload
 import com.naarni.service.data.dto.ChunkStatusPayload
@@ -671,6 +672,20 @@ interface FrappeApi {
      * Nothing is persisted server-side; the call exists only to fan a realtime
      * event out to whoever has the thread open.
      */
+    /**
+     * Put a reaction on a message, or take it off — one call for both.
+     *
+     * `reaction` is a server-defined code (`like`, `love`, …), never the emoji
+     * itself: MariaDB's collation treats every emoji as equal to every other,
+     * so the glyph cannot be an identity.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.toggle_reaction")
+    suspend fun chatToggleReaction(
+        @Field("message") message: String,
+        @Field("reaction") reaction: String,
+    ): FrappeWrap<Envelope<ReactionsPayload>>
+
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.set_typing")
     suspend fun chatSetTyping(

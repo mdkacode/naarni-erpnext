@@ -15,6 +15,7 @@ import com.naarni.service.data.chat.PENDING_BASE
 import com.naarni.service.data.chat.SendStatus
 import com.naarni.service.data.chat.previewOf
 import com.naarni.service.data.dto.ChatMessageDto
+import com.naarni.service.data.dto.ChatReactionDto
 import com.naarni.service.data.dto.ChatRoomDto
 import com.naarni.service.data.dto.ChatTicketDto
 import com.naarni.service.data.dto.ChatUserDto
@@ -209,6 +210,34 @@ class ChatRepository(
                 if (seq > held) sync()
             }
         }
+    }
+
+    /**
+     * Put a reaction on a message, or take it off.
+     *
+     * Applied from the server's response rather than optimistically: the whole
+     * point of a chip is the count on it, and that depends on everyone else.
+     * Guessing it and correcting a moment later is the one place this would
+     * visibly flicker.
+     */
+    suspend fun toggleReaction(serverName: String, code: String) {
+        val payload = api.chatToggleReaction(serverName, code).payload()
+        dao.setReactions(
+            serverName,
+            payload.reactions.takeIf { it.isNotEmpty() }?.let { json.encodeToString(it) },
+        )
+    }
+
+    /** Apply a reaction frame from the socket. */
+    suspend fun onRealtimeReaction(body: JsonObject) {
+        val message = body["message"]?.jsonPrimitive?.content ?: return
+        val list = runCatching {
+            json.decodeFromJsonElement(
+                kotlinx.serialization.builtins.ListSerializer(ChatReactionDto.serializer()),
+                body["reactions"] ?: return,
+            )
+        }.getOrNull() ?: return
+        dao.setReactions(message, list.takeIf { it.isNotEmpty() }?.let { json.encodeToString(it) })
     }
 
     /**
@@ -514,6 +543,10 @@ class ChatRepository(
         ticket = ticket,
         alertEvent = alert_event,
         mentions = mentions.takeIf { it.isNotEmpty() }?.joinToString(","),
+        // Stored as the server sent it. Encoding it back rather than keeping the
+        // raw response substring, so the column is always valid JSON whichever
+        // path wrote the row.
+        reactions = reactions.takeIf { it.isNotEmpty() }?.let { json.encodeToString(it) },
         // Resolved here, against whoever is signed in as this row is written.
         mentionsMe = session.user?.let { it in mentions } == true,
         geotagged = geotagged,

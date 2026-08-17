@@ -55,6 +55,17 @@ interface ChatDao {
     suspend fun setMuted(room: String, muted: Boolean)
 
     /**
+     * Replace a message's reaction chips.
+     *
+     * Keyed on the server name because a reaction can only exist on a message
+     * the server has acked — there is nothing to react to before that.
+     * Wholesale replacement rather than a merge: the server sends the complete
+     * set every time, and it is the only authority on who has reacted.
+     */
+    @Query("UPDATE chat_message SET reactions = :json WHERE serverName = :serverName")
+    suspend fun setReactions(serverName: String, json: String?)
+
+    /**
      * Move the room's delivered/read watermarks — the second and third tick.
      *
      * MAX, never assignment. Two sources feed these: `list_rooms`, which

@@ -240,6 +240,19 @@ interface InspectionDao {
 	@Query("SELECT COUNT(*) FROM photos WHERE runUuid = :uuid AND state != 'synced'")
 	suspend fun unsyncedPhotoCount(uuid: String): Int
 
+	/**
+	 * Put every given-up photo back in the queue.
+	 *
+	 * The ceiling exists to stop a photo whose file is gone retrying forever. It
+	 * also catches photos that failed for a reason that has since been fixed —
+	 * an endpoint that was not deployed yet — and those deserve another go.
+	 */
+	@Query("UPDATE photos SET state = 'pending', attempts = 0, lastError = NULL WHERE state != 'synced'")
+	suspend fun resetExhaustedPhotos()
+
+	@Query("UPDATE answers SET rejectedReason = NULL WHERE rejectedReason IS NOT NULL")
+	suspend fun clearAnswerRejections()
+
 	// ----------------------------------------------------------- definitions
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -313,22 +326,49 @@ interface InspectionDao {
 	@Query("DELETE FROM runs WHERE clientUuid = :uuid")
 	suspend fun deleteRun(uuid: String)
 
-	/** Total unsynced work across every run — what the status chip counts. */
+	/**
+	 * Unsynced work across every run, split by whether it is still being tried.
+	 *
+	 * The split is not cosmetic. The first version counted everything not yet on
+	 * the server as "going up", including rows nothing would ever pick up again
+	 * — a photo past its attempt ceiling, or anything belonging to a run the
+	 * sweep no longer looks at. The badge then sat on the screen for ever saying
+	 * "Uploading now" about an upload that had stopped, which is the single most
+	 * corrosive thing this feature could tell an engineer: it makes the honest
+	 * badge unreadable too.
+	 *
+	 * `stuck` is counted with exactly the inverse of the conditions the sweep
+	 * uses to find work, so the two can never disagree about what is in flight.
+	 */
 	@Query(
 		"""
         SELECT
-            (SELECT COUNT(*) FROM answers WHERE synced = 0 AND rejectedReason IS NULL) AS answers,
-            (SELECT COUNT(*) FROM photos WHERE state != 'synced') AS photos,
-            (SELECT COUNT(DISTINCT clientUuid) FROM runs WHERE closed = 0 AND syncState != 'synced') AS runs
+            (SELECT COUNT(*) FROM answers a
+               JOIN runs r ON r.clientUuid = a.runUuid
+               WHERE a.synced = 0 AND a.rejectedReason IS NULL AND r.closed = 0) AS answers,
+            (SELECT COUNT(*) FROM photos
+               WHERE state != 'synced' AND attempts < :maxAttempts) AS photos,
+            (SELECT COUNT(DISTINCT clientUuid) FROM runs
+               WHERE closed = 0 AND syncState != 'synced') AS runs,
+            (SELECT
+               (SELECT COUNT(*) FROM answers WHERE rejectedReason IS NOT NULL)
+             + (SELECT COUNT(*) FROM photos WHERE state != 'synced' AND attempts >= :maxAttempts)
+            ) AS stuck
         """
 	)
-	fun pendingSummary(): Flow<PendingSummary>
+	fun pendingSummary(maxAttempts: Int = PHOTO_MAX_ATTEMPTS): Flow<PendingSummary>
 }
 
 data class PhotoCount(val stepCode: String, val count: Int)
 
-data class PendingSummary(val answers: Int = 0, val photos: Int = 0, val runs: Int = 0) {
-	val isEmpty: Boolean get() = answers == 0 && photos == 0 && runs == 0
+data class PendingSummary(
+	val answers: Int = 0,
+	val photos: Int = 0,
+	val runs: Int = 0,
+	/** Rows nothing will retry — a person has to look. Never counted as in flight. */
+	val stuck: Int = 0,
+) {
+	val isEmpty: Boolean get() = answers == 0 && photos == 0 && runs == 0 && stuck == 0
 	val total: Int get() = answers + photos
 }
 

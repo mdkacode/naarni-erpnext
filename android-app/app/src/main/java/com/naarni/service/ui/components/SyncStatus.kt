@@ -1,6 +1,8 @@
 package com.naarni.service.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -87,8 +89,49 @@ fun OfflineStrip(online: Boolean, modifier: Modifier = Modifier) {
  * noise is what stops the badge being read on the day it says something else.
  */
 @Composable
-fun PendingWorkCard(summary: PendingSummary, online: Boolean, modifier: Modifier = Modifier) {
+fun PendingWorkCard(
+	summary: PendingSummary,
+	online: Boolean,
+	modifier: Modifier = Modifier,
+	onRetry: () -> Unit = {},
+) {
 	if (summary.isEmpty) return
+
+	// "Uploading now" has to mean it. Work nothing will retry gets its own
+	// wording and its own colour, because a badge that says uploading about an
+	// upload that stopped teaches people to ignore the badge that means it.
+	if (summary.total == 0 && summary.stuck > 0) {
+		Surface(
+			modifier
+				.fillMaxWidth()
+				.clip(RoundedCornerShape(12.dp))
+				.clickable(onClick = onRetry),
+			shape = RoundedCornerShape(12.dp),
+			color = Red.copy(alpha = 0.10f),
+		) {
+			Row(
+				Modifier.padding(14.dp),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				Icon(
+					Icons.Rounded.ErrorOutline,
+					contentDescription = null,
+					tint = Red,
+					modifier = Modifier.size(22.dp),
+				)
+				Column(Modifier.weight(1f)) {
+					Text("${summary.stuck} did not upload", fontWeight = FontWeight.SemiBold, color = Red)
+					Text(
+						"Still saved on this phone, nothing is lost. Tap to try again.",
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurface,
+					)
+				}
+			}
+		}
+		return
+	}
 
 	val (icon, tint, headline) = when {
 		!online -> Triple(Icons.Rounded.CloudOff, Amber, "Saved on this phone")

@@ -117,6 +117,12 @@ class InspectionSweepWorker(ctx: Context, params: WorkerParameters) : CoroutineW
 			runCatching { repo.runsNeedingSync().map { it.clientUuid } }.getOrNull()?.let(::addAll)
 			runCatching { repo.runsWithPendingPhotos() }.getOrNull()?.let(::addAll)
 		}
+		// Logged every sweep, including when it finds nothing. A queue that has
+		// stalled is otherwise indistinguishable from one that is empty — the
+		// sweep returns SUCCESS either way — and that ambiguity cost an
+		// afternoon of guessing at a badge that said "Uploading now" while no
+		// sync worker had run at all.
+		Log.i(TAG, "sweep: ${pending.size} run(s) with work — $pending")
 		pending.forEach { InspectionWork.sync(applicationContext, it) }
 
 		// While there is a network anyway: top up the definition cache, so the

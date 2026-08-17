@@ -63,6 +63,19 @@ class ProcessRun(Document):
 		for field, value in totals.items():
 			setattr(self, field, value)
 
+		# A verdict belongs to a *finished* inspection, and this method runs on
+		# every single answer. Without this, a run carried a Pass or a Fail from
+		# its first tap onwards — computed against a threshold on the two checks
+		# done so far — and every screen that reads `result` showed a decision
+		# nobody had made about a battery nobody had finished inspecting.
+		#
+		# The numbers above stay live on purpose: score, counts and progress are
+		# how an operator sees where they are. It is only the judgement that
+		# waits for the end.
+		if not self.completed_at:
+			self.result = ""
+			self.is_first_pass = 0
+
 		expected = scanning.expected_counts(list(steps_by_code.values()))
 		self.trace_completeness_pct = scoring.trace_completeness(
 			expected, [s.as_dict() for s in self.scans or []]

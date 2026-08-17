@@ -24,6 +24,7 @@ sessions); these are the properties it found, pinned so they cannot regress.
 """
 
 import frappe
+from frappe import _
 from frappe.tests.utils import FrappeTestCase
 
 from vehicle_maintenance.api import process
@@ -69,7 +70,7 @@ class TestDeadlockRetry(FrappeTestCase):
 
 		def work():
 			attempts.append(1)
-			frappe.throw("that step is not part of this process")
+			frappe.throw(_("that step is not part of this process"))
 
 		with self.assertRaises(frappe.ValidationError):
 			process.with_deadlock_retry(work, attempts=4)

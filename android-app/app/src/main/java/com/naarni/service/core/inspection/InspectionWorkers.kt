@@ -142,10 +142,22 @@ object InspectionWork {
 	/**
 	 * Queue a sync for one run.
 	 *
-	 * `APPEND_OR_REPLACE` rather than `KEEP`: an answer tapped while a sync is
-	 * already running must not be silently dropped from the schedule. Appending
-	 * guarantees another pass *after* the one in flight, which is the only way
-	 * the last answer of a stage reliably lands.
+	 * `REPLACE`, and the reason is a stall seen on a real handset.
+	 *
+	 * This was `APPEND_OR_REPLACE`, reasoning that an answer tapped while a sync
+	 * is running must not be dropped from the schedule. But appending puts the
+	 * new job *behind* whatever is already in that unique chain — including a
+	 * job sitting in a long exponential backoff. Every sync during the window
+	 * when the endpoint was not yet deployed backed off to minutes, and after
+	 * that every new sync queued behind them: the sweep reported work, enqueued
+	 * it, and no sync worker ever ran again. A queue that cannot recover from a
+	 * bad afternoon is not a queue.
+	 *
+	 * Replacing is safe precisely because the batch is a description of state
+	 * rather than a list of operations. Cancelling one mid-flight loses nothing
+	 * — no row is marked delivered until the server acknowledges it — and the
+	 * replacement re-reads the queue, so it carries the interrupted work *and*
+	 * the answer that triggered it.
 	 */
 	fun sync(context: Context, runUuid: String) {
 		val request = OneTimeWorkRequestBuilder<InspectionSyncWorker>()
@@ -155,7 +167,7 @@ object InspectionWork {
 			.setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 20, TimeUnit.SECONDS)
 			.build()
 		WorkManager.getInstance(context)
-			.enqueueUniqueWork("inspection-sync-$runUuid", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+			.enqueueUniqueWork("inspection-sync-$runUuid", ExistingWorkPolicy.REPLACE, request)
 	}
 
 	/** Drain everything outstanding — on connectivity, on foreground, on a timer. */

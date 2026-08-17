@@ -117,14 +117,20 @@ def _build_workspace() -> None:
 	opening this page is doing one job (who is on today, who is late), and mixing
 	it with job cards and vehicles buries exactly the numbers they came for.
 	"""
-	today = "Today"
+	# "Today" has to be expressed as a *relative* filter, not a literal value.
+	# `["attendance_date", "=", "Today"]` stores the string "Today" and Frappe then
+	# tries to parse it as a date when the card runs, so the whole workspace dies
+	# with "Today is not a valid date string" — the page renders no numbers at all.
+	# The `Timespan` operator is what the Desk itself emits for a relative date;
+	# db_query resolves it through get_timespan_date_range() at query time.
+	today = ["Timespan", "today"]
 	cards = [
 		(
 			"On Duty Now",
 			"Duty Attendance",
 			[
 				["Duty Attendance", "status", "=", "On Duty"],
-				["Duty Attendance", "attendance_date", "=", today],
+				["Duty Attendance", "attendance_date", *today],
 			],
 		),
 		(
@@ -132,7 +138,7 @@ def _build_workspace() -> None:
 			"Duty Attendance",
 			[
 				["Duty Attendance", "is_late", "=", 1],
-				["Duty Attendance", "attendance_date", "=", today],
+				["Duty Attendance", "attendance_date", *today],
 			],
 		),
 		(
@@ -140,7 +146,7 @@ def _build_workspace() -> None:
 			"Duty Attendance",
 			[
 				["Duty Attendance", "status", "=", "Not Started"],
-				["Duty Attendance", "attendance_date", "=", today],
+				["Duty Attendance", "attendance_date", *today],
 			],
 		),
 		("Outside Geofence", "Duty Punch", [["Duty Punch", "outside_geofence", "=", 1]]),

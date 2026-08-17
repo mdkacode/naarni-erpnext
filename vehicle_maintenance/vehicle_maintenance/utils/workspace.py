@@ -50,6 +50,21 @@ def ensure_number_card(label: str, document_type: str, filters: list, function: 
 		keeper = matches[0]["name"]
 		for extra in matches[1:]:
 			frappe.delete_doc("Number Card", extra["name"], force=True, ignore_permissions=True)
+
+		# Keep the *definition* in sync, not just the card's existence. Returning
+		# early here meant a card seeded with a broken filter stayed broken forever:
+		# the row exists, so the create branch never runs, and no migrate could ever
+		# correct it. That is exactly how `attendance_date = "Today"` survived on
+		# the Duty Roster workspace — the seeder was fixed, the site was not.
+		desired = json.dumps(filters)
+		current = frappe.db.get_value("Number Card", keeper, ["filters_json", "function"], as_dict=True)
+		if current and (current.filters_json != desired or current.function != function):
+			frappe.db.set_value(
+				"Number Card",
+				keeper,
+				{"filters_json": desired, "function": function},
+				update_modified=False,
+			)
 		return keeper
 
 	doc = frappe.get_doc(

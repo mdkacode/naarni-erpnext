@@ -17,7 +17,7 @@ import com.naarni.service.ui.chat.ChatThreadScreen
 import com.naarni.service.ui.chat.ChatViewModel
 import com.naarni.service.ui.chat.NewChatScreen
 import com.naarni.service.ui.chat.NewGroupScreen
-import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.DirectionsBus
 import androidx.compose.material.icons.rounded.Home
@@ -77,14 +77,21 @@ import com.naarni.service.ui.screens.VehiclesScreen
 /**
  * Bottom-nav destinations.
  *
- * Trimmed to Home, Alerts and Battery for this release. Jobs, Fleet and Tickets
+ * Trimmed to Home, Alerts and Checks for this release. Jobs, Fleet and Tickets
  * still exist as routes below — deep links from notifications keep working, and
  * the Home screen can still open a job card — they simply have no tab. Profile
  * stays because logout, the depot picker and account deletion live there.
  *
- * [Battery] points at the generic process engine; it is called Battery because
- * that is the only published process today, and renaming it is a one-line change
- * when a second process ships.
+ * [Checks] is the generic process engine. It was called "Battery" while battery
+ * QC was the only published process, which stopped being true the moment a
+ * second one could be authored — and a tab named after one process is a tab
+ * nobody looks in for the others.
+ *
+ * "Checks" rather than "Processes" deliberately. A process is what an admin
+ * authors; a check is what the person holding the phone actually does, and the
+ * app already counts them that way everywhere else ("59 checks", "Not answered",
+ * "Can't check this?"). The route has always been `processes` and stays that
+ * way, so every existing deep link keeps working.
  */
 enum class Tab(
     val route: String,
@@ -103,10 +110,10 @@ enum class Tab(
     Home("home", "Home", Icons.Rounded.Home),
     Chat("chat", "Chat", Icons.AutoMirrored.Rounded.Chat),
     Alerts("alerts", "Alerts", Icons.Rounded.Notifications),
-    Battery(
+    Checks(
         "processes",
-        "Battery",
-        Icons.Rounded.BatteryChargingFull,
+        "Checks",
+        Icons.Rounded.Checklist,
         requiredRoles = PROCESS_ROLES,
     ),
     Profile("profile", "Profile", Icons.Rounded.Person),
@@ -376,7 +383,7 @@ fun MainShell(vm: AppViewModel) {
             }
 
             // ---- Process engine: one list, one start screen, one generic runner.
-            composable(Tab.Battery.route) {
+            composable(Tab.Checks.route) {
                 ProcessListScreen(
                     vm,
                     onOpenProcess = { family -> nav.navigate("process/$family") },
@@ -407,7 +414,7 @@ fun MainShell(vm: AppViewModel) {
                         nav.navigate("run/$run") {
                             // Drop the start screen so Back returns to the list,
                             // not into a run the operator already began.
-                            popUpTo(Tab.Battery.route)
+                            popUpTo(Tab.Checks.route)
                         }
                     },
                 )
@@ -418,8 +425,8 @@ fun MainShell(vm: AppViewModel) {
                     runName = entry.arguments?.getString("name").orEmpty(),
                     onBack = { nav.popBackStack() },
                     onFinished = {
-                        nav.navigate(Tab.Battery.route) {
-                            popUpTo(Tab.Battery.route) { inclusive = true }
+                        nav.navigate(Tab.Checks.route) {
+                            popUpTo(Tab.Checks.route) { inclusive = true }
                             launchSingleTop = true
                         }
                     },

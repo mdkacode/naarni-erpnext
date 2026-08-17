@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.naarni.service.core.feedback.LocalFeedback
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -92,6 +93,7 @@ fun BarcodeScannerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val feedback = LocalFeedback.current
 
     var hasCamera by remember {
         mutableStateOf(
@@ -161,6 +163,14 @@ fun BarcodeScannerScreen(
                                     val value = codes.firstNotNullOfOrNull { it.rawValue }
                                     if (!value.isNullOrBlank() && !handled) {
                                         handled = true
+                                        // The beep is the whole confirmation. An
+                                        // operator scanning a pack is looking at
+                                        // the label, not at the screen, and the
+                                        // viewfinder closing is not something you
+                                        // notice from that angle — so without a
+                                        // sound the only way to know it worked is
+                                        // to stop and look, once per scan, all day.
+                                        feedback.success()
                                         onScanned(value)
                                     }
                                 }

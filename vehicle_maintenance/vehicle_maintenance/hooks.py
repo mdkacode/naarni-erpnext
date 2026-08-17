@@ -84,6 +84,10 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_8.seed_roster.execute",
 	"vehicle_maintenance.patches.v2_1.publish_battery_qc.execute",
 	"vehicle_maintenance.patches.v2_0.seed_daily_status.execute",
+	# Designation picklist, plus an Accepted invite for everyone who already had
+	# access — without that back-fill, switching on invite-only would leave the
+	# existing depot with no record of who was let in and no way to re-provision.
+	"vehicle_maintenance.patches.v2_3.seed_onboarding.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

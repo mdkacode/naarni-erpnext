@@ -44,7 +44,21 @@ object ChatNotifications {
      */
     private val history = mutableMapOf<String, MutableList<Line>>()
 
-    private data class Line(
+    /**
+     * Everything touching [history] holds this.
+     *
+     * Three threads reach it: `show` on FCM's callback thread, `showSentReply`
+     * on an IO thread from the reply receiver, and `clear` on the main thread
+     * when a thread is opened. Unsynchronised, a reply typed while a push
+     * landed for the same room could throw ConcurrentModificationException out
+     * of the middle of building the tray — and that propagates out of
+     * onMessageReceived, which takes the process down rather than losing a
+     * notification.
+     */
+    private val lock = Any()
+
+    @androidx.annotation.VisibleForTesting
+    internal data class Line(
         val sender: String,
         val text: String,
         val at: Long,
@@ -82,9 +96,7 @@ object ChatNotifications {
         // which downgrades this to the text notification it was before.
         val image = NotificationImages.stage(context, imagePath)
 
-        val lines = history.getOrPut(room) { mutableListOf() }
-        lines += Line(authorName.ifBlank { "Someone" }, body, whenMillis, image)
-        while (lines.size > MAX_LINES) lines.removeAt(0)
+        val lines = record(room, Line(authorName.ifBlank { "Someone" }, body, whenMillis, image))
 
         val notification = build(
             context = context,
@@ -177,10 +189,38 @@ object ChatNotifications {
         return builder.build()
     }
 
+    /** Drop every cached run. Test seam only — the app clears per room. */
+    @androidx.annotation.VisibleForTesting
+    internal fun resetHistoryForTest() = synchronized(lock) { history.clear() }
+
+    /** How many conversations are currently cached. Test seam only. */
+    @androidx.annotation.VisibleForTesting
+    internal fun cachedRoomCount(): Int = synchronized(lock) { history.size }
+
     /** Called once a reply is sent, or the thread is opened. */
     fun clear(context: Context, room: String) {
-        history.remove(room)
+        synchronized(lock) { history.remove(room) }
         runCatching { NotificationManagerCompat.from(context).cancel(idFor(room)) }
+    }
+
+    /**
+     * Append a line and hand back an immutable copy of the run to draw.
+     *
+     * The copy is the point: [build] iterates the result, and iterating the
+     * live list would race every other thread that can append to it.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun record(room: String, line: Line): List<Line> = synchronized(lock) {
+        val lines = history.getOrPut(room) { mutableListOf() }
+        lines += line
+        while (lines.size > MAX_LINES) lines.removeAt(0)
+        // Rooms accumulate for the life of the process — one entry per room a
+        // manager is pushed from and never opens — so the map is bounded too,
+        // not just each list within it.
+        if (history.size > MAX_ROOMS) {
+            history.keys.take(history.size - MAX_ROOMS).forEach { history.remove(it) }
+        }
+        lines.toList()
     }
 
     /**
@@ -191,9 +231,7 @@ object ChatNotifications {
      * reply feel broken even when the message went through.
      */
     fun showSentReply(context: Context, room: String, roomTitle: String, text: String) {
-        val lines = history.getOrPut(room) { mutableListOf() }
-        lines += Line(SELF, text, System.currentTimeMillis())
-        while (lines.size > MAX_LINES) lines.removeAt(0)
+        val lines = record(room, Line(SELF, text, System.currentTimeMillis()))
 
         val notification = build(
             context = context,
@@ -298,5 +336,8 @@ object ChatNotifications {
     }
 
     private const val MAX_LINES = 6
+
+    /** Conversations kept in the redraw cache. Beyond this the oldest are dropped. */
+    private const val MAX_ROOMS = 12
     private const val SELF = " self"
 }

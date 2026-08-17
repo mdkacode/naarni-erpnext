@@ -46,4 +46,4 @@ def execute() -> None:
 	frappe.db.set_default(MARKER, "1")
 	if names:
 		frappe.clear_cache(doctype="Process Definition")
-		print(f"Battery QC: number pad enabled on {len(names)} definition(s)")  # noqa: T201
+		print(f"Battery QC: number pad enabled on {len(names)} definition(s)")

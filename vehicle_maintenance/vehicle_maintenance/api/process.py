@@ -474,9 +474,12 @@ def start_run(
 		siblings = _definition_family(definition)
 		joined = collaboration.open_run_for(siblings, identifier)
 		if joined:
-			return _ok(get_run(joined)["data"], _("Joined the inspection already open for this {0}.").format(
-				definition.subject_label or _("item")
-			))
+			return _ok(
+				get_run(joined)["data"],
+				_("Joined the inspection already open for this {0}.").format(
+					definition.subject_label or _("item")
+				),
+			)
 
 	if is_test_run and not (_user_roles() & {C.ROLE_AUTHOR, "System Manager"}):
 		frappe.throw(_("Only a Process Author can start a test run."), frappe.PermissionError)

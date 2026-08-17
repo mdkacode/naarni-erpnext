@@ -94,7 +94,13 @@ def participants(doc, names: dict | None = None) -> list[dict]:
 			return
 		row = seen.setdefault(
 			user,
-			{"user": user, "full_name": _full_name(user, cache), "answers": 0, "last_at": None, "last_stage": None},
+			{
+				"user": user,
+				"full_name": _full_name(user, cache),
+				"answers": 0,
+				"last_at": None,
+				"last_stage": None,
+			},
 		)
 		if when and (row["last_at"] is None or str(when) > str(row["last_at"])):
 			row["last_at"] = when
@@ -134,7 +140,9 @@ def board(doc, definition) -> list[dict]:
 
 	for result in doc.results or []:
 		answers[result.step_code] = {
-			"is_answered": bool(result.response or result.value_numeric is not None or cint(result.is_skipped)),
+			"is_answered": bool(
+				result.response or result.value_numeric is not None or cint(result.is_skipped)
+			),
 			"is_pass": cint(result.is_pass),
 			"is_deviation": cint(result.is_deviation),
 			"is_skipped": cint(result.is_skipped),
@@ -161,9 +169,7 @@ def board(doc, definition) -> list[dict]:
 		steps = steps_by_stage.get(stage.stage_code, [])
 		visible = [s for s in steps if conditions.is_visible(s, answers)]
 		answered = [s for s in visible if s["step_code"] in answers]
-		outstanding = [
-			s for s in visible if cint(s.get("is_mandatory")) and s["step_code"] not in answers
-		]
+		outstanding = [s for s in visible if cint(s.get("is_mandatory")) and s["step_code"] not in answers]
 
 		signoff = doc.signoff_for(stage.stage_code, "Operator")
 		last = last_by_stage.get(stage.stage_code)

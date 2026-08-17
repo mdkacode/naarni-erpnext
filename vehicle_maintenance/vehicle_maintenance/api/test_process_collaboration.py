@@ -122,7 +122,9 @@ class TestOnePackOneRun(CollaborationTestBase):
 		# A run that tripped a critical check is unfinished work, and it is the
 		# one a colleague most needs to pick up rather than duplicate.
 		first = self._start()
-		frappe.db.set_value("Process Run", first["name"], "status", C.STATUS_QUARANTINED, update_modified=False)
+		frappe.db.set_value(
+			"Process Run", first["name"], "status", C.STATUS_QUARANTINED, update_modified=False
+		)
 
 		second = self._start()
 

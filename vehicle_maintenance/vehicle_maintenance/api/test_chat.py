@@ -140,6 +140,77 @@ class TestChatIdempotency(ChatTestBase):
 		nxt = self._send(self.alice, "two")
 		self.assertEqual(nxt["data"]["message"]["seq"], 2)
 
+	def test_a_retry_that_loses_the_insert_race_still_gets_its_message(self):
+		"""The window between the idempotency check and the insert.
+
+		The check is a read and the insert is a write, with nothing holding the
+		gap, so under a real race the unique index on `client_id` is what
+		enforces this — and 20 simultaneous retries of one id produced 1 message
+		and **19 errors** before the recovery below existed. An error here is
+		worse than it sounds: the app marks the message failed and shows a red
+		retry on something the room already has.
+
+		Blanking the pre-check reproduces the window exactly: it is a request
+		that read before the winner committed.
+		"""
+		cid = frappe.generate_hash(length=20)
+		winner = self._send(self.alice, "first past the post", client_id=cid)
+
+		real_get_value = frappe.db.get_value
+		missed = {"once": False}
+
+		def blind_once(*args, **kwargs):
+			if (
+				not missed["once"]
+				and args
+				and args[0] == "VM Chat Message"
+				and isinstance(args[1], dict)
+				and args[1].get("client_id") == cid
+			):
+				missed["once"] = True
+				return None
+			return real_get_value(*args, **kwargs)
+
+		frappe.db.get_value = blind_once
+		self.addCleanup(setattr, frappe.db, "get_value", real_get_value)
+
+		loser = self._send(self.alice, "first past the post", client_id=cid)
+
+		self.assertTrue(loser["data"]["duplicate"])
+		self.assertEqual(loser["data"]["message"]["name"], winner["data"]["message"]["name"])
+
+	def test_losing_the_race_does_not_burn_a_sequence_number(self):
+		"""The seq is reserved before the insert, so the loser must give it back.
+
+		A gap is the one defect a client cannot recover from — it reads one as
+		"I have missed a message" and hunts for it forever.
+		"""
+		cid = frappe.generate_hash(length=20)
+		self._send(self.alice, "one", client_id=cid)
+
+		real_get_value = frappe.db.get_value
+		missed = {"once": False}
+
+		def blind_once(*args, **kwargs):
+			if (
+				not missed["once"]
+				and args
+				and args[0] == "VM Chat Message"
+				and isinstance(args[1], dict)
+				and args[1].get("client_id") == cid
+			):
+				missed["once"] = True
+				return None
+			return real_get_value(*args, **kwargs)
+
+		frappe.db.get_value = blind_once
+		self.addCleanup(setattr, frappe.db, "get_value", real_get_value)
+
+		self._send(self.alice, "one", client_id=cid)
+		frappe.db.get_value = real_get_value
+
+		self.assertEqual(self._send(self.alice, "two")["data"]["message"]["seq"], 2)
+
 	def test_client_id_is_unique_at_the_database(self):
 		cid = frappe.generate_hash(length=20)
 		self._send(self.alice, "one", client_id=cid)
@@ -300,6 +371,53 @@ class TestChatUpload(ChatTestBase):
 		self.assertEqual(msg["file_size"], 2000)
 		self.assertTrue(msg["file_url"].startswith("/private/files/"))
 		self.assertEqual(msg["seq"], 1)
+
+	def test_two_uploads_racing_on_one_client_id_produce_one_message(self):
+		"""The app retrying a whole attachment after a timeout.
+
+		The bytes go up again under a new `upload_id` while the message keeps
+		its original `client_id` — that is what makes the retry idempotent — so
+		both commits race for the same unique index. The loser has already moved
+		its file into place and written its File row, which is why this path
+		gives up only the seq and the insert rather than rolling everything back:
+		discarding the File row would leave bytes on disk nothing points at.
+
+		Verified at 6-way concurrency over HTTP as well: 6 commits, 1 message.
+		"""
+		data = b"R" * 1500
+		first, second = self._begin(data), self._begin(data)
+		self._chunk(first, 0, data)
+		self._chunk(second, 0, data)
+
+		cid = frappe.generate_hash(length=20)
+		winner = chat_upload.commit_upload(upload_id=first, client_id=cid)
+
+		real_get_value = frappe.db.get_value
+		missed = {"once": False}
+
+		def blind_once(*args, **kwargs):
+			# The window: a request that read before the winner committed.
+			if (
+				not missed["once"]
+				and args
+				and args[0] == "VM Chat Message"
+				and isinstance(args[1], dict)
+				and args[1].get("client_id") == cid
+			):
+				missed["once"] = True
+				return None
+			return real_get_value(*args, **kwargs)
+
+		frappe.db.get_value = blind_once
+		self.addCleanup(setattr, frappe.db, "get_value", real_get_value)
+
+		loser = chat_upload.commit_upload(upload_id=second, client_id=cid)
+		frappe.db.get_value = real_get_value
+
+		self.assertTrue(loser["data"]["duplicate"])
+		self.assertEqual(loser["data"]["message"]["name"], winner["data"]["message"]["name"])
+		# And the loser gave its sequence number back.
+		self.assertEqual(self._send(self.alice, "after the race")["data"]["message"]["seq"], 2)
 
 	def test_out_of_order_chunk_is_rejected(self):
 		"""A reordered chunk must fail loudly, not corrupt the file."""
@@ -1211,6 +1329,10 @@ class TestChatReceiptBroadcast(ChatTestBase):
 	def _receipts(self):
 		return [p["message"] for p in self.published]
 
+	def _to_user(self, user):
+		"""The receipts addressed to one person's own socket."""
+		return [p["message"] for p in self.published if p.get("user") == user]
+
 	def test_reading_publishes_to_the_room(self):
 		self._send(self.alice, "did you get this")
 		self.published.clear()
@@ -1218,10 +1340,29 @@ class TestChatReceiptBroadcast(ChatTestBase):
 		frappe.set_user(self.bob)
 		chat.mark_read(room=self.room, seq=1)
 
-		self.assertEqual(len(self.published), 1)
-		event = self.published[0]
-		self.assertEqual(event["docname"], self.room)
-		self.assertEqual(event["message"]["read_upto"], 1)
+		doc_room = [p for p in self.published if p.get("docname") == self.room]
+		self.assertEqual(len(doc_room), 1)
+		self.assertEqual(doc_room[0]["message"]["read_upto"], 1)
+
+	def test_a_receipt_also_reaches_a_sender_who_left_the_thread(self):
+		"""The doc room alone is not enough, and this is where ticks were lost.
+
+		Only a client with that exact thread on screen is subscribed to the doc
+		room. A sender who has gone back to the conversation list — which is
+		where people actually look at ticks — unsubscribed on the way out, so
+		their ticks froze until the next `list_rooms`. Every socket joins its own
+		user room on connect, so the per-member copy reaches them anywhere.
+		"""
+		self._send(self.alice, "did you get this")
+		self.published.clear()
+
+		frappe.set_user(self.bob)
+		chat.mark_read(room=self.room, seq=1)
+
+		mine = self._to_user(self.alice)
+		self.assertEqual(len(mine), 1)
+		self.assertEqual(mine[0]["read_upto"], 1)
+		self.assertEqual(mine[0]["room"], self.room)
 
 	def test_a_repeated_mark_read_says_nothing(self):
 		# A thread left open re-marks the same seq on every foreground. None of
@@ -1533,3 +1674,202 @@ class TestDeliveryReceipts(ChatTestBase):
 
 		self.assertEqual(delivered, first)
 		self.assertLess(delivered, second)
+
+	def test_a_sync_cursor_is_itself_a_delivery_receipt(self):
+		"""The repair path, and the one that was missing.
+
+		A device handed a message over the socket or a push, whose ack was lost
+		with the connection that carried it, already holds the message — so the
+		old sync found nothing newer, returned an empty delta and recorded
+		nothing. The sender sat on one tick while the recipient read it. The
+		cursor is the client stating what it holds, and a device cannot hold a
+		message it never received, so every sync now repairs the receipt.
+		"""
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		out = chat.sync(cursors={self.room: seq})
+
+		# Nothing to hand over for this room: the case the old code did not cover.
+		# Asserted per-room rather than on the whole payload, which also carries
+		# any other conversation these fixtures left Bob a member of.
+		self.assertNotIn(self.room, out["data"]["rooms"])
+		self.assertEqual(self._marks()[0], seq)
+
+	def test_a_cursor_cannot_claim_a_message_that_does_not_exist(self):
+		# Cursors are client-supplied. A delivery for a seq the room has not
+		# reached would tick a message before anybody had sent it.
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.sync(cursors={self.room: seq + 500})
+
+		self.assertEqual(self._marks()[0], seq)
+
+	def test_a_reinstalled_client_does_not_undeliver_what_it_had(self):
+		seq = self._send_from_alice()
+		frappe.set_user(self.bob)
+		chat.mark_delivered(room=self.room, seq=seq)
+		# A wiped database syncs from zero again. That is not evidence the
+		# messages were never received.
+		chat.sync(cursors={self.room: 0})
+
+		self.assertEqual(self._marks()[0], seq)
+
+	def test_a_cursor_for_a_room_you_are_not_in_is_ignored(self):
+		# sync only ever walks the caller's own rooms, so a forged cursor for
+		# somebody else's conversation has nothing to write to.
+		seq = self._send_from_alice()
+		frappe.set_user(self.mallory)
+		out = chat.sync(cursors={self.room: seq})
+
+		self.assertNotIn(self.room, out["data"]["rooms"])
+		self.assertEqual(self._marks(), (0, 0))
+
+
+class TestChatReactions(ChatTestBase):
+	"""An emoji on a message — the cheapest reply there is."""
+
+	def _react(self, user, code, message=None):
+		frappe.set_user(user)
+		return chat.toggle_reaction(message=message or self.msg, reaction=code)
+
+	def setUp(self):
+		super().setUp()
+		self.msg = self._send(self.alice, "brakes done")["data"]["message"]["name"]
+
+	def test_a_reaction_lands_on_the_message(self):
+		out = self._react(self.bob, "like")["data"]["reactions"]
+
+		self.assertEqual(len(out), 1)
+		self.assertEqual(out[0]["code"], "like")
+		self.assertEqual(out[0]["emoji"], "👍")
+		self.assertEqual(out[0]["count"], 1)
+		self.assertEqual(out[0]["users"], [self.bob])
+
+	def test_the_same_emoji_twice_removes_it(self):
+		# One endpoint for both directions: tapping a chip you are part of takes
+		# you out of it, which is what the control looks like it does.
+		self._react(self.bob, "like")
+		out = self._react(self.bob, "like")["data"]["reactions"]
+
+		self.assertEqual(out, [])
+
+	def test_one_person_can_hold_two_different_emoji(self):
+		self._react(self.bob, "like")
+		out = self._react(self.bob, "thanks")["data"]["reactions"]
+
+		self.assertEqual([r["code"] for r in out], ["like", "thanks"])
+
+	def test_two_people_on_one_emoji_count_two(self):
+		self._react(self.bob, "like")
+		out = self._react(self.alice, "like")["data"]["reactions"]
+
+		self.assertEqual(out[0]["count"], 2)
+		self.assertCountEqual(out[0]["users"], [self.alice, self.bob])
+
+	def test_removing_one_leaves_the_other_person(self):
+		self._react(self.bob, "like")
+		self._react(self.alice, "like")
+		out = self._react(self.bob, "like")["data"]["reactions"]
+
+		self.assertEqual(out[0]["count"], 1)
+		self.assertEqual(out[0]["users"], [self.alice])
+
+	def test_chips_keep_a_stable_order(self):
+		# Ordered by the allow-list, not by count, so a chip does not jump
+		# sideways under the finger as other people react.
+		self._react(self.bob, "thanks")
+		self._react(self.alice, "like")
+		self._react(self.alice, "haha")
+		out = self._react(self.bob, "haha")["data"]["reactions"]
+
+		self.assertEqual([r["code"] for r in out], ["like", "haha", "thanks"])
+
+	def test_an_unlisted_emoji_is_refused(self):
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.ValidationError):
+			chat.toggle_reaction(message=self.msg, reaction="bus")
+
+	def test_free_text_cannot_be_smuggled_in(self):
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.ValidationError):
+			chat.toggle_reaction(message=self.msg, reaction="x" * 500)
+
+	def test_a_non_member_cannot_react(self):
+		frappe.set_user(self.mallory)
+		with self.assertRaises(frappe.PermissionError):
+			chat.toggle_reaction(message=self.msg, reaction="like")
+
+	def test_a_missing_message_is_not_found(self):
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.DoesNotExistError):
+			chat.toggle_reaction(message="no-such-message", reaction="like")
+
+	def test_a_deleted_message_cannot_be_reacted_to(self):
+		frappe.db.set_value("VM Chat Message", self.msg, "deleted", 1)
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.ValidationError):
+			chat.toggle_reaction(message=self.msg, reaction="like")
+
+	def test_reactions_ride_along_with_the_message(self):
+		# The client must not need a second call per message to draw the chips.
+		self._react(self.bob, "love")
+		frappe.set_user(self.alice)
+		page = chat.list_messages(room=self.room)["data"]["messages"]
+
+		row = next(m for m in page if m["name"] == self.msg)
+		self.assertEqual(row["reactions"][0]["code"], "love")
+		self.assertEqual(row["reactions"][0]["users"], [self.bob])
+
+	def test_a_message_with_none_reports_an_empty_list(self):
+		frappe.set_user(self.alice)
+		page = chat.list_messages(room=self.room)["data"]["messages"]
+
+		self.assertEqual(next(m for m in page if m["name"] == self.msg)["reactions"], [])
+
+	def test_reacting_publishes_to_the_room(self):
+		published = []
+		orig = frappe.publish_realtime
+		frappe.publish_realtime = lambda **kw: published.append(kw)
+		try:
+			self._react(self.bob, "like")
+		finally:
+			frappe.publish_realtime = orig
+
+		event = next(p for p in published if p.get("event") == "vm_chat_reaction")
+		self.assertEqual(event["docname"], self.room)
+		self.assertEqual(event["message"]["message"], self.msg)
+		self.assertEqual(event["message"]["reactions"][0]["code"], "like")
+
+	def test_a_failed_publish_does_not_fail_the_tap(self):
+		orig = frappe.publish_realtime
+
+		def boom(*args, **kwargs):
+			if kwargs.get("event") == "vm_chat_reaction":
+				raise Exception("redis is down")
+			return orig(*args, **kwargs)
+
+		frappe.publish_realtime = boom
+		try:
+			result = self._react(self.bob, "like")
+		finally:
+			frappe.publish_realtime = orig
+
+		self.assertTrue(result["success"])
+		# And the reaction itself was still recorded.
+		self.assertEqual(result["data"]["reactions"][0]["count"], 1)
+
+	def test_a_duplicate_row_cannot_exist(self):
+		# The guard against two taps racing: the database refuses the second,
+		# rather than leaving one person rendered as a count of two.
+		self._react(self.bob, "like")
+		frappe.set_user("Administrator")
+		with self.assertRaises(Exception):
+			frappe.get_doc(
+				{
+					"doctype": "VM Chat Reaction",
+					"message": self.msg,
+					"room": self.room,
+					"user": self.bob,
+					"emoji": "like",
+				}
+			).insert(ignore_permissions=True)

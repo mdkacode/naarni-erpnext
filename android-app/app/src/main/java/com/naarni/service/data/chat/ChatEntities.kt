@@ -114,6 +114,16 @@ data class ChatMessageEntity(
      */
     val mentions: String? = null,
     /**
+     * Reactions, as the server's JSON array, stored verbatim.
+     *
+     * Kept as an opaque string for the same reason as [mentions]: the only
+     * read is "draw the chips on this row", which happens with the row already
+     * in hand. A second table would add a join to the paging query — the one
+     * query in the app whose cost is paid on every scroll — to answer a
+     * question that never needs a query of its own.
+     */
+    val reactions: String? = null,
+    /**
      * Resolved once, when the row is written, against the account that was
      * signed in at the time. Recomputing it at render would mean a string
      * comparison per visible row per recomposition, and would quietly go wrong

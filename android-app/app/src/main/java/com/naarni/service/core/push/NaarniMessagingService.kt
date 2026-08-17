@@ -45,6 +45,12 @@ class NaarniMessagingService : FirebaseMessagingService() {
         // carrying a reply field. Everything else keeps the flat alert shape.
         if (data["type"] == "chat") {
             val room = data["room"].orEmpty()
+            // The push *is* the delivery. This code only runs because the
+            // payload reached the handset, which is exactly what the sender's
+            // second tick claims — so acknowledge it before doing anything with
+            // the tray. It is the only receipt available while the app is
+            // backgrounded and the socket is down, which is most of the day.
+            ackDelivery(room, data["seq"]?.toLongOrNull() ?: 0L)
             val shown = ChatNotifications.show(
                 context = this,
                 room = room,
@@ -55,6 +61,10 @@ class NaarniMessagingService : FirebaseMessagingService() {
                 authorName = data["author_name"] ?: body.substringBefore(":", "").trim(),
                 body = data["preview"] ?: body.substringAfter(": ", body),
                 mention = data["mention"] == "1",
+                // Empty for everything that is not a photo, and null-safe all
+                // the way down — an older server that does not send the field
+                // simply produces the text notification it always did.
+                imagePath = data["image_url"]?.takeIf { it.isNotBlank() },
             )
             // A suppressed tray still needs the message pulled down, so opening
             // the app later does not show a gap.
@@ -63,6 +73,19 @@ class NaarniMessagingService : FirebaseMessagingService() {
         }
 
         notify(title, body, route)
+    }
+
+    /**
+     * Tell the server the message reached this device.
+     *
+     * Deliberately not a `sync()`: that would pull a delta on every push, in
+     * Doze, on a handset the user is not holding. The push already carries the
+     * seq, so one small POST records the receipt and the body follows on the
+     * next sync — which is what the app does when it comes forward anyway.
+     */
+    private fun ackDelivery(room: String, seq: Long) {
+        if (room.isBlank() || seq <= 0) return
+        scope.launch { runCatching { appContainer.chatRepo.markDelivered(room, seq) } }
     }
 
     /** Pull whatever the push was announcing, so Room is current either way. */

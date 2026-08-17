@@ -269,7 +269,7 @@ class TestProfilePhoto(OnboardingTestBase):
 		self.user = auth._provision_naarni_user(self.phone, naarni_uuid=None, authorities=[])
 		frappe.set_user(self.user)
 
-	def _file(self, is_private=0, owner=None):
+	def _file(self, is_private=1, owner=None):
 		doc = frappe.get_doc(
 			{
 				"doctype": "File",
@@ -283,23 +283,33 @@ class TestProfilePhoto(OnboardingTestBase):
 			frappe.db.set_value("File", doc.name, "owner", owner, update_modified=False)
 		return doc
 
-	def test_a_public_photo_of_your_own_is_adopted(self):
+	def test_a_private_photo_of_your_own_is_adopted(self):
 		f = self._file()
 
 		out = profile.set_profile_photo(file_url=f.file_url)
 
 		self.assertTrue(out["data"]["has_photo"])
-		self.assertEqual(out["data"]["photo"], f.file_url)
 		self.assertTrue(out["data"]["profile_complete"])
 
-	def test_a_private_photo_is_refused(self):
-		"""Private avatars render as broken circles for everyone but their owner.
+	def test_the_api_hands_out_an_endpoint_not_a_file_path(self):
+		"""Clients must never be given the raw private path.
 
-		A File is permission-checked against the doc it hangs off, and a
-		technician cannot read another technician's User — so this has to be
-		caught here rather than discovered as "why is everyone's picture blank".
+		It is readable only by its owner, so a room full of people would render
+		one face and a dozen broken circles. `avatar` is what serves it.
 		"""
-		f = self._file(is_private=1)
+		f = self._file()
+		out = profile.set_profile_photo(file_url=f.file_url)
+
+		self.assertNotIn("/private/files/", out["data"]["photo"])
+		self.assertIn(profile.AVATAR_METHOD, out["data"]["photo"])
+
+	def test_a_public_photo_is_refused(self):
+		"""Nothing this app stores belongs in a world-readable bucket.
+
+		A public url is a photograph of a named employee that needs no login and
+		cannot be recalled once it has been shared.
+		"""
+		f = self._file(is_private=0)
 
 		with self.assertRaises(frappe.ValidationError):
 			profile.set_profile_photo(file_url=f.file_url)
@@ -321,6 +331,98 @@ class TestProfilePhoto(OnboardingTestBase):
 		out = profile.remove_profile_photo()
 
 		self.assertFalse(out["data"]["has_photo"])
+
+
+class TestAvatarServing(OnboardingTestBase):
+	"""Colleagues can see each other; the internet cannot see anybody."""
+
+	def setUp(self):
+		super().setUp()
+		self.phone = "9198000035"
+		_clear(self.phone)
+		self._invite(self.phone, "Face Owner")
+		self.owner = auth._provision_naarni_user(self.phone, naarni_uuid=None, authorities=[])
+
+		self.other_phone = "9198000036"
+		_clear(self.other_phone)
+		self._invite(self.other_phone, "A Colleague")
+		self.colleague = auth._provision_naarni_user(self.other_phone, naarni_uuid=None, authorities=[])
+
+		frappe.set_user(self.owner)
+		f = frappe.get_doc(
+			{
+				"doctype": "File",
+				"file_name": f"face-{frappe.generate_hash(length=6)}.png",
+				"is_private": 1,
+				"content": b"\x89PNG\r\n\x1a\n" + b"0" * 64,
+			}
+		)
+		f.insert(ignore_permissions=True)
+		profile.set_profile_photo(file_url=f.file_url)
+		self.addCleanup(self._reset_response)
+
+	def _reset_response(self):
+		for key in ("filename", "filecontent", "type", "display_content_as", "content_type"):
+			frappe.local.response.pop(key, None)
+
+	def test_a_colleague_can_see_your_face(self):
+		"""The whole reason this endpoint exists.
+
+		The stored file is private, and a technician cannot read another
+		technician's User doc — so without this, everyone but the owner sees a
+		broken circle.
+		"""
+		frappe.set_user(self.colleague)
+
+		profile.avatar(user=self.owner)
+
+		self.assertTrue(frappe.local.response.get("filecontent"))
+		self.assertEqual(frappe.local.response.get("display_content_as"), "inline")
+		self.assertTrue(frappe.local.response.get("content_type").startswith("image/"))
+
+	def test_a_guest_cannot(self):
+		frappe.set_user("Guest")
+
+		with self.assertRaises(frappe.PermissionError):
+			profile.avatar(user=self.owner)
+
+	def test_asking_for_somebody_with_no_picture_is_a_clean_miss(self):
+		# The client draws initials on this, so it must not be a 500.
+		frappe.set_user(self.colleague)
+
+		with self.assertRaises(frappe.DoesNotExistError):
+			profile.avatar(user=self.colleague)
+
+	def test_a_crafted_user_image_cannot_read_the_site(self):
+		"""`user_image` is writable from Desk, so it is not a trusted string."""
+		for attempt in (
+			"/private/files/../../site_config.json",
+			"/files/../../../etc/passwd",
+			"/private/files/../private/backups/x.png",
+		):
+			frappe.db.set_value("User", self.owner, "user_image", attempt, update_modified=False)
+			frappe.set_user(self.colleague)
+			with self.assertRaises(frappe.DoesNotExistError):
+				profile.avatar(user=self.owner)
+
+	def test_a_non_image_is_not_served(self):
+		# Not a general file server. Anything else coming through here is a
+		# mistake or an attempt.
+		frappe.db.set_value("User", self.owner, "user_image", "/private/files/secrets.json", update_modified=False)
+		frappe.set_user(self.colleague)
+
+		with self.assertRaises(frappe.DoesNotExistError):
+			profile.avatar(user=self.owner)
+
+	def test_an_external_url_is_left_alone(self):
+		# A gravatar is somebody else's to serve.
+		frappe.db.set_value(
+			"User", self.owner, "user_image", "https://example.com/face.png", update_modified=False
+		)
+		frappe.set_user(self.colleague)
+
+		with self.assertRaises(frappe.DoesNotExistError):
+			profile.avatar(user=self.owner)
 
 
 class TestNotificationTones(OnboardingTestBase):

@@ -88,6 +88,9 @@ after_migrate = [
 	# access — without that back-fill, switching on invite-only would leave the
 	# existing depot with no record of who was let in and no way to re-provision.
 	"vehicle_maintenance.patches.v2_3.seed_onboarding.execute",
+	# Moves any world-readable profile picture into the private bucket. A face
+	# behind a public url needs no login and cannot be recalled once shared.
+	"vehicle_maintenance.patches.v2_3.privatise_avatars.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

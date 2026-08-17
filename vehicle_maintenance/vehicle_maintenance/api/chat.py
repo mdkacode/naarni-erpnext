@@ -282,9 +282,19 @@ def toggle_reaction(message: str, reaction: str) -> dict:
 	)
 
 	if existing:
-		frappe.delete_doc("VM Chat Reaction", existing, ignore_permissions=True, force=True)
+		# Deleted at the database rather than through `frappe.delete_doc`, which
+		# takes a `FOR UPDATE ... NOWAIT` lock on the row and raises
+		# QueryTimeoutError the moment two taps land together — turning an
+		# ordinary double-tap into an HTTP 500. There is nothing for the document
+		# API to do here: the row is four fields with no children, no links and
+		# no controller hooks.
+		frappe.db.delete("VM Chat Reaction", {"name": existing})
 	else:
+		# A savepoint, so that losing a race costs only this statement. Without
+		# one the failed INSERT poisons the whole request transaction.
+		savepoint = "vm_chat_reaction"
 		try:
+			frappe.db.savepoint(savepoint)
 			frappe.get_doc(
 				{
 					"doctype": "VM Chat Reaction",
@@ -294,20 +304,46 @@ def toggle_reaction(message: str, reaction: str) -> dict:
 					"emoji": reaction,
 				}
 			).insert(ignore_permissions=True)
-		except Exception:
-			# Two taps in flight at once is the expected way to get here: the
-			# unique index refuses the second. Confirmed rather than assumed —
-			# if the row is genuinely absent, something else went wrong and
-			# swallowing it would leave the user tapping a chip that never
-			# appears.
-			if not frappe.db.exists(
-				"VM Chat Reaction", {"message": message, "user": user, "emoji": reaction}
-			):
+		except Exception as exc:
+			frappe.db.rollback(save_point=savepoint)
+			# Somebody's identical tap got there first. That is not an error —
+			# the state the user asked for is the state they now have.
+			#
+			# Recognised from the exception rather than by re-reading, because a
+			# read here would still be inside the snapshot that could not see
+			# their row in the first place. That is exactly how the previous
+			# version of this guard came to re-raise in the one race it was
+			# written to absorb: nine of ten simultaneous taps returned 417.
+			if not _is_duplicate_row(exc):
 				raise
+
+	# See the note in `publish_receipts`: the count has to be read outside the
+	# snapshot that predates everybody else's tap, or eight people reacting at
+	# once are each told the total is one — and that figure is what gets
+	# broadcast and stored on every open thread.
+	frappe.db.commit()
 
 	reactions = _reactions_for(message)
 	_publish_reaction(row["room"], message, reactions)
 	return {"success": True, "data": {"message": message, "reactions": reactions}}
+
+
+def _is_duplicate_row(exc: Exception) -> bool:
+	"""Did this exception come from the unique index refusing a second row?
+
+	Checked three ways because the answer arrives in three shapes: Frappe raises
+	its own `UniqueValidationError` for some paths, hands the raw pymysql
+	IntegrityError through on others, and `is_unique_key_violation` only
+	recognises the latter.
+	"""
+	if isinstance(exc, frappe.UniqueValidationError):
+		return True
+	try:
+		if frappe.db.is_unique_key_violation(exc):
+			return True
+	except Exception:
+		pass
+	return "Duplicate entry" in str(exc)
 
 
 def _publish_reaction(room: str, message: str, reactions: list[dict]) -> None:
@@ -318,7 +354,9 @@ def _publish_reaction(room: str, message: str, reactions: list[dict]) -> None:
 			message={"room": room, "message": message, "reactions": reactions},
 			doctype="VM Chat Room",
 			docname=room,
-			after_commit=True,
+			# The write is already committed by the time we get here, so there is
+			# no transaction left to ride on — after_commit would never fire.
+			after_commit=False,
 		)
 	except Exception:
 		frappe.log_error(title=f"Chat reaction publish failed ({room})", message=frappe.get_traceback())
@@ -632,6 +670,22 @@ def publish_receipts(rooms) -> None:
 	rooms = [r for r in dict.fromkeys(rooms or []) if r]
 	if not rooms:
 		return
+
+	# Committed first, and this is load-bearing rather than tidy.
+	#
+	# MariaDB gives each request REPEATABLE READ, so the snapshot this
+	# transaction reads from was fixed by its *first* statement — before any of
+	# the other people marking the same room read committed theirs. The
+	# aggregate below would therefore see only this caller's own cursor and
+	# compute a minimum of zero. Nine people opening a thread at once produced
+	# exactly one broadcast, carrying read_upto=0, and because the dedup cache
+	# then remembered that value, every later correct one was suppressed: the
+	# ticks stayed grey until something forced a room-list refresh.
+	#
+	# Committing ends the snapshot, so the SELECT that follows runs in a fresh
+	# transaction and sees everyone. Safe because the only pending work at this
+	# point is the cursor advance this function exists to announce.
+	frappe.db.commit()
 
 	try:
 		rows = frappe.db.sql(

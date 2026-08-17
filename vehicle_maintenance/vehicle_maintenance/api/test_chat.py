@@ -1208,7 +1208,7 @@ class TestChatTyping(ChatTestBase):
 	def test_typing_publishes_to_the_doc_room(self):
 		published = []
 		orig = frappe.publish_realtime
-		frappe.publish_realtime = lambda **kw: published.append(kw)
+		frappe.publish_realtime = lambda *a, **kw: published.append(kw)
 		try:
 			frappe.set_user(self.alice)
 			chat.set_typing(room=self.room, typing=1)
@@ -1227,7 +1227,7 @@ class TestChatTyping(ChatTestBase):
 	def test_stopped_typing_is_its_own_signal(self):
 		published = []
 		orig = frappe.publish_realtime
-		frappe.publish_realtime = lambda **kw: published.append(kw)
+		frappe.publish_realtime = lambda *a, **kw: published.append(kw)
 		try:
 			frappe.set_user(self.alice)
 			chat.set_typing(room=self.room, typing=0)
@@ -1829,7 +1829,7 @@ class TestChatReactions(ChatTestBase):
 	def test_reacting_publishes_to_the_room(self):
 		published = []
 		orig = frappe.publish_realtime
-		frappe.publish_realtime = lambda **kw: published.append(kw)
+		frappe.publish_realtime = lambda *a, **kw: published.append(kw)
 		try:
 			self._react(self.bob, "like")
 		finally:

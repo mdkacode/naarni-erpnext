@@ -592,6 +592,7 @@ def save_step_result(
 	prompt for a photo or remark in place, rather than the operator discovering
 	the requirement at submit time.
 	"""
+
 	# Re-read inside the closure: a deadlock rolls the transaction back, so a
 	# retry must start from the run as it now is, not as it was.
 	def _apply():
@@ -626,7 +627,9 @@ def save_step_result(
 			scan_count=scan_count,
 		)
 
-		threshold = flt(frappe.db.get_single_value("Process Engine Settings", "fast_entry_threshold_pct") or 25)
+		threshold = flt(
+			frappe.db.get_single_value("Process Engine Settings", "fast_entry_threshold_pct") or 25
+		)
 		row_values = {
 			"step_code": step["step_code"],
 			"stage": step.get("stage"),
@@ -731,6 +734,7 @@ def record_scan(
 	reported per the entity type's policy — Warn by default, because a
 	legitimate rework re-scan must not be blocked at the station.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -788,10 +792,10 @@ def record_scan(
 	return with_deadlock_retry(_apply)
 
 
-
 @frappe.whitelist()
 def delete_scan(run: str, serial_no: str, entity_type: str) -> dict:
 	"""Remove a mis-scanned component from a run."""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -828,7 +832,6 @@ def _geofence_status(latitude, longitude) -> str:
 	return "Inside" if metres <= cint(settings.geofence_radius_m) else "Outside"
 
 
-
 @frappe.whitelist()
 def attach_photo(
 	run: str,
@@ -850,6 +853,7 @@ def attach_photo(
 	burnt into the image by the app: the burn-in survives screenshots, the EXIF
 	survives resizing, and neither alone is enough.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -878,7 +882,9 @@ def attach_photo(
 		)
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
-		return _ok({"photo_count": len([p for p in doc.photos if p.step_code == step_code])}, _("Photo saved."))
+		return _ok(
+			{"photo_count": len([p for p in doc.photos if p.step_code == step_code])}, _("Photo saved.")
+		)
 
 	return with_deadlock_retry(_apply)
 
@@ -895,6 +901,7 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 	exactly what is missing. Everything else — missing photos, missing scans —
 	is recorded and reported, never blocked.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -954,6 +961,33 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 		elif remaining:
 			doc.current_stage = remaining[0].stage_code
 		else:
+			# Last stage in order — but "last" is not "finished". Anything still
+			# outstanding anywhere in the run keeps it open and pointed at the
+			# work, rather than stamping a verdict on a half-done inspection.
+			outstanding = outstanding_work(doc, definition)
+			if outstanding["stages"] or outstanding["steps"]:
+				doc.status = C.STATUS_IN_PROGRESS
+				first_open = next(
+					(
+						s.stage_code
+						for s in sorted(definition.stages or [], key=lambda x: cint(x.sequence))
+						if not doc.stage_is_blocked(s.stage_code)
+						and not doc.signoff_for(s.stage_code, "Operator")
+					),
+					doc.current_stage,
+				)
+				doc.current_stage = first_open
+				doc.save(ignore_permissions=True)
+				# Same contract as every other write here: the operator's signoff
+				# and the moved stage pointer are persisted before we answer, so
+				# a dropped response never costs them the work.
+				frappe.db.commit()  # nosemgrep
+				return _ok(
+					{**_serialise_run(doc), "outstanding": outstanding},
+					_("Saved. {0} still to finish before this can be completed.").format(
+						", ".join(outstanding["stages"] + outstanding["steps"])
+					),
+				)
 			_finalise(doc, definition)
 
 		doc.save(ignore_permissions=True)
@@ -961,7 +995,6 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 		return _ok(_serialise_run(doc), _("{0} submitted.").format(stage_def.label))
 
 	return with_deadlock_retry(_apply)
-
 
 
 @frappe.whitelist()
@@ -973,6 +1006,7 @@ def verify_stage(
 	Mirrors the operator / line-inspector split that Indian assembly lines
 	already run, and the KM Report L1/L2 checker pattern already in this app.
 	"""
+
 	def _apply():
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
@@ -1021,19 +1055,60 @@ def verify_stage(
 				_finalise(doc, definition)
 
 		doc.save(ignore_permissions=True)
-		frappe.db.commit()
+		# A verification decision is the point of the request; it is persisted
+		# before answering so a dropped response never loses a sign-off somebody
+		# has already given. Same contract as every other write in this file.
+		frappe.db.commit()  # nosemgrep
 		return _ok(_serialise_run(doc), _("Stage {0}.").format(decision.lower()))
 
 	return with_deadlock_retry(_apply)
 
 
+def outstanding_work(doc, definition) -> dict:
+	"""What is still missing before this run may be called finished.
+
+	Checked across the *whole* run, not the stage in hand. `submit_stage` only
+	ever looked at the stage being submitted and at the stages after it, so a
+	run whose first stage was never submitted — or was submitted out of order —
+	could reach the end and be stamped Passed with an entire stage unanswered.
+
+	Returns ``{stages: [...], steps: [...]}`` of labels, empty when complete.
+	"""
+	answers = _answer_map(doc)
+
+	missing_steps = []
+	for step in definition.expanded_steps():
+		if not cint(step.get("is_active", 1)) or not cint(step.get("is_mandatory")):
+			continue
+		if not conditions.is_visible(step, answers):
+			continue
+		if step["step_code"] not in answers:
+			missing_steps.append(step.get("display_no") or step["step_code"])
+
+	missing_stages = []
+	for stage in sorted(definition.stages or [], key=lambda x: cint(x.sequence)):
+		if doc.stage_is_blocked(stage.stage_code):
+			# Blocked pending review of an earlier failure. Not the operator's to
+			# finish, and not a reason to hold the run open for ever.
+			continue
+		if not doc.signoff_for(stage.stage_code, "Operator"):
+			missing_stages.append(stage.label or stage.stage_code)
+
+	return {"stages": missing_stages, "steps": missing_steps}
+
 
 def _finalise(doc, definition) -> None:
 	"""Close a run: stamp completion, then fire the process-level actions."""
 	doc.completed_at = frappe.utils.now_datetime()
+	# Stamped first: `_recompute` only writes a verdict once the run is closed,
+	# which is what keeps a half-finished inspection from carrying one.
 	doc._recompute()
 	if doc.status != C.STATUS_QUARANTINED:
-		doc.status = C.STATUS_PASSED if doc.result != "Fail" else C.STATUS_QUARANTINED
+		# A reason recorded by a quarantine action during the run decides this
+		# regardless of the score. Deferring the *status* to completion must not
+		# make a critical failure survivable by finishing well afterwards.
+		failed = doc.result == "Fail" or bool((doc.quarantine_reason or "").strip())
+		doc.status = C.STATUS_QUARANTINED if failed else C.STATUS_PASSED
 	if doc.status == C.STATUS_QUARANTINED and not doc.quarantine_reason:
 		doc.quarantine_reason = _("Run did not meet the pass criteria.")
 	engine_actions.dispatch_completion(doc, [a.as_dict() for a in definition.completion_actions or []])
@@ -1158,8 +1233,14 @@ def my_open_runs(limit: int = 20) -> dict:
 	runs = frappe.get_all(
 		"Process Run",
 		filters={
+			# Unfinished is `completed_at is null`, not a list of statuses. A run
+			# that tripped a critical check part-way is still editable — a
+			# quarantine is not a terminal status — but it used to vanish from
+			# this list, so the operator could neither finish it nor see it
+			# again. It is the one run they most need to come back to.
 			"started_by": frappe.session.user,
-			"status": ["in", [C.STATUS_IN_PROGRESS, C.STATUS_DRAFT, C.STATUS_IN_REWORK]],
+			"completed_at": ["is", "not set"],
+			"status": ["not in", [C.STATUS_CANCELLED, C.STATUS_AWAITING_VERIFICATION]],
 		},
 		fields=[
 			"name",
@@ -1350,9 +1431,7 @@ def _assert_inspection_admin() -> None:
 	if frappe.session.user == "Administrator":
 		return
 	if not (set(ADMIN_ROLES) & _user_roles()):
-		frappe.throw(
-			_("You do not have access to the inspection overview."), frappe.PermissionError
-		)
+		frappe.throw(_("You do not have access to the inspection overview."), frappe.PermissionError)
 
 
 @frappe.whitelist()

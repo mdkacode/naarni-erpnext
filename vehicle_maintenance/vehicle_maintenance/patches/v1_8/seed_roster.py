@@ -90,11 +90,17 @@ def _seed_settings() -> None:
 				cfg.append("punch_roles", {"role": role})
 				changed = True
 
+	# Policy for a *fresh* site. Existing sites keep whatever an admin chose —
+	# `enforce_depot_geofence` is the one-time migration that moves them.
+	# Block is only meaningful alongside require_location: without a fix the
+	# geofence cannot be evaluated, and an unevaluated punch is never a violation,
+	# so a phone with location denied would walk straight through the gate.
 	if not cfg.geofence_mode:
-		cfg.geofence_mode = "Warn"
+		cfg.geofence_mode = "Block"
+		cfg.require_location = 1
 		changed = True
 	if not cfg.default_radius_m:
-		cfg.default_radius_m = 300
+		cfg.default_radius_m = 100
 		changed = True
 	if not cfg.auto_checkout_after_hours:
 		cfg.auto_checkout_after_hours = 14
@@ -117,14 +123,20 @@ def _build_workspace() -> None:
 	opening this page is doing one job (who is on today, who is late), and mixing
 	it with job cards and vehicles buries exactly the numbers they came for.
 	"""
-	today = "Today"
+	# "Today" has to be expressed as a *relative* filter, not a literal value.
+	# `["attendance_date", "=", "Today"]` stores the string "Today" and Frappe then
+	# tries to parse it as a date when the card runs, so the whole workspace dies
+	# with "Today is not a valid date string" — the page renders no numbers at all.
+	# The `Timespan` operator is what the Desk itself emits for a relative date;
+	# db_query resolves it through get_timespan_date_range() at query time.
+	today = ["Timespan", "today"]
 	cards = [
 		(
 			"On Duty Now",
 			"Duty Attendance",
 			[
 				["Duty Attendance", "status", "=", "On Duty"],
-				["Duty Attendance", "attendance_date", "=", today],
+				["Duty Attendance", "attendance_date", *today],
 			],
 		),
 		(
@@ -132,7 +144,7 @@ def _build_workspace() -> None:
 			"Duty Attendance",
 			[
 				["Duty Attendance", "is_late", "=", 1],
-				["Duty Attendance", "attendance_date", "=", today],
+				["Duty Attendance", "attendance_date", *today],
 			],
 		),
 		(
@@ -140,7 +152,7 @@ def _build_workspace() -> None:
 			"Duty Attendance",
 			[
 				["Duty Attendance", "status", "=", "Not Started"],
-				["Duty Attendance", "attendance_date", "=", today],
+				["Duty Attendance", "attendance_date", *today],
 			],
 		),
 		("Outside Geofence", "Duty Punch", [["Duty Punch", "outside_geofence", "=", 1]]),

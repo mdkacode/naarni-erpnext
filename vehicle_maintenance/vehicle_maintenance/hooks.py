@@ -84,6 +84,10 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_8.seed_roster.execute",
 	"vehicle_maintenance.patches.v2_1.publish_battery_qc.execute",
 	"vehicle_maintenance.patches.v2_0.seed_daily_status.execute",
+	# One-time: moves duty check-in from an advisory geofence to an enforced
+	# 100 m one. Self-guarded, and self-arming — it does nothing until at least
+	# one Depot has coordinates, then applies itself on the next migrate.
+	"vehicle_maintenance.patches.v2_2.enforce_depot_geofence.execute",
 	# Designation picklist, plus an Accepted invite for everyone who already had
 	# access — without that back-fill, switching on invite-only would leave the
 	# existing depot with no record of who was let in and no way to re-provision.

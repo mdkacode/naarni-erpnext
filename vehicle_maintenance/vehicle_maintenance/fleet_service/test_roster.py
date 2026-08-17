@@ -28,6 +28,7 @@ class TestRoster(FrappeTestCase):
 		cls._ensure_shifts()
 
 	def setUp(self):
+		self._reset_policy()
 		self.today = getdate()
 		# Punch tests use absolute clock times (09:00, 17:30…). Anchoring them to a
 		# past day keeps them deterministic: on today's date, "check out at 17:30"
@@ -423,12 +424,105 @@ class TestRoster(FrappeTestCase):
 		metres = R.haversine_m(12.0, 77.0, 13.0, 77.0)
 		self.assertAlmostEqual(metres / 1000.0, 111.19, delta=0.5)
 
+	# ------------------------------------------------- enforced 100 m geofence
+	#
+	# Offsets are due north of the depot, where one metre is 1/111194.9 of a
+	# degree of latitude, so the intended distance is legible in the constant.
+
+	LAT_50_M = 12.971600 + 50 / 111194.9
+	LAT_150_M = 12.971600 + 150 / 111194.9
+
+	def _radius_100(self, **overrides):
+		"""Block at 100 m, with the depot inheriting the global default."""
+		frappe.db.set_value("Depot", DEPOT, "geofence_radius_m", 0, update_modified=False)
+		frappe.clear_document_cache("Depot", DEPOT)
+		self._settings(geofence_mode="Block", require_location=1, default_radius_m=100, **overrides)
+
+	def test_block_at_100m_rejects_a_punch_outside_the_radius(self):
+		self._radius_100()
+		self._roster()
+		with self.assertRaises(frappe.ValidationError):
+			R.record_punch(R.PUNCH_IN, user=ENGINEER, latitude=self.LAT_150_M, longitude=77.594600)
+		# Rejected means *not recorded* — a blocked punch must leave no attendance
+		# trail, or the board shows someone on duty who was turned away.
+		self.assertFalse(frappe.db.exists("Duty Punch", {"user": ENGINEER, "punch_type": R.PUNCH_IN}))
+
+	def test_block_at_100m_accepts_a_punch_inside_the_radius(self):
+		self._radius_100()
+		self._roster()
+		result = R.record_punch(R.PUNCH_IN, user=ENGINEER, latitude=self.LAT_50_M, longitude=77.594600)
+		punch = frappe.get_doc("Duty Punch", result["punch"]["name"])
+		self.assertFalse(punch.outside_geofence)
+		self.assertLess(punch.distance_from_depot_m, 100)
+		self.assertEqual(result["warnings"], [])
+
+	def test_block_inherits_the_default_radius_when_depot_has_no_override(self):
+		self._radius_100()
+		geo = R.evaluate_geofence(DEPOT, self.LAT_150_M, 77.594600)
+		self.assertEqual(geo["radius_m"], 100)
+		self.assertTrue(geo["outside"])
+		# The same fix passes under the old 300 m policy — proving the tightening
+		# comes from the setting and not from the coordinates drifting.
+		self._settings(default_radius_m=300)
+		self.assertFalse(R.evaluate_geofence(DEPOT, self.LAT_150_M, 77.594600)["outside"])
+
+	def test_block_requires_a_location_fix(self):
+		self._radius_100()
+		self._roster()
+		with self.assertRaises(frappe.ValidationError):
+			R.record_punch(R.PUNCH_IN, user=ENGINEER)
+
+	def test_block_over_a_depot_without_coordinates_accepts_anything(self):
+		"""The documented hole: no coordinates means nothing to measure against.
+
+		Asserted rather than fixed on purpose — `evaluate_geofence` treats an
+		unevaluated punch as compliant by design, so the gate is only as good as
+		the Depot record. `enforce_depot_geofence` reports these depots for exactly
+		this reason.
+		"""
+		self._radius_100()
+		self._roster()
+		frappe.db.set_value("Depot", DEPOT, {"latitude": 0, "longitude": 0}, update_modified=False)
+		frappe.clear_document_cache("Depot", DEPOT)
+		try:
+			result = R.record_punch(R.PUNCH_IN, user=ENGINEER, latitude=self.LAT_150_M, longitude=77.594600)
+			punch = frappe.get_doc("Duty Punch", result["punch"]["name"])
+			self.assertFalse(punch.outside_geofence)
+			self.assertFalse(punch.distance_from_depot_m)
+		finally:
+			frappe.db.set_value(
+				"Depot",
+				DEPOT,
+				{"latitude": 12.971600, "longitude": 77.594600},
+				update_modified=False,
+			)
+			frappe.clear_document_cache("Depot", DEPOT)
+
 	def _settings(self, **values):
 		cfg = frappe.get_single("Roster Settings")
 		for k, v in values.items():
 			setattr(cfg, k, v)
 		cfg.save(ignore_permissions=True)
 		frappe.clear_document_cache("Roster Settings", "Roster Settings")
+
+	def _reset_policy(self):
+		"""Return policy to a known baseline before every test.
+
+		Roster Settings is a Single and Depot is shared class-level fixture, so a
+		test that tightens either one leaks into every test that runs after it.
+		That was already true before the Block tests existed — the suite only
+		passed because the leaks happened to run in a forgiving order. Resetting
+		here rather than in tearDown means a test that dies mid-way cannot poison
+		its successors either.
+		"""
+		self._settings(geofence_mode="Warn", require_location=0, default_radius_m=300)
+		frappe.db.set_value(
+			"Depot",
+			DEPOT,
+			{"latitude": 12.971600, "longitude": 77.594600, "geofence_radius_m": 200},
+			update_modified=False,
+		)
+		frappe.clear_document_cache("Depot", DEPOT)
 
 	# --------------------------------------------------------------------- API
 

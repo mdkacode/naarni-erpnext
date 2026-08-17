@@ -5,13 +5,13 @@
 
 Three decisions worth knowing before changing anything here:
 
-* **A photo is a face, not evidence.** Everything else this app photographs is
-  stamped with time, coordinates and the capturing user's name, because it is
-  proof of work. A profile picture is the opposite — it exists so a colleague
-  recognises the person in a thread — so it is uploaded plainly and stored
-  **public**. Private files are permission-checked against the User they hang
-  off, and a technician cannot read another technician's User doc, so a private
-  avatar renders as a broken circle for everyone except its owner.
+* **Nothing this app stores is world-readable, faces included.** Profile pictures
+  live in the private bucket like every other image here. That creates a real
+  problem — Frappe permission-checks a private file against the document it
+  hangs off, and a technician cannot read another technician's User doc, so the
+  raw path 403s for everyone except the owner — and the answer is [avatar],
+  which serves the bytes itself after checking only that the caller is signed
+  in. Colleagues can see each other; the internet cannot see anybody.
 
 * **Completeness is reported, never enforced.** `profile_complete` tells the app
   whether to show its banner. The server does not refuse anything over a missing
@@ -22,6 +22,10 @@ Three decisions worth knowing before changing anything here:
   and free text turns an org chart into forty spellings of "senior technician".
 """
 
+import mimetypes
+import os
+from urllib.parse import quote
+
 import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
@@ -31,6 +35,15 @@ from vehicle_maintenance.fleet_service.doctype.vm_app_preference import vm_app_p
 # How long a dismissed "finish your profile" banner stays away. Long enough not
 # to nag, short enough that it is not a way of never doing it.
 PROMPT_SNOOZE_DAYS = 7
+
+# Where clients fetch faces from. Named once so the url the API hands out and the
+# method that serves it can never drift apart.
+AVATAR_METHOD = "vehicle_maintenance.api.profile.avatar"
+
+# What a profile picture may be. Not a general file server: this endpoint exists
+# to hand out faces, and anything else asking to come through it is a mistake or
+# an attempt.
+AVATAR_TYPES = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 # What the app may set a tone to without us shipping a new build. A bundled id,
 # or anything prefixed `system:` — the escape hatch for a sound off their phone.
@@ -44,6 +57,17 @@ def _tone_ok(value: str) -> bool:
 
 def _photo_of(user_doc) -> str | None:
 	return (user_doc.user_image or "").strip() or None
+
+
+def avatar_url(user: str) -> str:
+	"""Where a client fetches somebody's face.
+
+	Always this endpoint, never the stored path: the file is private, so the raw
+	`/private/files/...` url is readable only by its owner and every other
+	member of the room would render a broken circle. Clients pass the *user*,
+	we do the permission check, and the bytes come back.
+	"""
+	return f"/api/method/{AVATAR_METHOD}?user={quote(user)}"
 
 
 def _looks_named(user_doc) -> bool:
@@ -66,7 +90,10 @@ def _serialise(user_doc, pref) -> dict:
 		"user": user_doc.name,
 		"full_name": (user_doc.full_name or "").strip(),
 		"phone": user_doc.mobile_no,
-		"photo": photo,
+		# The endpoint, not the stored path — see `avatar_url`. Null when there is
+		# nothing to show, so the client draws initials instead of requesting a
+		# face that does not exist.
+		"photo": avatar_url(user_doc.name) if photo else None,
 		"designation": pref.designation,
 		"about": pref.about,
 		"has_name": named,
@@ -170,8 +197,12 @@ def set_profile_photo(file_url: str) -> dict:
 		frappe.throw(_("That image could not be found. Upload it again."))
 	if row.owner != frappe.session.user:
 		frappe.throw(_("That image belongs to somebody else."), frappe.PermissionError)
-	if cint(row.is_private):
-		frappe.throw(_("A profile picture has to be public so your colleagues can see it."))
+	if not cint(row.is_private):
+		# Nothing this app stores belongs in a world-readable bucket, faces least
+		# of all: a public url is a photograph of a named employee that needs no
+		# login and cannot be recalled once it has been shared. Colleagues see
+		# each other through `avatar`, which asks who is calling first.
+		frappe.throw(_("A profile picture has to be uploaded privately."))
 	if (row.file_type or "").upper() not in ("JPG", "JPEG", "PNG", "WEBP", "GIF"):
 		frappe.throw(_("Choose a photo, not a file."))
 
@@ -190,6 +221,85 @@ def remove_profile_photo() -> dict:
 	frappe.db.set_value("User", frappe.session.user, "user_image", None, update_modified=False)
 	user_doc = frappe.get_doc("User", frappe.session.user)
 	return {"success": True, "data": _serialise(user_doc, app_preference.for_user())}
+
+
+@frappe.whitelist()
+def avatar(user: str | None = None):
+	"""Serve somebody's profile picture to a signed-in colleague.
+
+	This exists because the file is private and must stay private. Frappe checks
+	a private file against the document it is attached to, and no technician can
+	read another technician's User — so the raw `/private/files/...` url is
+	readable only by its owner, and a room full of people would see one face and
+	a dozen broken circles.
+
+	The check here is deliberately "are you signed in", not "do you share a room
+	with this person". A face is the least sensitive thing in the system and the
+	whole point is recognising a colleague; anything narrower would mean a
+	dispatcher seeing blanks in the depot list. What it is *not* is public:
+	`@frappe.whitelist()` without `allow_guest` refuses an anonymous caller, so
+	nothing here is reachable without a session.
+
+	Streams from disk rather than reading the File doc's content, so a large
+	image does not become a large string in memory first.
+	"""
+	user = (user or frappe.session.user).strip()
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Sign in to view this."), frappe.PermissionError)
+
+	stored = (frappe.db.get_value("User", user, "user_image") or "").strip()
+	if not stored:
+		frappe.throw(_("No picture."), frappe.DoesNotExistError)
+
+	path = _avatar_path(stored)
+	if not path:
+		frappe.throw(_("No picture."), frappe.DoesNotExistError)
+
+	with open(path, "rb") as fh:
+		content = fh.read()
+
+	frappe.local.response.filename = os.path.basename(path)
+	frappe.local.response.filecontent = content
+	frappe.local.response.type = "download"
+	# Inline, so an <img> or Coil renders it instead of downloading it.
+	frappe.local.response.display_content_as = "inline"
+	frappe.local.response.content_type = mimetypes.guess_type(path)[0] or "image/jpeg"
+
+
+def _avatar_path(stored: str) -> str | None:
+	"""Resolve a stored `user_image` to a file on disk, or None.
+
+	Refuses anything that is not a plain image sitting in this site's own files
+	directories. `user_image` is writable from Desk, so it is not a trusted
+	string: without the containment check below, a crafted value could walk out
+	of the files directory and read whatever the bench user can.
+	"""
+	if os.path.splitext(stored)[1].lower() not in AVATAR_TYPES:
+		return None
+
+	if stored.startswith("/private/files/"):
+		root = frappe.get_site_path("private", "files")
+		name = stored[len("/private/files/") :]
+	elif stored.startswith("/files/"):
+		# Legacy, and still served here rather than left readable without a
+		# login: the bucket is the thing that should not be public.
+		root = frappe.get_site_path("public", "files")
+		name = stored[len("/files/") :]
+	else:
+		# A gravatar or any other absolute url. Nothing for us to serve.
+		return None
+
+	# An avatar is a flat filename. Refusing separators outright is what stops a
+	# crafted `user_image` — the field is writable from Desk — from walking out
+	# of the files directory; the containment check below is the second lock.
+	if not name or "/" in name or "\\" in name:
+		return None
+
+	root = os.path.realpath(root)
+	candidate = os.path.realpath(os.path.join(root, name))
+	if not candidate.startswith(root + os.sep):
+		return None
+	return candidate if os.path.isfile(candidate) else None
 
 
 @frappe.whitelist()

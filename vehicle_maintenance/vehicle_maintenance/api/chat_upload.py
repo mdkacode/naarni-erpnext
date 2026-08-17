@@ -411,6 +411,11 @@ def commit_upload(
 		msg = frappe.get_doc("VM Chat Message", existing_name)
 		duplicate = True
 	else:
+		# Before the seq is reserved, so a lost race gives the number back and
+		# cannot leave a hole in the room's numbering. Scoped rather than a full
+		# rollback because the file has already been moved into place and its
+		# File row written — undoing those would orphan a published attachment.
+		frappe.db.savepoint("chat_commit_insert")
 		seq = room_doc.allocate_seq()
 		msg = frappe.get_doc(
 			{
@@ -433,10 +438,34 @@ def commit_upload(
 				"ticket": ticket,
 			}
 		)
-		msg.insert(ignore_permissions=True)
-		room_doc.touch_last_message(preview_for(msg), msg.creation)
-		_advance_cursor(doc.room, frappe.session.user, msg.seq)
-		duplicate = False
+		# Same race as a text send: the check above is a read and this is a
+		# write, and the unique index on client_id is what actually enforces it.
+		try:
+			msg.insert(ignore_permissions=True)
+			room_doc.touch_last_message(preview_for(msg), msg.creation)
+			_advance_cursor(doc.room, frappe.session.user, msg.seq)
+			duplicate = False
+		except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
+			# Give back the seq and the insert, and nothing else. Unlike a text
+			# send, this request has already moved the file into place and
+			# written its File row, and a blanket rollback would undo the row
+			# while leaving the bytes on disk — an attachment nothing points at.
+			frappe.db.rollback(save_point="chat_commit_insert")
+			twin = frappe.db.get_value("VM Chat Message", {"client_id": client_id}, "name")
+			if not twin:
+				# The winner is a different request, and under REPEATABLE READ
+				# our snapshot predates their commit — the row that just
+				# rejected the insert is invisible until this transaction ends.
+				# Ending it with a commit rather than a rollback, because the
+				# rollback above already gave up everything that should be given
+				# up; what remains is the published file and its File row, and
+				# discarding those would leave bytes on disk nothing points at.
+				frappe.db.commit()
+				twin = frappe.db.get_value("VM Chat Message", {"client_id": client_id}, "name")
+			if not twin:
+				raise
+			msg = frappe.get_doc("VM Chat Message", twin)
+			duplicate = True
 
 	doc.db_set({"status": "Committed", "file_doc": file_doc, "message": msg.name}, update_modified=False)
 

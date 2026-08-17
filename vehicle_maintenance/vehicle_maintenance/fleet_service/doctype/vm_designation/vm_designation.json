@@ -1,0 +1,53 @@
+{
+ "name": "VM Designation",
+ "module": "Fleet Service",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "field:designation_name",
+ "description": "What a person does, as a picklist rather than free text. Designations are typed once by an admin and chosen everywhere else: the people using this app are not typists, and 'Sr. Tech'/'Senior Technician'/'sr tech' in a Data field would make the org chart unreportable within a week.",
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "designation_name",
+   "label": "Designation",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "columns": 4
+  },
+  {
+   "fieldname": "is_active",
+   "label": "Active",
+   "fieldtype": "Check",
+   "default": "1",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Cleared rather than deleted when a role is retired, so people who already hold it keep a readable designation."
+  },
+  {
+   "fieldname": "sort_order",
+   "label": "Sort Order",
+   "fieldtype": "Int",
+   "default": "100",
+   "description": "Lower sorts first in the app's picker. Ties fall back to alphabetical."
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Ops Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  }
+ ],
+ "sort_field": "sort_order",
+ "sort_order": "ASC"
+}

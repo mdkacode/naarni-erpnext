@@ -1,0 +1,82 @@
+{
+ "name": "VM App Preference",
+ "module": "Fleet Service",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "field:user",
+ "description": "One row per person for the choices that belong to them rather than to their account: what they do, and what their phone sounds like. Kept off the User doctype on purpose — User is core, and this is ours to change.",
+ "track_changes": 0,
+ "fields": [
+  {
+   "fieldname": "user",
+   "label": "User",
+   "fieldtype": "Link",
+   "options": "User",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "designation",
+   "label": "Designation",
+   "fieldtype": "Link",
+   "options": "VM Designation",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "about",
+   "label": "About",
+   "fieldtype": "Data",
+   "length": 140,
+   "description": "One line, the way a status line reads. Optional — it is the only field here nobody is nagged about."
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break",
+   "label": "Sounds"
+  },
+  {
+   "fieldname": "chat_tone",
+   "label": "Chat Tone",
+   "fieldtype": "Data",
+   "default": "default",
+   "description": "A bundled tone id, or `system:<uri>` when the person picked a sound off their own phone. Stored as text rather than a Select so the app can add tones without a migration."
+  },
+  {
+   "fieldname": "alert_tone",
+   "label": "Alert Tone",
+   "fieldtype": "Data",
+   "default": "default",
+   "description": "Separate from chat on purpose: a breakdown alert at 2am should not sound like a message."
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vibrate",
+   "label": "Vibrate",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "profile_prompt_dismissed_at",
+   "label": "Profile Prompt Dismissed At",
+   "fieldtype": "Datetime",
+   "description": "When they last waved the finish-your-profile banner away. The banner returns after a while; it never blocks anything."
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

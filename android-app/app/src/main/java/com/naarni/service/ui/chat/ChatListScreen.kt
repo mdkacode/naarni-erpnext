@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.naarni.service.core.feedback.LocalFeedback
 import com.naarni.service.data.chat.ChatRoomEntity
+import com.naarni.service.data.chat.ServerTime
 import com.naarni.service.ui.components.EmptyState
 import com.naarni.service.ui.components.HairlineDivider
 import com.naarni.service.ui.components.SearchField
@@ -559,9 +560,11 @@ fun clockTime(millis: Long): String = hhmm.format(Date(millis))
  */
 fun parseServerTime(raw: String?): Long? {
     if (raw.isNullOrBlank()) return null
-    return parsedAt.getOrPut(raw) {
-        runCatching { parser.parse(raw.substringBefore("."))?.time }.getOrNull() ?: return null
-    }
+    // Delegates rather than parsing again: the repository has to do exactly
+    // this to stamp a message, and two implementations of "what time did the
+    // server mean" is how a bubble and the divider above it start disagreeing.
+    // The cache stays here, because this is the one called per visible row.
+    return parsedAt.getOrPut(raw) { ServerTime.millis(raw) ?: return null }
 }
 
 /**

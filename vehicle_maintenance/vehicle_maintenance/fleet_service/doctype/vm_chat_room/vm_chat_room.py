@@ -87,6 +87,27 @@ class VMChatRoom(Document):
 		frappe.db.set_value("VM Chat Room", self.name, "last_seq", nxt, update_modified=False)
 		return nxt
 
+	def allocate_delete_seq(self) -> int:
+		"""Reserve the next tombstone number for this room, under the same row lock.
+
+		A **second** counter rather than a number off `allocate_seq`, and the
+		reason is unread. A member's unread count is `last_seq` minus their read
+		cursor, and a cursor only ever moves to a seq that some message carries —
+		so a deletion drawing from that counter would leave every member of the
+		room with one unread message that does not exist, that they cannot open,
+		and that nothing can ever mark read. The badge would simply stay lit.
+
+		Deletions still need a number of their own, because a soft delete changes
+		a row the delta sync has already handed out and would otherwise never
+		mention again: `sync` returns messages *above* the client's cursor, and a
+		message deleted long after it was sent is below it. The client therefore
+		carries two cursors, and this counter is what the second one tracks.
+		"""
+		current = frappe.db.get_value("VM Chat Room", self.name, "last_delete_seq", for_update=True) or 0
+		nxt = int(current) + 1
+		frappe.db.set_value("VM Chat Room", self.name, "last_delete_seq", nxt, update_modified=False)
+		return nxt
+
 	def touch_last_message(self, preview: str, when) -> None:
 		"""Denormalise the newest message onto the room for cheap list rendering."""
 		frappe.db.set_value(

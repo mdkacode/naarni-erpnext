@@ -22,7 +22,7 @@ from datetime import datetime
 
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime
+from frappe.utils import cint, get_datetime, now_datetime
 
 from vehicle_maintenance.fleet_service import chat_feed
 from vehicle_maintenance.fleet_service.chat_notify import preview_for
@@ -38,6 +38,18 @@ DEFAULT_PAGE = 50
 # Accounts that exist but are nobody. Everyone else — staff, drivers, customer
 # portal users — is reachable, because "who can I message" should mean "anyone".
 NON_HUMAN_USERS = ("Guest", "Administrator", "airflow-km@naarni.com")
+
+# How long after sending a message may still be withdrawn.
+#
+# A window rather than forever, because a conversation people rely on has to
+# settle: an instruction somebody acted on three days ago must not be able to
+# vanish from under them. Half an hour covers the mis-sent photo and the wrong
+# room, which is what the affordance is actually for.
+#
+# The number is deliberately absent from every user-facing string. A countdown
+# invites people to race it, and the honest thing to show is simply whether the
+# action is available.
+DELETE_WINDOW_SECONDS = 30 * 60
 
 # Fields we ever put on the wire for a message. Explicit — never SELECT *.
 MESSAGE_FIELDS = (
@@ -61,6 +73,8 @@ MESSAGE_FIELDS = (
 	"lat",
 	"lon",
 	"deleted",
+	"delete_seq",
+	"deleted_by",
 	"creation",
 )
 
@@ -160,9 +174,27 @@ def _serialise(rows: list[dict]) -> list[dict]:
 		):
 			reactions.setdefault(row["message"], {}).setdefault(row["emoji"], []).append(row["user"])
 
+	# Who pulled each message, for the "Deleted by Ravi" line a supervisor's
+	# removal leaves behind. Same one-query-per-page discipline as the rest.
+	deleters = {r.get("deleted_by") for r in rows if r.get("deleted_by")}
+	deleter_names = (
+		{
+			u["name"]: u["full_name"]
+			for u in frappe.get_all(
+				"User",
+				filters={"name": ["in", list(deleters)]},
+				fields=["name", "full_name"],
+				limit_page_length=0,
+			)
+		}
+		if deleters
+		else {}
+	)
+
 	out = []
 	for r in rows:
 		deleted = bool(r.get("deleted"))
+		deleted_by = r.get("deleted_by") if deleted else None
 		out.append(
 			{
 				"name": r["name"],
@@ -172,22 +204,34 @@ def _serialise(rows: list[dict]) -> list[dict]:
 				"author": r["author"],
 				"author_name": names.get(r["author"]) or r["author"],
 				"kind": r["kind"],
+				# A deleted message goes out as an empty shell: who sent it, when,
+				# and where it sits in the thread — nothing it actually said.
+				#
+				# Blanked here rather than by dropping the row, because the row is
+				# what tells a client that already holds the message to replace it.
+				# Blanked here rather than in the database, because "delete for
+				# everyone" is a promise about the conversation, not about the
+				# record: an incident traced back to a photo somebody thought
+				# better of still needs that photo to exist.
 				"body": "" if deleted else (r.get("body") or ""),
 				"file_url": None if deleted else r.get("file_url"),
-				"file_name": r.get("file_name"),
-				"file_size": r.get("file_size"),
-				"duration_ms": r.get("duration_ms"),
-				"transcript": r.get("transcript"),
+				"file_name": None if deleted else r.get("file_name"),
+				"file_size": None if deleted else r.get("file_size"),
+				"duration_ms": None if deleted else r.get("duration_ms"),
+				"transcript": None if deleted else r.get("transcript"),
 				"reply_to": r.get("reply_to"),
-				"vehicle": r.get("vehicle"),
-				"ticket": r.get("ticket"),
+				"vehicle": None if deleted else r.get("vehicle"),
+				"ticket": None if deleted else r.get("ticket"),
 				"alert_event": r.get("alert_event"),
-				"mentions": mentions.get(r["name"], []),
-				"reactions": _reaction_payload(reactions.get(r["name"])),
-				"geotagged": bool(r.get("geotagged")),
-				"lat": r.get("lat"),
-				"lon": r.get("lon"),
+				"mentions": [] if deleted else mentions.get(r["name"], []),
+				"reactions": [] if deleted else _reaction_payload(reactions.get(r["name"])),
+				"geotagged": False if deleted else bool(r.get("geotagged")),
+				"lat": None if deleted else r.get("lat"),
+				"lon": None if deleted else r.get("lon"),
 				"deleted": deleted,
+				"delete_seq": cint(r.get("delete_seq")),
+				"deleted_by": deleted_by,
+				"deleted_by_name": deleter_names.get(deleted_by) or deleted_by,
 				"created_at": str(r.get("creation")),
 			}
 		)
@@ -541,15 +585,22 @@ def mark_delivered(room: str, seq: int) -> dict:
 def sync(cursors: str | dict | None = None) -> dict:
 	"""Delta sync — the client's correctness path.
 
-	`cursors` is {room_name: highest_seq_held}, and arrives either as a dict (a
-	server-side caller) or as a JSON string (over HTTP, where Frappe hands form
-	bodies through unparsed) — `_as_dict` normalises both.
+	`cursors` is {room_name: cursor}, and arrives either as a dict (a server-side
+	caller) or as a JSON string (over HTTP, where Frappe hands form bodies through
+	unparsed) — `_as_dict` normalises both.
+
+	A cursor is either a bare int (the highest seq held) or, from a client that
+	understands deletions, `{"seq": n, "del": m}`. Both are accepted: the bare
+	form is what every build before message deletion sent, and a sync endpoint
+	that stopped answering older installs would strand exactly the handsets least
+	likely to be updated promptly.
 
 	Rooms the caller belongs to but
 	omits are treated as seq 0, so a fresh install gets recent history for each.
 	Only rooms with something newer appear in the response.
 
-	Returns: {success, data: {rooms: {room: {messages: [...], last_seq}}, server_time}}.
+	Returns: {success, data: {rooms: {room: {messages, last_seq, last_delete_seq,
+	more}}, server_time}}.
 	"""
 	user = frappe.session.user
 	cursors = _as_dict(cursors, "cursors")
@@ -560,8 +611,10 @@ def sync(cursors: str | dict | None = None) -> dict:
 	out: dict[str, dict] = {}
 	delivered: dict[str, int] = {}
 	for room in mine:
-		since = cint(cursors.get(room))
-		last_seq = cint(frappe.db.get_value("VM Chat Room", room, "last_seq"))
+		since, since_del = _cursor_for(cursors.get(room))
+		marks = frappe.db.get_value("VM Chat Room", room, ["last_seq", "last_delete_seq"], as_dict=True) or {}
+		last_seq = cint(marks.get("last_seq"))
+		last_delete_seq = cint(marks.get("last_delete_seq"))
 		# The cursor is the client stating what it already holds, and a device
 		# cannot hold a message it never received — so a cursor *is* a delivery
 		# receipt, for every room, whether or not anything new comes back.
@@ -576,27 +629,69 @@ def sync(cursors: str | dict | None = None) -> dict:
 		# delivery for a message that does not exist yet must not be writable.
 		if since > 0:
 			delivered[room] = min(since, last_seq)
-		if last_seq <= since:
+		if last_seq <= since and last_delete_seq <= since_del:
 			continue
-		rows = frappe.get_all(
-			"VM Chat Message",
-			filters={"room": room, "seq": [">", since]},
-			fields=list(MESSAGE_FIELDS),
-			order_by="seq asc",
-			# A device offline for a week should not pull the whole backlog in one
-			# response; it pages forward by calling sync again with a moved cursor.
-			limit_page_length=MAX_PAGE,
-		)
+
+		rows = []
+		if last_seq > since:
+			rows = frappe.get_all(
+				"VM Chat Message",
+				filters={"room": room, "seq": [">", since]},
+				fields=list(MESSAGE_FIELDS),
+				order_by="seq asc",
+				# A device offline for a week should not pull the whole backlog in one
+				# response; it pages forward by calling sync again with a moved cursor.
+				limit_page_length=MAX_PAGE,
+			)
+
+		# Tombstones ride the same array but come from their own query, keyed on
+		# their own counter. They cannot be found by the query above: a message
+		# deleted an hour after it was sent sits *below* the client's seq cursor,
+		# which is precisely why deletions needed a second stream at all.
+		tombstones = []
+		if last_delete_seq > since_del:
+			held = {r["name"] for r in rows}
+			tombstones = [
+				r
+				for r in frappe.get_all(
+					"VM Chat Message",
+					filters={"room": room, "deleted": 1, "delete_seq": [">", since_del]},
+					fields=list(MESSAGE_FIELDS),
+					order_by="delete_seq asc",
+					limit_page_length=MAX_PAGE,
+				)
+				if r["name"] not in held
+			]
+
 		out[room] = {
-			"messages": _serialise(rows),
+			"messages": _serialise(rows + tombstones),
 			"last_seq": last_seq,
-			"more": bool(rows) and rows[-1]["seq"] < last_seq,
+			"last_delete_seq": last_delete_seq,
+			# True while either stream still has more above what this page covered,
+			# so the client keeps pulling rather than stopping on a half-applied
+			# deletion.
+			"more": (bool(rows) and cint(rows[-1]["seq"]) < last_seq)
+			or (bool(tombstones) and cint(tombstones[-1]["delete_seq"]) < last_delete_seq),
 		}
 		if rows:
 			delivered[room] = cint(rows[-1]["seq"])
 
 	_mark_delivered(user, delivered)
 	return {"success": True, "data": {"rooms": out, "server_time": str(now_datetime())}}
+
+
+def _cursor_for(raw) -> tuple[int, int]:
+	"""One room's cursor as (seq, delete_seq), accepting both wire forms.
+
+	A bare int is an older client that has never heard of deletions. It gets 0 for
+	the delete cursor, which means it is handed every tombstone in the room on
+	every sync — wasteful, but the alternative is a build that silently keeps
+	showing messages their authors have withdrawn, and that is not a trade worth
+	making. The page cap bounds the cost.
+	"""
+	if isinstance(raw, dict):
+		return cint(raw.get("seq")), cint(raw.get("del"))
+	return cint(raw), 0
 
 
 def _mark_delivered(user: str, upto: dict[str, int]) -> None:
@@ -906,6 +1001,152 @@ def send_message(
 	_advance_cursor(room, frappe.session.user, seq)
 
 	return {"success": True, "data": {"message": msg.as_payload(), "duplicate": False}}
+
+
+@frappe.whitelist()
+def delete_message(message: str) -> dict:
+	"""Withdraw a message from the conversation for everyone in it.
+
+	The row is **not** removed. `deleted` goes up, the body and any attachment
+	stop being served, and every client replaces what it holds with a tombstone —
+	but the record, the file and the audit trail all stay exactly where they are.
+	That split is the whole design: the people in the room stop seeing it, and
+	nothing about what actually happened at a depot becomes unrecoverable because
+	somebody had second thoughts.
+
+	Who may: the author, and a chat supervisor. Nobody else, including other
+	members of the room — being able to read a message is not a claim on it.
+
+	When: inside `DELETE_WINDOW_SECONDS` of sending, for everybody. Supervisors
+	are held to the same clock rather than given a permanent override, so that
+	"can this still be taken back" has one answer in the room and not two.
+
+	Idempotent. A retry after a lost response, or two devices of the same person
+	tapping at once, returns the existing tombstone rather than allocating a
+	second delete_seq for it.
+
+	Returns: {success, data: {message: {...}}}.
+	"""
+	name = (message or "").strip()
+	row = frappe.db.get_value(
+		"VM Chat Message", name, ["name", "room", "author", "seq", "deleted", "creation"], as_dict=True
+	)
+	if not row:
+		frappe.throw(_("That message no longer exists."), frappe.DoesNotExistError)
+
+	room_doc = _room_checked(row["room"])
+	user = frappe.session.user
+	if row["author"] != user and not is_chat_supervisor(user):
+		frappe.throw(_("Only the sender can delete this message."), frappe.PermissionError)
+
+	doc = frappe.get_doc("VM Chat Message", row["name"])
+	# Before the window check, not after: a message already withdrawn stays
+	# withdrawn, and a retry arriving late must never be answered with an error
+	# about something that has in fact succeeded.
+	if cint(row["deleted"]):
+		return {"success": True, "data": {"message": doc.as_payload(), "duplicate": True}}
+
+	if not _within_delete_window(row["creation"]):
+		# No number in the message. The client hides the action once the window
+		# has passed, so anybody who reaches this is either on a device with a
+		# skewed clock or was holding the request through the boundary — and
+		# neither is helped by being told how long they missed it by.
+		frappe.throw(_("That message can no longer be deleted."))
+
+	doc.db_set(
+		{
+			"deleted": 1,
+			"delete_seq": room_doc.allocate_delete_seq(),
+			"deleted_by": user,
+			"deleted_at": now_datetime(),
+		},
+		update_modified=True,
+	)
+	# Reload so `as_payload` blanks against the values just written rather than
+	# the ones held in memory from before the update.
+	doc.reload()
+
+	_refresh_room_preview(room_doc, deleted_seq=cint(row["seq"]))
+	_publish_deleted(doc, room_doc)
+
+	return {"success": True, "data": {"message": doc.as_payload(), "duplicate": False}}
+
+
+def _within_delete_window(sent_at) -> bool:
+	"""Is this message still young enough to be withdrawn?
+
+	Measured against the database's own clock, never the caller's. A window
+	enforced against a client-supplied time is not a window.
+	"""
+	if not sent_at:
+		return False
+	sent = get_datetime(sent_at)
+	return (now_datetime() - sent).total_seconds() <= DELETE_WINDOW_SECONDS
+
+
+def _refresh_room_preview(room_doc: VMChatRoom, deleted_seq: int) -> None:
+	"""Redraw the room-list line when the message just deleted was the last one.
+
+	Only then — a message deleted from the middle of a thread is not what the
+	list row is showing, and rewriting the preview for it would be a write per
+	deletion that changes nothing anybody can see.
+	"""
+	if deleted_seq != cint(room_doc.last_seq):
+		return
+	newest = frappe.get_all(
+		"VM Chat Message",
+		filters={"room": room_doc.name},
+		fields=["name", "kind", "body", "deleted", "creation"],
+		order_by="seq desc",
+		limit_page_length=1,
+	)
+	if not newest:
+		return
+	row = newest[0]
+	room_doc.touch_last_message(preview_for(frappe._dict(row)), row["creation"])
+
+
+def _publish_deleted(doc, room_doc: VMChatRoom) -> None:
+	"""Tell every open thread and every member's device that a message is gone.
+
+	Best-effort on both channels, like every other fan-out here: the tombstone is
+	already committed, and a socket that is down must never be able to undo it.
+	The delta sync carries the same fact on `delete_seq`, so a device that misses
+	this frame — asleep, offline, or on a half-open socket — still learns about
+	it the next time it syncs. This is the fast path, not the guarantee.
+	"""
+	envelope = {
+		"room": doc.room,
+		"message": doc.name,
+		"client_id": doc.client_id,
+		"seq": doc.seq,
+		"delete_seq": doc.delete_seq,
+		"deleted_by": doc.deleted_by,
+	}
+	try:
+		frappe.publish_realtime(
+			event="vm_chat_deleted",
+			message=envelope,
+			doctype="VM Chat Room",
+			docname=doc.room,
+			after_commit=True,
+		)
+	except Exception:
+		frappe.log_error(title=f"Chat delete publish failed ({doc.room})", message=frappe.get_traceback())
+
+	for member in room_doc.members:
+		try:
+			frappe.publish_realtime(
+				event="vm_chat_deleted",
+				message=envelope,
+				user=member.user,
+				after_commit=True,
+			)
+		except Exception:
+			frappe.log_error(
+				title=f"Chat delete envelope failed (user={member.user})",
+				message=frappe.get_traceback(),
+			)
 
 
 @frappe.whitelist()

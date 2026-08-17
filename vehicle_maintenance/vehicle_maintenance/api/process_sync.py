@@ -134,15 +134,22 @@ def _resolve_run(batch: dict):
 	)
 	doc = frappe.get_doc("Process Run", created["data"]["name"])
 
+	# `start_run` may have *joined* this device to an inspection a colleague
+	# already opened for the same pack rather than creating one — one pack is one
+	# record, however many handsets are working it. The run it hands back then
+	# carries somebody else's client UUID, which is exactly how we can tell.
+	joined = (doc.client_uuid or "") != client_uuid
+
 	# The handset's clock is the only record of when the work actually began. A
 	# run created at sync time would otherwise claim a start hours after the
-	# operator started it, and duration is a number this shop floor reads.
+	# operator started it, and duration is a number this shop floor reads. Never
+	# on a joined run: that start time belongs to whoever opened the pack first.
 	started = batch.get("started_at")
-	if started and not created["data"].get("results"):
+	if started and not joined and not created["data"].get("results"):
 		frappe.db.set_value("Process Run", doc.name, "started_at", started, update_modified=False)
 		doc.started_at = started
 
-	return doc, True
+	return doc, not joined
 
 
 def _apply_answers(doc, definition, answers: list[dict]) -> tuple[list[dict], list[dict]]:

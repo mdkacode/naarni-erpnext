@@ -342,77 +342,83 @@ def _ensure_definition() -> str:
 	return doc.name
 
 
-class TestRunIsolation(ProcessHistoryTestBase):
-	"""One operator must not be able to read or edit another's inspection.
+class TestRunsAreShared(ProcessHistoryTestBase):
+	"""An inspection is the plant's record, not one operator's diary.
 
-	The DocType grants `Process Operator` read *and write* on Process Run with
-	`if_owner = 0`, so before the permission hooks existed any operator could
-	open — and answer into — a colleague's run. These tests pin the hooks rather
-	than the role table, because the role genuinely has to stay broad: a
-	supervisor needs to read every run in order to verify one.
+	This replaces the isolation tests that pinned the opposite rule. Those were
+	right about the symptom — two operators could silently overwrite each other —
+	and wrong about the cure. Walls meant the second person at a battery could not
+	see the first person's half of it, so they scanned the same pack label and
+	opened a rival record of one physical battery.
+
+	What makes shared editing safe is attribution, and the tests for that live
+	beside these: every answer carries `answered_by`, every sign-off carries its
+	user, and the run reports who has worked it.
 	"""
 
-	def test_an_operator_cannot_read_another_operators_run(self):
+	def test_an_operator_reads_a_colleagues_run(self):
 		theirs = self._run(user=self.other, identifier="THEIRS")
 
-		self.assertFalse(
-			frappe.has_permission("Process Run", doc=theirs, user=self.operator)
-		)
+		self.assertTrue(frappe.has_permission("Process Run", doc=theirs, user=self.operator))
 
-	def test_an_operator_cannot_write_to_another_operators_run(self):
-		# The one that matters most: reading someone's inspection is a privacy
-		# problem, writing to it corrupts the plant's record of a battery.
+	def test_an_operator_can_work_on_a_colleagues_run(self):
+		# The point of the change: a battery is fifty-nine checks and a shift puts
+		# more than one person on it.
 		theirs = self._run(user=self.other, identifier="THEIRS")
 
-		self.assertFalse(
-			frappe.has_permission("Process Run", doc=theirs, ptype="write", user=self.operator)
-		)
+		self.assertTrue(frappe.has_permission("Process Run", doc=theirs, ptype="write", user=self.operator))
 
-	def test_an_operator_can_still_work_on_their_own_run(self):
-		mine = self._run(user=self.operator, identifier="MINE")
+	def test_the_list_query_no_longer_narrows_by_operator(self):
+		self.assertEqual(run_perms.get_permission_query_conditions(self.operator), "")
 
-		self.assertTrue(
-			frappe.has_permission("Process Run", doc=mine, ptype="write", user=self.operator)
-		)
-
-	def test_a_supervisor_reads_everyones_runs(self):
+	def test_a_supervisor_still_reads_everything(self):
 		theirs = self._run(user=self.other, identifier="THEIRS")
 		verifier = _ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier")
 
 		self.assertTrue(frappe.has_permission("Process Run", doc=theirs, user=verifier))
 
-	def test_the_list_query_is_scoped_to_the_operator(self):
-		condition = run_perms.get_permission_query_conditions(self.operator)
+	def test_everyones_records_can_be_listed(self):
+		self._run(identifier="MINE")
+		self._run(identifier="THEIRS", user=self.other)
 
-		self.assertIn("started_by", condition)
-		self.assertIn(self.operator, condition)
+		# Membership, not equality: this site carries committed runs from other
+		# suites, and what is under test is that a colleague's run appears at all.
+		labels = [r["run_identifier"] for r in process.my_history(mine=0, limit=100)["data"]["runs"]]
 
-	def test_a_supervisor_gets_no_list_restriction(self):
-		verifier = _ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier")
+		self.assertIn("MINE", labels)
+		self.assertIn("THEIRS", labels)
 
-		self.assertEqual(run_perms.get_permission_query_conditions(verifier), "")
-
-	def test_the_query_condition_escapes_the_user(self):
-		# `started_by` is an email and emails are not SQL-safe by nature; the
-		# predicate is concatenated, so the escaping is the only thing between a
-		# username and the query.
-		condition = run_perms.get_permission_query_conditions("a'; DROP TABLE x; --@test.localhost")
-
-		# The payload survives *inside* the quoted literal — that is fine and
-		# expected. What must not survive is an unescaped quote closing it early.
-		self.assertIn("\\'", condition)
-		self.assertNotIn("= 'a'; DROP", condition)
-
-	def test_scoping_is_on_who_performed_it_not_the_owner_field(self):
-		# `owner` is Frappe bookkeeping a data import can rewrite; who performed
-		# an inspection is a fact about the plant.
-		theirs = self._run(user=self.other, identifier="THEIRS")
-		frappe.db.set_value("Process Run", theirs.name, "owner", self.operator, update_modified=False)
-		theirs.reload()
-
-		self.assertFalse(
-			frappe.has_permission("Process Run", doc=theirs, user=self.operator)
+	def test_a_shared_record_says_how_many_people_worked_it(self):
+		"""The count is what stops a shared record reading as one person's."""
+		run = self._run(identifier="SHARED", user=self.other)
+		run.append(
+			"results",
+			{
+				"step_code": "S1",
+				"stage": "BEFORE",
+				"response": "Pass",
+				"is_pass": 1,
+				"answered_by": self.operator,
+				"answered_at": frappe.utils.now_datetime(),
+			},
 		)
+		run.save(ignore_permissions=True)
+
+		rows = process.my_history(mine=0, limit=100)["data"]["runs"]
+		row = next(r for r in rows if r["run_identifier"] == "SHARED")
+
+		self.assertEqual(row["participant_count"], 2)
+
+	def test_my_own_tally_stays_mine_when_the_list_widens(self):
+		# The stats block is the operator's own record on the operator's own
+		# screen. Silently turning it into the whole plant's output would be a
+		# worse lie than hiding the list ever was.
+		self._run(identifier="MINE")
+		self._run(identifier="THEIRS", user=self.other)
+
+		stats = process.my_history(mine=0)["data"]["stats"]
+
+		self.assertEqual(stats["total"], 1)
 
 
 class TestInspectionAdminView(ProcessHistoryTestBase):
@@ -428,9 +434,7 @@ class TestInspectionAdminView(ProcessHistoryTestBase):
 
 		data = process.inspections(process=self.definition)["data"]
 
-		self.assertEqual(
-			{r["run_identifier"] for r in data["runs"]}, {"MINE", "THEIRS"}
-		)
+		self.assertEqual({r["run_identifier"] for r in data["runs"]}, {"MINE", "THEIRS"})
 		self.assertEqual(data["stats"]["total"], 2)
 
 	def test_the_operator_filter_narrows_to_one_person(self):
@@ -458,9 +462,7 @@ class TestInspectionAdminView(ProcessHistoryTestBase):
 
 		data = process.inspections(process=self.definition)["data"]
 
-		self.assertEqual(
-			{o["user"] for o in data["operators"]}, {self.operator, self.other}
-		)
+		self.assertEqual({o["user"] for o in data["operators"]}, {self.operator, self.other})
 
 	def test_search_matches_the_run_identifier(self):
 		self._run(user=self.operator, identifier="PACK-ALPHA")
@@ -496,7 +498,9 @@ class TestInspectionAdminView(ProcessHistoryTestBase):
 		self._run(user=self.operator, identifier="ONE")
 		frappe.set_user(_ensure_user("hist-verifier@test.localhost", "Hist Verifier", "Process Verifier"))
 
-		self.assertLessEqual(len(process.inspections(limit=10_000, process=self.definition)["data"]["runs"]), 200)
+		self.assertLessEqual(
+			len(process.inspections(limit=10_000, process=self.definition)["data"]["runs"]), 200
+		)
 
 
 class TestInspectionReviewPage(ProcessHistoryTestBase):

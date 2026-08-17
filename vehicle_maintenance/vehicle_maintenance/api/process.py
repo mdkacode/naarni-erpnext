@@ -26,6 +26,7 @@ from vehicle_maintenance.process_engine import (
 	actions as engine_actions,
 )
 from vehicle_maintenance.process_engine import (
+	collaboration,
 	computed,
 	conditions,
 	evaluation,
@@ -265,6 +266,27 @@ def _live_definition(process_code_or_family: str):
 	return frappe.get_cached_doc("Process Definition", name)
 
 
+def _definition_family(definition) -> list[str]:
+	"""Every version of this process, current and superseded.
+
+	Runs are stamped with the definition version that was live when they
+	started, so "is this pack already being inspected?" has to be asked across
+	all of them. Republishing a definition mid-shift otherwise orphans the pack
+	sitting on the bench: the second operator's scan would find nothing and open
+	a second record of the same battery.
+	"""
+	family = (definition.family or "").strip()
+	if not family:
+		return [definition.name]
+	names = frappe.get_all(
+		"Process Definition",
+		filters={"family": family},
+		fields=["name"],
+		limit_page_length=50,
+	)
+	return sorted({definition.name} | {row["name"] for row in names})
+
+
 # ----------------------------------------------------------------- definitions
 
 
@@ -365,6 +387,11 @@ def get_definition(process: str, app_capability: int = 1) -> dict:
 			"subject_label": definition.subject_label,
 			"identifier_mode": definition.identifier_mode,
 			"identifier_pattern": definition.identifier_pattern,
+			# Which keyboard the app raises for the pack number. A serial that is
+			# all digits typed on a full QWERTY keyboard is slower, and every
+			# mistyped character opens a second inspection of a battery that does
+			# not exist.
+			"identifier_keypad": definition.get("identifier_keypad") or "Text",
 			"allow_offline": cint(definition.allow_offline),
 			"allow_resume": cint(definition.allow_resume),
 			"expected_minutes": cint(definition.expected_minutes),
@@ -431,6 +458,25 @@ def start_run(
 					identifier, definition.subject_label or _("identifier")
 				)
 			)
+
+	identifier = collaboration.run_key(identifier) or None
+
+	# One pack, one record. A battery is 59 checks and a shift puts more than one
+	# person on it, so the second operator to scan a label must land *in* the
+	# inspection that is already running rather than opening a rival copy of it.
+	# Before this, two people at one bench produced two runs of one battery, each
+	# holding half the answers and neither able to see the other's — and the pack
+	# had two verdicts, which is worse than having none.
+	#
+	# A test run is exempt: that is somebody proving a definition works, and it
+	# must never attach itself to real work on the floor.
+	if identifier and not cint(is_test_run):
+		siblings = _definition_family(definition)
+		joined = collaboration.open_run_for(siblings, identifier)
+		if joined:
+			return _ok(get_run(joined)["data"], _("Joined the inspection already open for this {0}.").format(
+				definition.subject_label or _("item")
+			))
 
 	if is_test_run and not (_user_roles() & {C.ROLE_AUTHOR, "System Manager"}):
 		frappe.throw(_("Only a Process Author can start a test run."), frappe.PermissionError)
@@ -522,6 +568,10 @@ def _serialise_run(run) -> dict:
 		"started_at": str(run.started_at) if run.started_at else None,
 		"completed_at": str(run.completed_at) if run.completed_at else None,
 		"is_test_run": cint(run.is_test_run),
+		# Who has actually worked this pack. Carried on the run itself rather than
+		# fetched separately, because the one moment it matters most is the moment
+		# a second operator opens the record — and that is one request, not two.
+		"participants": collaboration.participants(run),
 		"results": [
 			{
 				"step_code": r.step_code,
@@ -588,6 +638,72 @@ def get_run(name: str) -> dict:
 	"""Full run state — used to resume, and by the verifier's review screen."""
 	frappe.has_permission("Process Run", doc=name, throw=True)
 	return _ok(_serialise_run(frappe.get_doc("Process Run", name)))
+
+
+@frappe.whitelist()
+def run_board(run: str) -> dict:
+	"""The modules of one run, with progress and the last pair of hands on each.
+
+	What the app draws *before* it draws a question. An operator arriving at a
+	pack somebody else has been working needs three facts in this order: which
+	modules are done, which is being worked right now, and which is free for
+	them — and a stepper that opens on question one can tell them none of it.
+
+	Cheap enough to poll: one document read and no joins.
+	"""
+	doc = frappe.get_doc("Process Run", run)
+	frappe.has_permission("Process Run", doc=doc, throw=True)
+	definition = frappe.get_cached_doc("Process Definition", doc.process_definition)
+	return _ok(
+		{
+			"run": doc.name,
+			"run_identifier": doc.run_identifier,
+			"process_name": doc.process_name,
+			"stage_label": definition.stage_label or _("Stage"),
+			"status": doc.status,
+			"current_stage": doc.current_stage,
+			"answered_count": cint(doc.answered_count),
+			"quarantine_reason": doc.quarantine_reason,
+			"stages": collaboration.board(doc, definition),
+			"participants": collaboration.participants(doc),
+		}
+	)
+
+
+@frappe.whitelist()
+def find_open_run(process: str, identifier: str) -> dict:
+	"""Is this pack already being inspected, and how far along is it?
+
+	Called the instant a label is scanned, before anything is created. Answering
+	"yes, and Ravi is in Module 3" is the difference between two people working
+	one battery together and two people each recording half of it.
+
+	Returns ``{found: False}`` rather than throwing when there is nothing open —
+	not finding a run is the ordinary case, not an error.
+	"""
+	definition = _live_definition(process)
+	_assert_can_run(definition)
+
+	name = collaboration.open_run_for(_definition_family(definition), identifier)
+	if not name:
+		return _ok({"found": False, "run_identifier": collaboration.run_key(identifier)})
+
+	doc = frappe.get_doc("Process Run", name)
+	return _ok(
+		{
+			"found": True,
+			"run": doc.name,
+			"run_identifier": doc.run_identifier,
+			"process_name": doc.process_name,
+			"stage_label": definition.stage_label or _("Stage"),
+			"status": doc.status,
+			"current_stage": doc.current_stage,
+			"answered_count": cint(doc.answered_count),
+			"started_at": str(doc.started_at) if doc.started_at else None,
+			"stages": collaboration.board(doc, definition),
+			"participants": collaboration.participants(doc),
+		}
+	)
 
 
 #: Fields whose change makes an answer a *different* answer.
@@ -1335,33 +1451,100 @@ def subject_history(subject_doctype: str, subject_name: str) -> dict:
 
 @frappe.whitelist()
 def my_open_runs(limit: int = 20) -> dict:
-	"""Runs this user started and has not finished — the app's resume list."""
-	runs = frappe.get_all(
+	"""Unfinished inspections this user is part of — the app's resume list.
+
+	"Part of" is wider than "started". Now that several people share one pack,
+	the run an operator most needs to come back to is often one a colleague
+	opened — they scanned the label, did two modules, and went to lunch. Keying
+	this list on `started_by` alone made that work disappear from the phone that
+	did it.
+	"""
+	cap = cint(limit) or 20
+	fields = [
+		"name",
+		"process_definition",
+		"process_name",
+		"run_identifier",
+		"status",
+		"current_stage",
+		"answered_count",
+		"started_at",
+		"started_by",
+		"modified",
+	]
+	# Unfinished is `completed_at is null`, not a list of statuses. A run that
+	# tripped a critical check part-way is still editable — a quarantine is not a
+	# terminal status — but it used to vanish from this list, so the operator
+	# could neither finish it nor see it again. It is the one they most need.
+	open_filters = {
+		"completed_at": ["is", "not set"],
+		"status": ["not in", [C.STATUS_CANCELLED, C.STATUS_AWAITING_VERIFICATION]],
+	}
+
+	mine = frappe.get_all(
 		"Process Run",
-		filters={
-			# Unfinished is `completed_at is null`, not a list of statuses. A run
-			# that tripped a critical check part-way is still editable — a
-			# quarantine is not a terminal status — but it used to vanish from
-			# this list, so the operator could neither finish it nor see it
-			# again. It is the one run they most need to come back to.
-			"started_by": frappe.session.user,
-			"completed_at": ["is", "not set"],
-			"status": ["not in", [C.STATUS_CANCELLED, C.STATUS_AWAITING_VERIFICATION]],
-		},
-		fields=[
-			"name",
-			"process_definition",
-			"process_name",
-			"run_identifier",
-			"status",
-			"current_stage",
-			"answered_count",
-			"started_at",
-		],
+		filters={**open_filters, "started_by": frappe.session.user},
+		fields=fields,
 		order_by="modified desc",
-		limit_page_length=cint(limit) or 20,
+		limit_page_length=cap,
 	)
+
+	# Runs somebody else started that this user has answered into. A second query
+	# rather than an `or_filters` join, because the condition lives on the child
+	# table and Frappe's or_filters cannot reach it.
+	touched = frappe.get_all(
+		"Process Run Result",
+		filters={"answered_by": frappe.session.user, "parenttype": "Process Run"},
+		fields=["parent"],
+		group_by="parent",
+		order_by="modified desc",
+		limit_page_length=cap * 3,
+	)
+	others = [row["parent"] for row in touched if row["parent"] not in {r["name"] for r in mine}]
+	joined = (
+		frappe.get_all(
+			"Process Run",
+			filters={**open_filters, "name": ["in", others]},
+			fields=fields,
+			order_by="modified desc",
+			limit_page_length=cap,
+		)
+		if others
+		else []
+	)
+
+	runs = sorted(mine + joined, key=lambda r: str(r.get("modified") or ""), reverse=True)[:cap]
+	_attach_participant_counts(runs)
+	for row in runs:
+		row.pop("modified", None)
 	return _ok(runs)
+
+
+def _attach_participant_counts(runs: list[dict]) -> None:
+	"""How many people have worked each run in a list — one query, not N.
+
+	The count is what makes a shared pack legible in a list: "3 people" against a
+	row is the difference between resuming your own work and joining somebody
+	else's mid-inspection.
+	"""
+	if not runs:
+		return
+	names = [r["name"] for r in runs]
+	rows = frappe.get_all(
+		"Process Run Result",
+		filters={"parent": ["in", names], "parenttype": "Process Run"},
+		fields=["parent", "answered_by"],
+		limit_page_length=0,
+	)
+	by_run: dict[str, set] = {}
+	for row in rows:
+		if row.get("answered_by"):
+			by_run.setdefault(row["parent"], set()).add(row["answered_by"])
+	for run in runs:
+		people = by_run.get(run["name"], set())
+		if run.get("started_by"):
+			people = people | {run["started_by"]}
+		run["participant_count"] = len(people)
 
 
 # ------------------------------------------------------------- operator history
@@ -1379,14 +1562,23 @@ _FINISHED_STATUSES = (
 
 
 @frappe.whitelist()
-def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dict:
-	"""This operator's own inspection record.
+def my_history(limit: int = 30, offset: int = 0, scope: str = "finished", mine: int = 1) -> dict:
+	"""The inspection record — this operator's by default, everyone's on request.
 
-	Answers the two questions an operator actually has about their own work —
-	*how many have I done* and *what did I put on that one* — without giving them
-	a report builder. Deliberately scoped to `started_by = session.user`: this is
-	a personal record, not a supervisor's console, so it needs no role gate and
-	leaks nothing about anyone else's work.
+	Answers the two questions an operator has about their own work — *how many
+	have I done* and *what did I put on that one* — without giving them a report
+	builder.
+
+	`mine=0` widens the list to every inspection on the site. Asked for directly,
+	and it is the right call now that a pack is worked by several people: an
+	operator who did four modules of a battery somebody else started would
+	otherwise not find that battery anywhere in the app. Each row carries
+	`participant_count`, so a shared record says plainly that it is shared rather
+	than appearing to be one person's.
+
+	The `stats` block stays personal whatever the scope. It is the operator's own
+	tally on their own screen, and a number that silently became the whole plant's
+	output would be worse than useless.
 
 	`scope` is "finished" (the default), "open", or "all".
 
@@ -1403,7 +1595,9 @@ def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dic
 		"open": ["in", [C.STATUS_IN_PROGRESS, C.STATUS_DRAFT, C.STATUS_IN_REWORK]],
 	}.get(scope)
 
-	filters: dict = {"started_by": user, "is_test_run": 0}
+	filters: dict = {"is_test_run": 0}
+	if cint(mine):
+		filters["started_by"] = user
 	if status_filter:
 		filters["status"] = status_filter
 
@@ -1425,6 +1619,7 @@ def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dic
 			"answered_count",
 			"trace_completeness_pct",
 			"started_at",
+			"started_by",
 			"completed_at",
 		],
 		order_by="ifnull(completed_at, started_at) desc, modified desc",
@@ -1433,6 +1628,7 @@ def my_history(limit: int = 30, offset: int = 0, scope: str = "finished") -> dic
 	)
 
 	_attach_photo_summary(runs)
+	_attach_participant_counts(runs)
 
 	return _ok({"stats": _history_stats(user), "runs": runs})
 

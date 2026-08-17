@@ -49,6 +49,11 @@ class SyncTestBase(FrappeTestCase):
 		self.definition = _ensure_definition()
 		_ensure_entity_type()
 		self.uuid = frappe.generate_hash(length=20)
+		# A label unique to each test. One pack now means one run: a second batch
+		# quoting a label that is already open *joins* that inspection rather than
+		# starting a rival one — which is the point of the feature and fatal to a
+		# fixture that reused a single identifier across tests whose runs commit.
+		self.pack = f"PACK-SYNC-{frappe.generate_hash(length=8).upper()}"
 
 	# -- helpers ------------------------------------------------------------
 
@@ -57,7 +62,7 @@ class SyncTestBase(FrappeTestCase):
 		payload = {
 			"client_uuid": self.uuid,
 			"process": CODE,
-			"identifier": "PACK-SYNC-1",
+			"identifier": self.pack,
 			"answers": [],
 			"scans": [],
 			"submit_stages": [],
@@ -104,7 +109,7 @@ class TestRunCreation(SyncTestBase):
 		out = self.sync(self.batch(answers=[self.answer("C1", 1)]))
 
 		self.assertTrue(out["sync"]["created"])
-		self.assertEqual(out["run_identifier"], "PACK-SYNC-1")
+		self.assertEqual(out["run_identifier"], self.pack)
 		self.assertEqual(len(out["results"]), 1)
 
 	def test_the_second_sync_finds_the_same_run(self):

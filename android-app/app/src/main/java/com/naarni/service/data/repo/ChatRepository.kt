@@ -13,6 +13,7 @@ import com.naarni.service.data.chat.ChatRoomEntity
 import com.naarni.service.data.chat.ChatUploadEntity
 import com.naarni.service.data.chat.PENDING_BASE
 import com.naarni.service.data.chat.SendStatus
+import com.naarni.service.data.chat.ServerTime
 import com.naarni.service.data.chat.previewOf
 import com.naarni.service.data.dto.ChatMessageDto
 import com.naarni.service.data.dto.ChatReactionDto
@@ -553,6 +554,13 @@ class ChatRepository(
         lat = lat,
         lon = lon,
         deleted = deleted,
+        // When the message was actually sent, not when this row happened to be
+        // written. Without this the entity default — System.currentTimeMillis()
+        // — stood in for every synced message, so a week-old thread showed the
+        // current time on every bubble and a single "Today" divider over the
+        // lot. Falls back to now only when the server sent nothing parseable,
+        // which keeps a bubble plausible rather than dating it to 1970.
+        createdAt = ServerTime.millisOr(created_at),
         status = SendStatus.SENT,
         uploadPct = 100,
     )

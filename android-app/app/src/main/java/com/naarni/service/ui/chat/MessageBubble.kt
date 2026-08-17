@@ -101,6 +101,10 @@ fun MessageBubble(
     receipts: Receipts = Receipts(),
     /** Jump to the quoted message. */
     onOpenQuote: (ChatMessageEntity) -> Unit = {},
+    /** Signed-in user id, so a chip can show whether it includes you. */
+    me: String = "",
+    /** Tap a chip to add or remove your own reaction. */
+    onReact: (String) -> Unit = {},
 ) {
     // A server-authored notice is about the conversation, not part of it, so it
     // gets no bubble and no side — the same treatment WhatsApp gives "you were
@@ -242,6 +246,13 @@ fun MessageBubble(
                     // which is the least conversational thing a bubble can do.
                     MetaRow(message, isMine, textColor, onRetry, Modifier.align(Alignment.End), receipts)
                 }
+
+                ReactionChips(
+                    raw = message.reactions,
+                    me = me,
+                    onToggle = onReact,
+                    modifier = Modifier.padding(top = if (bare) 4.dp else 3.dp),
+                )
             }
         }
     }
@@ -961,4 +972,91 @@ private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier {
     // recomposition of every failed row.
     val source = remember { MutableInteractionSource() }
     return this.clickable(interactionSource = source, indication = null, onClick = onClick)
+}
+
+/**
+ * The reaction chips under a bubble.
+ *
+ * Parsed from the stored JSON on the row, and cached against that exact string
+ * — this runs for every visible message on every recomposition of the thread,
+ * and parsing JSON there is the sort of thing that shows up as a dropped frame
+ * during a scroll rather than as anything you can point at.
+ */
+@Composable
+fun ReactionChips(
+    raw: String?,
+    me: String,
+    onToggle: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (raw.isNullOrBlank()) return
+    val chips = remember(raw) { Reactions.parse(raw) }
+    if (chips.isEmpty()) return
+
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        chips.forEach { chip ->
+            val mine = me.isNotEmpty() && me in chip.users
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = if (mine) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                },
+                // A ring rather than a different fill for "you reacted": the fill
+                // has to stay light enough for the emoji to read on top of it.
+                border = if (mine) {
+                    androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                    )
+                } else {
+                    null
+                },
+                modifier = Modifier.clickableNoRipple { onToggle(chip.code) },
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(chip.emoji, style = MaterialTheme.typography.labelMedium)
+                    // The count is only informative once more than one person has
+                    // reacted; "👍 1" is noise next to the chip itself.
+                    if (chip.count > 1) {
+                        Text(
+                            chip.count.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The six-emoji row shown when a message is selected. */
+@Composable
+fun ReactionPicker(
+    onPick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Reactions.ALL.forEach { (code, glyph) ->
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickableNoRipple { onPick(code) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(glyph, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
 }

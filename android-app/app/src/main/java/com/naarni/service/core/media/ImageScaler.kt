@@ -89,10 +89,21 @@ object ImageScaler {
         }.getOrDefault(file)
     }
 
-    /** JPEG-family and PNG only. GIF is excluded so animation survives. */
+    /**
+     * JPEG and PNG only.
+     *
+     * GIF is excluded so animation survives. WebP and HEIC are excluded for the
+     * same reason in a different disguise: this re-encodes to JPEG, which would
+     * flatten an animated WebP to its first frame and turn a transparent one's
+     * alpha black — and, worse, the result would still be queued with the
+     * source's `image/webp` type and `.webp` name, so the server would store
+     * and serve JPEG bytes under a mime type that does not match them. They are
+     * left alone rather than converted, since the upload path has no way to
+     * revise the content type after the fact.
+     */
     fun canScale(contentType: String): Boolean = contentType.lowercase() in SCALABLE
 
-    private val SCALABLE = setOf("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif")
+    private val SCALABLE = setOf("image/jpeg", "image/png")
 
     /**
      * Decode at a power-of-two reduction first.

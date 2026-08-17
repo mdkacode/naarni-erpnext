@@ -2,6 +2,7 @@ package com.naarni.service.ui.components
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -30,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,9 +49,9 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.naarni.service.core.media.VideoCompressor
 import kotlinx.coroutines.delay
 import java.io.File
-import java.util.concurrent.Executors
 
 /**
  * Full-screen video capture for chat.
@@ -73,7 +75,6 @@ fun VideoRecorderScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val executor = remember { Executors.newSingleThreadExecutor() }
 
     /**
      * Audio is part of the point — a technician narrating what the camera is
@@ -102,9 +103,20 @@ fun VideoRecorderScreen(
     }
 
     if (!hasCamera) {
+        // Back has to be caught here. This screen is drawn inside the thread, so
+        // an uncaught Back pops the whole conversation and dumps the user at the
+        // list — and for somebody who has permanently denied the camera, the
+        // grant button does nothing visible, because the system shows no dialog
+        // the second time. Without a way out this state is a trap.
+        BackHandler { onClose() }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Camera access is needed to record a video.")
+                Text(
+                    "If nothing happens, turn it on in Settings › Apps › NaArNi Care › Permissions.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 6.dp, start = 24.dp, end = 24.dp),
+                )
                 Button(
                     onClick = {
                         permLauncher.launch(
@@ -113,6 +125,9 @@ fun VideoRecorderScreen(
                     },
                     modifier = Modifier.padding(top = 12.dp),
                 ) { Text("Grant access") }
+                TextButton(onClick = onClose, modifier = Modifier.padding(top = 4.dp)) {
+                    Text("Close")
+                }
             }
         }
         return
@@ -129,7 +144,19 @@ fun VideoRecorderScreen(
                     androidx.camera.video.FallbackStrategy.lowerQualityOrHigherThan(Quality.HD),
                 ),
             )
-            .setExecutor(executor)
+            // Without this the encoder takes the device's CamcorderProfile
+            // bitrate for 720p, which is 8–12 Mbit/s — a ninety-second clip
+            // lands at 100 MB and the whole point of recording at 720p is lost
+            // on the upload. Matched to what the gallery transcoder targets so
+            // a recorded clip and a picked one cost the same to send.
+            .setTargetVideoEncodingBitRate(TARGET_BITRATE)
+            // Deliberately NOT setExecutor(): the Recorder keeps encoding and
+            // muxing on whatever executor it is given, and this composable used
+            // to shut that executor down on dispose. CameraX then rejected the
+            // teardown work — including the muxer's final write — which left
+            // unplayable files behind and threw on the main thread the next
+            // time anything unbound the still-attached use case. The default
+            // executor outlives the screen, which is what this needs.
             .build()
     }
     val videoCapture = remember { VideoCapture.withOutput(recorder) }
@@ -154,10 +181,17 @@ fun VideoRecorderScreen(
         recording?.stop()
     }
 
+    // Held so teardown can release the camera. bindToLifecycle attaches to the
+    // *thread screen's* lifecycle owner, not to this composable, so without an
+    // explicit unbind the camera stays open — green privacy dot lit, battery
+    // burning, unavailable to other apps — for as long as the conversation
+    // remains on the back stack after this screen closes.
+    var provider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+
     DisposableEffect(Unit) {
         onDispose {
             recording?.stop()
-            executor.shutdown()
+            provider?.unbindAll()
         }
     }
 
@@ -168,12 +202,13 @@ fun VideoRecorderScreen(
                 val previewView = PreviewView(ctx)
                 val providerFuture = ProcessCameraProvider.getInstance(ctx)
                 providerFuture.addListener({
-                    val provider = providerFuture.get()
+                    val cameraProvider = providerFuture.get()
+                    provider = cameraProvider
                     val preview = Preview.Builder().build().also {
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
-                    provider.unbindAll()
-                    provider.bindToLifecycle(
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
                         lifecycleOwner,
                         CameraSelector.DEFAULT_BACK_CAMERA,
                         preview,
@@ -227,8 +262,15 @@ fun VideoRecorderScreen(
                         if (active != null) {
                             active.stop()
                         } else {
-                            val outbox = File(context.filesDir, "chat_outbox").apply { mkdirs() }
-                            val file = File(outbox, "video_${System.currentTimeMillis()}.mp4")
+                            // cacheDir, not filesDir/chat_outbox, matching the
+                            // photo and voice-note capture paths. The repository
+                            // copies whatever it is handed into the outbox under
+                            // its own client id and deletes only that copy, so a
+                            // recording written straight into the outbox is a
+                            // second file nothing ever cleans up — around 25 MB
+                            // per clip, in storage the OS cannot reclaim.
+                            val dir = File(context.cacheDir, "video_capture").apply { mkdirs() }
+                            val file = File(dir, "video_${System.currentTimeMillis()}.mp4")
                             target = file
                             val pending = recorder
                                 .prepareRecording(context, FileOutputOptions.Builder(file).build())
@@ -238,15 +280,26 @@ fun VideoRecorderScreen(
                             ) { event ->
                                 if (event is VideoRecordEvent.Finalize) {
                                     val done = target
-                                    val elapsed = seconds
                                     recording = null
                                     // A stop we asked for finalises cleanly;
                                     // anything else leaves a file not worth
                                     // sending. Hitting the ceiling counts as
                                     // clean — it stops the same way.
                                     if (done != null && !event.hasError() && done.length() > 0) {
-                                        onRecorded(done, elapsed * 1000L)
+                                        // Read out of the file rather than off
+                                        // the on-screen counter: that counter
+                                        // only ticks once a second, so a clip
+                                        // stopped at 800 ms was being sent as
+                                        // "0:00" and every other one was
+                                        // rounded down by up to a second.
+                                        val length = VideoCompressor.durationMs(done)
+                                            ?: (seconds * 1000L)
+                                        onRecorded(done, length)
                                         onClose()
+                                    } else if (done != null) {
+                                        // Nothing downstream will ever see this
+                                        // file, so it is ours to remove.
+                                        done.delete()
                                     }
                                 }
                             }
@@ -267,6 +320,9 @@ fun VideoRecorderScreen(
         }
     }
 }
+
+/** Encoder ceiling, matched to VideoCompressor so both paths cost the same to send. */
+private const val TARGET_BITRATE = VideoCompressor.TARGET_BITRATE
 
 /** ~90 seconds. Long enough to walk around a bus; short enough to send. */
 private const val MAX_SECONDS = 90

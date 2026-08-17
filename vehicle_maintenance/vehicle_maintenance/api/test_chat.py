@@ -1208,7 +1208,7 @@ class TestChatTyping(ChatTestBase):
 	def test_typing_publishes_to_the_doc_room(self):
 		published = []
 		orig = frappe.publish_realtime
-		frappe.publish_realtime = lambda **kw: published.append(kw)
+		frappe.publish_realtime = lambda *a, **kw: published.append(kw)
 		try:
 			frappe.set_user(self.alice)
 			chat.set_typing(room=self.room, typing=1)
@@ -1227,7 +1227,7 @@ class TestChatTyping(ChatTestBase):
 	def test_stopped_typing_is_its_own_signal(self):
 		published = []
 		orig = frappe.publish_realtime
-		frappe.publish_realtime = lambda **kw: published.append(kw)
+		frappe.publish_realtime = lambda *a, **kw: published.append(kw)
 		try:
 			frappe.set_user(self.alice)
 			chat.set_typing(room=self.room, typing=0)
@@ -1723,3 +1723,153 @@ class TestDeliveryReceipts(ChatTestBase):
 
 		self.assertNotIn(self.room, out["data"]["rooms"])
 		self.assertEqual(self._marks(), (0, 0))
+
+
+class TestChatReactions(ChatTestBase):
+	"""An emoji on a message — the cheapest reply there is."""
+
+	def _react(self, user, code, message=None):
+		frappe.set_user(user)
+		return chat.toggle_reaction(message=message or self.msg, reaction=code)
+
+	def setUp(self):
+		super().setUp()
+		self.msg = self._send(self.alice, "brakes done")["data"]["message"]["name"]
+
+	def test_a_reaction_lands_on_the_message(self):
+		out = self._react(self.bob, "like")["data"]["reactions"]
+
+		self.assertEqual(len(out), 1)
+		self.assertEqual(out[0]["code"], "like")
+		self.assertEqual(out[0]["emoji"], "👍")
+		self.assertEqual(out[0]["count"], 1)
+		self.assertEqual(out[0]["users"], [self.bob])
+
+	def test_the_same_emoji_twice_removes_it(self):
+		# One endpoint for both directions: tapping a chip you are part of takes
+		# you out of it, which is what the control looks like it does.
+		self._react(self.bob, "like")
+		out = self._react(self.bob, "like")["data"]["reactions"]
+
+		self.assertEqual(out, [])
+
+	def test_one_person_can_hold_two_different_emoji(self):
+		self._react(self.bob, "like")
+		out = self._react(self.bob, "thanks")["data"]["reactions"]
+
+		self.assertEqual([r["code"] for r in out], ["like", "thanks"])
+
+	def test_two_people_on_one_emoji_count_two(self):
+		self._react(self.bob, "like")
+		out = self._react(self.alice, "like")["data"]["reactions"]
+
+		self.assertEqual(out[0]["count"], 2)
+		self.assertCountEqual(out[0]["users"], [self.alice, self.bob])
+
+	def test_removing_one_leaves_the_other_person(self):
+		self._react(self.bob, "like")
+		self._react(self.alice, "like")
+		out = self._react(self.bob, "like")["data"]["reactions"]
+
+		self.assertEqual(out[0]["count"], 1)
+		self.assertEqual(out[0]["users"], [self.alice])
+
+	def test_chips_keep_a_stable_order(self):
+		# Ordered by the allow-list, not by count, so a chip does not jump
+		# sideways under the finger as other people react.
+		self._react(self.bob, "thanks")
+		self._react(self.alice, "like")
+		self._react(self.alice, "haha")
+		out = self._react(self.bob, "haha")["data"]["reactions"]
+
+		self.assertEqual([r["code"] for r in out], ["like", "haha", "thanks"])
+
+	def test_an_unlisted_emoji_is_refused(self):
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.ValidationError):
+			chat.toggle_reaction(message=self.msg, reaction="bus")
+
+	def test_free_text_cannot_be_smuggled_in(self):
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.ValidationError):
+			chat.toggle_reaction(message=self.msg, reaction="x" * 500)
+
+	def test_a_non_member_cannot_react(self):
+		frappe.set_user(self.mallory)
+		with self.assertRaises(frappe.PermissionError):
+			chat.toggle_reaction(message=self.msg, reaction="like")
+
+	def test_a_missing_message_is_not_found(self):
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.DoesNotExistError):
+			chat.toggle_reaction(message="no-such-message", reaction="like")
+
+	def test_a_deleted_message_cannot_be_reacted_to(self):
+		frappe.db.set_value("VM Chat Message", self.msg, "deleted", 1)
+		frappe.set_user(self.bob)
+		with self.assertRaises(frappe.ValidationError):
+			chat.toggle_reaction(message=self.msg, reaction="like")
+
+	def test_reactions_ride_along_with_the_message(self):
+		# The client must not need a second call per message to draw the chips.
+		self._react(self.bob, "love")
+		frappe.set_user(self.alice)
+		page = chat.list_messages(room=self.room)["data"]["messages"]
+
+		row = next(m for m in page if m["name"] == self.msg)
+		self.assertEqual(row["reactions"][0]["code"], "love")
+		self.assertEqual(row["reactions"][0]["users"], [self.bob])
+
+	def test_a_message_with_none_reports_an_empty_list(self):
+		frappe.set_user(self.alice)
+		page = chat.list_messages(room=self.room)["data"]["messages"]
+
+		self.assertEqual(next(m for m in page if m["name"] == self.msg)["reactions"], [])
+
+	def test_reacting_publishes_to_the_room(self):
+		published = []
+		orig = frappe.publish_realtime
+		frappe.publish_realtime = lambda *a, **kw: published.append(kw)
+		try:
+			self._react(self.bob, "like")
+		finally:
+			frappe.publish_realtime = orig
+
+		event = next(p for p in published if p.get("event") == "vm_chat_reaction")
+		self.assertEqual(event["docname"], self.room)
+		self.assertEqual(event["message"]["message"], self.msg)
+		self.assertEqual(event["message"]["reactions"][0]["code"], "like")
+
+	def test_a_failed_publish_does_not_fail_the_tap(self):
+		orig = frappe.publish_realtime
+
+		def boom(*args, **kwargs):
+			if kwargs.get("event") == "vm_chat_reaction":
+				raise Exception("redis is down")
+			return orig(*args, **kwargs)
+
+		frappe.publish_realtime = boom
+		try:
+			result = self._react(self.bob, "like")
+		finally:
+			frappe.publish_realtime = orig
+
+		self.assertTrue(result["success"])
+		# And the reaction itself was still recorded.
+		self.assertEqual(result["data"]["reactions"][0]["count"], 1)
+
+	def test_a_duplicate_row_cannot_exist(self):
+		# The guard against two taps racing: the database refuses the second,
+		# rather than leaving one person rendered as a count of two.
+		self._react(self.bob, "like")
+		frappe.set_user("Administrator")
+		with self.assertRaises(Exception):
+			frappe.get_doc(
+				{
+					"doctype": "VM Chat Reaction",
+					"message": self.msg,
+					"room": self.room,
+					"user": self.bob,
+					"emoji": "like",
+				}
+			).insert(ignore_permissions=True)

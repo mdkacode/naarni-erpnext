@@ -90,11 +90,17 @@ def _seed_settings() -> None:
 				cfg.append("punch_roles", {"role": role})
 				changed = True
 
+	# Policy for a *fresh* site. Existing sites keep whatever an admin chose —
+	# `enforce_depot_geofence` is the one-time migration that moves them.
+	# Block is only meaningful alongside require_location: without a fix the
+	# geofence cannot be evaluated, and an unevaluated punch is never a violation,
+	# so a phone with location denied would walk straight through the gate.
 	if not cfg.geofence_mode:
-		cfg.geofence_mode = "Warn"
+		cfg.geofence_mode = "Block"
+		cfg.require_location = 1
 		changed = True
 	if not cfg.default_radius_m:
-		cfg.default_radius_m = 300
+		cfg.default_radius_m = 100
 		changed = True
 	if not cfg.auto_checkout_after_hours:
 		cfg.auto_checkout_after_hours = 14

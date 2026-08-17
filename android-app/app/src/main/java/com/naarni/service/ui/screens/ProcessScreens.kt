@@ -111,6 +111,8 @@ fun ProcessListScreen(
     onResumeRun: (String) -> Unit,
     onOpenHistory: () -> Unit = {},
 ) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var processes by remember { mutableStateOf<List<ProcessSummary>>(emptyList()) }
     var doneToday by remember { mutableStateOf(0) }
     var doneTotal by remember { mutableStateOf(0) }
@@ -162,7 +164,16 @@ fun ProcessListScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp),
             ) {
             // Silent when there is nothing outstanding — see PendingWorkCard.
-            item { PendingWorkCard(pending, online) }
+            item {
+                PendingWorkCard(pending, online) {
+                    // The escape hatch: work that gave up gets another go, on
+                    // the engineer's say-so rather than on a timer.
+                    scope.launch {
+                        runCatching { vm.inspections.retryStuck() }
+                        InspectionWork.sweep(context)
+                    }
+                }
+            }
 
             // The operator's own tally, at the top of the screen they start work
             // from. Somebody who has done nine inspections today should not have

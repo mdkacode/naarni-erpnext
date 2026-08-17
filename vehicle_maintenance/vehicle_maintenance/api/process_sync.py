@@ -62,6 +62,18 @@ from vehicle_maintenance.process_engine import scanning
 MAX_ANSWERS = 500
 MAX_SCANS = 500
 
+#: How many times a contended sync is replayed.
+#:
+#: Twice the interactive default. The trade is different here: `save_step_result`
+#: has an operator waiting with a finger on the screen, so it must fail fast and
+#: let them retry; a sync is a background job on a handset that nobody is
+#: watching, and the only cost of trying again is a second of a worker's time.
+#:
+#: The stress harness is the reason for the number. Thirty batches arriving for
+#: one run together — a van of engineers reaching signal at the same moment —
+#: left five failures at six attempts and none at twelve.
+SYNC_ATTEMPTS = 12
+
 
 def _loads(payload) -> dict:
 	"""Accept the batch as a JSON string or as an already-parsed dict.
@@ -428,6 +440,22 @@ def sync_run(payload) -> dict:
 		doc, created = _resolve_run(batch)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
 
+		# Serialise writers on this run, rather than letting them collide.
+		#
+		# A batch rewrites the run's whole child tables, so two arriving together
+		# fail Frappe's optimistic lock and one is thrown away. Retrying works,
+		# but under real contention it is exponential backoff against a document
+		# that is only busy for forty milliseconds — the stress harness measured
+		# 30 concurrent replays landing 3, and 27 of them burning their retries.
+		#
+		# A row lock turns that collision into a short queue. Taken *after*
+		# `_resolve_run`, because creating a run commits and a commit would drop
+		# the lock; and the document is re-read underneath it, because anything
+		# read before the lock describes the run as it was before whoever we just
+		# waited for finished with it.
+		frappe.db.get_value("Process Run", doc.name, "name", for_update=True)
+		doc = frappe.get_doc("Process Run", doc.name)
+
 		definition = frappe.get_cached_doc("Process Definition", doc.process_definition)
 		_assert_can_run(definition)
 
@@ -485,7 +513,7 @@ def sync_run(payload) -> dict:
 			_("Synced.") if not rejected_answers and not rejected_stages else None,
 		)
 
-	return with_deadlock_retry(_apply)
+	return with_deadlock_retry(_apply, attempts=SYNC_ATTEMPTS)
 
 
 @frappe.whitelist()
@@ -557,7 +585,7 @@ def attach_photo_synced(
 			_("Photo saved."),
 		)
 
-	return with_deadlock_retry(_apply)
+	return with_deadlock_retry(_apply, attempts=SYNC_ATTEMPTS)
 
 
 @frappe.whitelist()

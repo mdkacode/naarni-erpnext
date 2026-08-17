@@ -76,10 +76,46 @@ class TestDeadlockRetry(FrappeTestCase):
 			process.with_deadlock_retry(work, attempts=4)
 		self.assertEqual(len(attempts), 1)
 
+	def test_a_lost_optimistic_lock_is_replayed_too(self):
+		"""Frappe's own concurrency error, not the database's.
+
+		`TimestampMismatchError` means another request saved the document between
+		our read and our write. Nothing was written and the correct response is to
+		read it again and redo the work — exactly as for a deadlock — but it is
+		not a `QueryDeadlockError`, so for a while nothing retried it.
+
+		The offline sync stress harness is what found it: thirty batches arriving
+		for one run together landed **three**, and twenty-four batches against one
+		run landed eleven of a hundred and twenty-one answers. Every one of those
+		came back to the handset as a failed sync.
+		"""
+		attempts = []
+
+		def work():
+			attempts.append(1)
+			if len(attempts) < 3:
+				raise frappe.TimestampMismatchError("Document has been modified")
+			return "saved"
+
+		self.assertEqual(process.with_deadlock_retry(work, attempts=4), "saved")
+		self.assertEqual(len(attempts), 3)
+
 	def test_the_default_is_deep_enough_to_matter(self):
 		# Four attempts still lost 1.5% of answers at 20 concurrent operators;
 		# six lost 0.17%. A regression to a smaller number would be silent.
 		self.assertGreaterEqual(process.DEADLOCK_ATTEMPTS, 6)
+
+	def test_sync_retries_harder_than_an_interactive_save(self):
+		"""A background job with nobody waiting can afford to keep trying.
+
+		At six attempts the thirty-way replay storm still left five failures; at
+		twelve it left none. The interactive path keeps the lower number on
+		purpose — an operator with a finger on the screen wants an answer, not a
+		spinner that lasts twelve backoffs.
+		"""
+		from vehicle_maintenance.api import process_sync
+
+		self.assertGreater(process_sync.SYNC_ATTEMPTS, process.DEADLOCK_ATTEMPTS)
 
 
 class TestIdempotentStartUnderRace(FrappeTestCase):

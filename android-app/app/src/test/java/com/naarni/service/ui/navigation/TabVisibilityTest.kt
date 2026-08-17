@@ -27,38 +27,38 @@ class TabVisibilityTest {
 
     @Test
     fun `battery is hidden from someone who runs no inspections`() {
-        assertFalse(Tab.Battery.isVisibleTo(setOf("Technician", "Driver")))
+        assertFalse(Tab.Checks.isVisibleTo(setOf("Technician", "Driver")))
     }
 
     @Test
     fun `battery is hidden when the session carries no roles at all`() {
         // A cleared or not-yet-populated session must fail closed, not open.
-        assertFalse(Tab.Battery.isVisibleTo(emptySet()))
+        assertFalse(Tab.Checks.isVisibleTo(emptySet()))
     }
 
     @Test
     fun `an operator sees battery`() {
-        assertTrue(Tab.Battery.isVisibleTo(setOf("Process Operator")))
+        assertTrue(Tab.Checks.isVisibleTo(setOf("Process Operator")))
     }
 
     @Test
     fun `supervisors and authors see battery too`() {
-        assertTrue(Tab.Battery.isVisibleTo(setOf("Process Verifier")))
-        assertTrue(Tab.Battery.isVisibleTo(setOf("Process Author")))
-        assertTrue(Tab.Battery.isVisibleTo(setOf("Battery QA Admin")))
-        assertTrue(Tab.Battery.isVisibleTo(setOf("System Manager")))
+        assertTrue(Tab.Checks.isVisibleTo(setOf("Process Verifier")))
+        assertTrue(Tab.Checks.isVisibleTo(setOf("Process Author")))
+        assertTrue(Tab.Checks.isVisibleTo(setOf("Battery QA Admin")))
+        assertTrue(Tab.Checks.isVisibleTo(setOf("System Manager")))
     }
 
     @Test
     fun `one qualifying role among several unrelated ones is enough`() {
-        assertTrue(Tab.Battery.isVisibleTo(setOf("Driver", "Technician", "Process Operator")))
+        assertTrue(Tab.Checks.isVisibleTo(setOf("Driver", "Technician", "Process Operator")))
     }
 
     @Test
     fun `role matching is exact, not by prefix`() {
         // "Process Operator Trainee" is a different role and must not inherit
         // access from a substring match.
-        assertFalse(Tab.Battery.isVisibleTo(setOf("Process Operator Trainee")))
+        assertFalse(Tab.Checks.isVisibleTo(setOf("Process Operator Trainee")))
     }
 
     @Test

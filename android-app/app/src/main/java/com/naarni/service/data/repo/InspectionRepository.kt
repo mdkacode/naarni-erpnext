@@ -552,6 +552,33 @@ class InspectionRepository(
 		// [SyncReconciler], pure and separately tested, because this is the one
 		// place a bug loses work silently rather than loudly.
 		dao.setServerName(runUuid, result.name)
+
+		if (result.sync.already_closed) {
+			// The inspection is finished server-side and will accept nothing
+			// more. Anything still queued for it is work the server already has
+			// — or work it will never take — and leaving it pending means a
+			// queue that can never drain and a "still going up" badge that never
+			// clears. Settling it here is what stops the handset asking forever.
+			answers.forEach { dao.markAnswerSynced(runUuid, it.stepCode, it.clientSeq, null) }
+			dao.markScansSynced(scans.map { it.scanUuid })
+			dao.setPendingSubmits(runUuid, "")
+			dao.applyServerRun(
+				uuid = runUuid,
+				status = result.status,
+				stage = result.current_stage,
+				pass = result.pass_count,
+				fail = result.fail_count,
+				critical = result.critical_count,
+				answered = result.answered_count,
+				score = result.score_pct,
+				trace = result.trace_completeness_pct,
+				quarantine = result.quarantine_reason,
+				closed = true,
+				outstanding = null,
+			)
+			dao.setRunSync(runUuid, SyncState.SYNCED, null)
+			return SyncOutcome(ok = true, closed = true)
+		}
 		val outcomes = SyncReconciler.reconcile(
 			sent = answers.map { SyncReconciler.Sent(it.stepCode, it.clientSeq) },
 			report = result.sync,
@@ -676,6 +703,20 @@ class InspectionRepository(
 	}
 
 	suspend fun runsNeedingSync(): List<LocalRunEntity> = dao.runsNeedingSync()
+
+	/**
+	 * Give everything that gave up one more go.
+	 *
+	 * The escape hatch for the case the attempt ceiling exists to stop — a photo
+	 * that failed twelve times because the endpoint was not deployed yet, rather
+	 * than because anything about the photo is wrong. Without this the only cure
+	 * is reinstalling the app, which takes the queue with it.
+	 */
+	suspend fun retryStuck() {
+		dao.resetExhaustedPhotos()
+		dao.clearAnswerRejections()
+		dao.runsNeedingSync().forEach { dao.setRunSync(it.clientUuid, SyncState.PENDING, null) }
+	}
 
 	suspend fun runsWithPendingPhotos(): List<String> = dao.runsWithPendingPhotos()
 

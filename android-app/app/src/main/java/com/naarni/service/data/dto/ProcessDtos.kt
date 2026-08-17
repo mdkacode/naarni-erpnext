@@ -300,3 +300,126 @@ data class OpenRun(
     val answered_count: Int = 0,
     val started_at: String? = null,
 )
+
+// ---------------------------------------------------------- operator history
+//
+// What one person did, read back to that person. Distinct from [ProcessRun],
+// which is the live state of a run being worked: these types are a record, so
+// they carry the label and spec that were in force at the time rather than a
+// pointer into a definition that may since have been re-published.
+
+/** Headline counts for the operator's own work. */
+@Serializable
+data class HistoryStats(
+    val total: Int = 0,
+    val today: Int = 0,
+    val week: Int = 0,
+    val passed: Int = 0,
+    val quarantined: Int = 0,
+    val open: Int = 0,
+)
+
+/** One finished inspection, as a row in the history list. */
+@Serializable
+data class HistoryRun(
+    val name: String = "",
+    val process_definition: String = "",
+    val process_name: String = "",
+    val run_identifier: String? = null,
+    val status: String = "",
+    val result: String? = null,
+    val score_pct: Double = 0.0,
+    val pass_count: Int = 0,
+    val fail_count: Int = 0,
+    val skip_count: Int = 0,
+    val critical_count: Int = 0,
+    val answered_count: Int = 0,
+    val trace_completeness_pct: Double = 0.0,
+    val started_at: String? = null,
+    val completed_at: String? = null,
+    val photo_count: Int = 0,
+    /** First photo of the run — what makes a row of identical serials recognisable. */
+    val thumb: String? = null,
+)
+
+@Serializable
+data class ProcessHistory(
+    val stats: HistoryStats = HistoryStats(),
+    val runs: List<HistoryRun> = emptyList(),
+)
+
+@Serializable
+data class ReportPhoto(
+    val file_url: String = "",
+    val caption: String? = null,
+    val captured_at: String? = null,
+    val captured_by: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracy_m: Double? = null,
+    val location_source: String? = null,
+    val geofence_status: String? = null,
+)
+
+/** One answer as it was recorded, with the photos taken at that step. */
+@Serializable
+data class ReportStep(
+    val step_code: String = "",
+    val display_no: String? = null,
+    val section: String? = null,
+    val label: String = "",
+    val response_type: String? = null,
+    val response: String? = null,
+    val value_numeric: Double? = null,
+    val value_text: String? = null,
+    val unit: String? = null,
+    val spec_summary: String? = null,
+    val is_pass: Int = 0,
+    val is_deviation: Int = 0,
+    val is_critical: Int = 0,
+    val is_skipped: Int = 0,
+    val skip_reason: String? = null,
+    val remark: String? = null,
+    val answered_at: String? = null,
+    val photos: List<ReportPhoto> = emptyList(),
+)
+
+@Serializable
+data class ReportStage(
+    val stage: String = "",
+    val label: String = "",
+    val steps: List<ReportStep> = emptyList(),
+)
+
+/** Photos taken against a step with no answer row — evidence someone looked. */
+@Serializable
+data class UnmatchedPhotoGroup(
+    val step_code: String = "",
+    val label: String = "",
+    val photos: List<ReportPhoto> = emptyList(),
+)
+
+@Serializable
+data class RunReport(
+    val name: String = "",
+    val process_name: String = "",
+    val run_identifier: String? = null,
+    val status: String = "",
+    val result: String? = null,
+    val score_pct: Double = 0.0,
+    val pass_count: Int = 0,
+    val fail_count: Int = 0,
+    val skip_count: Int = 0,
+    val critical_count: Int = 0,
+    val answered_count: Int = 0,
+    val trace_completeness_pct: Double = 0.0,
+    val quarantine_reason: String? = null,
+    val station: String? = null,
+    val started_by: String? = null,
+    val started_by_name: String? = null,
+    val started_at: String? = null,
+    val completed_at: String? = null,
+    val photo_count: Int = 0,
+    val stages: List<ReportStage> = emptyList(),
+    val unmatched_photos: List<UnmatchedPhotoGroup> = emptyList(),
+)

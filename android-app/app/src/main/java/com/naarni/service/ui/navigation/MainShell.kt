@@ -1,10 +1,11 @@
 package com.naarni.service.ui.navigation
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.rounded.Assignment
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -16,27 +17,36 @@ import com.naarni.service.ui.chat.ChatThreadScreen
 import com.naarni.service.ui.chat.ChatViewModel
 import com.naarni.service.ui.chat.NewChatScreen
 import com.naarni.service.ui.chat.NewGroupScreen
-import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
+import com.naarni.service.ui.components.HairlineDivider
+import com.naarni.service.ui.theme.AppSurface
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.naarni.service.appContainer
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.screens.AlertDetailScreen
 import com.naarni.service.ui.screens.AlertsScreen
@@ -47,7 +57,9 @@ import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardDetailScreen
 import com.naarni.service.ui.screens.JobCardsScreen
 import com.naarni.service.ui.screens.NotificationsScreen
+import com.naarni.service.ui.screens.ProcessHistoryScreen
 import com.naarni.service.ui.screens.ProcessListScreen
+import com.naarni.service.ui.screens.ProcessRunReportScreen
 import com.naarni.service.ui.screens.ProcessRunnerScreen
 import com.naarni.service.ui.screens.ProcessStartScreen
 import com.naarni.service.ui.screens.ProfileScreen
@@ -67,13 +79,46 @@ import com.naarni.service.ui.screens.VehiclesScreen
  * that is the only published process today, and renaming it is a one-line change
  * when a second process ships.
  */
-enum class Tab(val route: String, val label: String, val icon: ImageVector) {
-    Home("home", "Home", Icons.Default.Home),
-    Chat("chat", "Chat", Icons.AutoMirrored.Filled.Chat),
-    Alerts("alerts", "Alerts", Icons.Default.Notifications),
-    Battery("processes", "Battery", Icons.Default.BatteryChargingFull),
-    Profile("profile", "Profile", Icons.Default.Person),
+enum class Tab(
+    val route: String,
+    val label: String,
+    val icon: ImageVector,
+    /**
+     * Roles that may see this tab. `null` means everyone signed in.
+     *
+     * This hides the tab; it does not secure it. The server decides what a user
+     * may actually read or write — see `process_run.get_permission_query_conditions`
+     * — and this exists so a technician who will never run an inspection is not
+     * given a tab that answers every tap with a permission error.
+     */
+    val requiredRoles: Set<String>? = null,
+) {
+    Home("home", "Home", Icons.Rounded.Home),
+    Chat("chat", "Chat", Icons.AutoMirrored.Rounded.Chat),
+    Alerts("alerts", "Alerts", Icons.Rounded.Notifications),
+    Battery(
+        "processes",
+        "Battery",
+        Icons.Rounded.BatteryChargingFull,
+        requiredRoles = PROCESS_ROLES,
+    ),
+    Profile("profile", "Profile", Icons.Rounded.Person),
+    ;
+
+    fun isVisibleTo(roles: Set<String>): Boolean =
+        requiredRoles == null || roles.any { it in requiredRoles }
 }
+
+/** Anyone who runs, verifies or oversees an inspection. */
+private val PROCESS_ROLES = setOf(
+    "Process Operator",
+    "Process Author",
+    "Process Verifier",
+    "Process Viewer",
+    "Battery QA Admin",
+    "System Manager",
+    "Administrator",
+)
 
 /** Routes that still exist for deep links but are no longer tabs. */
 private object HiddenRoute {
@@ -85,7 +130,10 @@ private object HiddenRoute {
 @Composable
 fun MainShell(vm: AppViewModel) {
     val nav = rememberNavController()
-    val tabs = Tab.entries
+    // Roles are stored at login; a signed-in user always has at least one, and a
+    // stale set only costs a hidden tab, never access — the server is the gate.
+    val roles = LocalContext.current.appContainer.session.roles
+    val tabs = remember(roles) { Tab.entries.filter { it.isVisibleTo(roles) } }
 
     // Hoisted to the shell so the tab badge stays live regardless of which tab is
     // showing, and so the socket is owned by the shell rather than by a screen.
@@ -152,30 +200,53 @@ fun MainShell(vm: AppViewModel) {
     Scaffold(
         bottomBar = {
             if (isTopLevel) {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = current == tab.route,
-                            onClick = {
-                                nav.navigate(tab.route) {
-                                    launchSingleTop = true
-                                    popUpTo(Tab.Home.route) { saveState = true }
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                // Badge reads a single Room-backed Flow, so it is
-                                // correct offline and on a cold start with no network.
-                                if (tab == Tab.Chat && unreadChats > 0) {
-                                    BadgedBox(badge = {
-                                        Badge { Text(if (unreadChats > 99) "99+" else "$unreadChats") }
-                                    }) { Icon(tab.icon, contentDescription = tab.label) }
-                                } else {
-                                    Icon(tab.icon, contentDescription = tab.label)
-                                }
-                            },
-                            label = { Text(tab.label) },
-                        )
+                Column {
+                    // The nav bar sits on the same ground as the content, so a
+                    // rule is what separates them rather than a tonal step. On a
+                    // near-black scheme the default elevation tint is almost
+                    // invisible, which left the bar floating with no edge.
+                    HairlineDivider()
+                    NavigationBar(
+                        containerColor = AppSurface.raised,
+                        tonalElevation = 0.dp,
+                    ) {
+                        tabs.forEach { tab ->
+                            val selected = current == tab.route
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    nav.navigate(tab.route) {
+                                        launchSingleTop = true
+                                        popUpTo(Tab.Home.route) { saveState = true }
+                                        restoreState = true
+                                    }
+                                },
+                                icon = {
+                                    // Badge reads a single Room-backed Flow, so it is
+                                    // correct offline and on a cold start with no network.
+                                    if (tab == Tab.Chat && unreadChats > 0) {
+                                        BadgedBox(badge = {
+                                            Badge { Text(if (unreadChats > 99) "99+" else "$unreadChats") }
+                                        }) { Icon(tab.icon, contentDescription = tab.label) }
+                                    } else {
+                                        Icon(tab.icon, contentDescription = tab.label)
+                                    }
+                                },
+                                label = { Text(tab.label) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    // No pill behind the selected icon. With five
+                                    // tabs it put a permanent coloured lozenge on
+                                    // screen competing with whatever the screen
+                                    // itself was trying to point at; the accent on
+                                    // the icon and label says the same thing.
+                                    indicatorColor = Color.Transparent,
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -268,6 +339,21 @@ fun MainShell(vm: AppViewModel) {
                     vm,
                     onOpenProcess = { family -> nav.navigate("process/$family") },
                     onResumeRun = { run -> nav.navigate("run/$run") },
+                    onOpenHistory = { nav.navigate("myinspections") },
+                )
+            }
+            composable("myinspections") {
+                ProcessHistoryScreen(
+                    vm,
+                    onBack = { nav.popBackStack() },
+                    onOpenRun = { run -> nav.navigate("runreport/$run") },
+                )
+            }
+            composable("runreport/{name}") { entry ->
+                ProcessRunReportScreen(
+                    vm,
+                    runName = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable("process/{family}") { entry ->

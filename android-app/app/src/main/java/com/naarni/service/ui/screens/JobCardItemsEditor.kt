@@ -12,9 +12,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,7 +70,7 @@ fun RepairItemsEditor(
         val cap = capture
         if (cap != null) {
             StampingCamera(
-                onCaptured = { file ->
+                onCaptured = { file, _ ->
                     val (idx, slot) = cap
                     capture = null
                     uploadingKey = "$idx:$slot"
@@ -90,7 +90,7 @@ fun RepairItemsEditor(
             topBar = {
                 TopAppBar(
                     title = { Text("Repair Jobs") },
-                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") } },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") } },
                 )
             },
         ) { pad ->
@@ -108,7 +108,7 @@ fun RepairItemsEditor(
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Text("Job ${i + 1}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
                                 IconButton(onClick = { rows.removeAt(i) }) {
-                                    Icon(Icons.Default.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Rounded.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                             ChipSelect("Part group", partGroups.map { it.part_group_name ?: it.name }, r.part_group) {
@@ -137,7 +137,7 @@ fun RepairItemsEditor(
                     }
                 }
                 OutlinedButton(onClick = { rows.add(RepairItem(activity_type = vm.opt("activity_type").firstOrNull(), component_status = vm.opt("component_status").firstOrNull(), qty = 1.0)) }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Add, null); Text("  Add repair job")
+                    Icon(Icons.Rounded.Add, null); Text("  Add repair job")
                 }
                 Button(
                     onClick = { scope.launch { onSave(rows.toList()) } },
@@ -167,7 +167,7 @@ fun MaintenanceItemsEditor(
         val cap = capture
         if (cap != null) {
             StampingCamera(
-                onCaptured = { file ->
+                onCaptured = { file, _ ->
                     val (idx, slot) = cap
                     capture = null
                     uploadingKey = "$idx:$slot"
@@ -187,7 +187,7 @@ fun MaintenanceItemsEditor(
             topBar = {
                 TopAppBar(
                     title = { Text("Maintenance Jobs") },
-                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") } },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") } },
                 )
             },
         ) { pad ->
@@ -205,7 +205,7 @@ fun MaintenanceItemsEditor(
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Text("Item ${i + 1}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
                                 IconButton(onClick = { rows.removeAt(i) }) {
-                                    Icon(Icons.Default.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Rounded.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                             ChipSelect("Type", vm.opt("maintenance_type"), m.maintenance_type) { rows[i] = m.copy(maintenance_type = it) }
@@ -232,7 +232,7 @@ fun MaintenanceItemsEditor(
                     }
                 }
                 OutlinedButton(onClick = { rows.add(MaintenanceItem(maintenance_type = vm.opt("maintenance_type").firstOrNull(), action = vm.opt("maintenance_action").firstOrNull(), qty = 1.0, unit = vm.opt("maintenance_unit").firstOrNull())) }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Add, null); Text("  Add maintenance item")
+                    Icon(Icons.Rounded.Add, null); Text("  Add maintenance item")
                 }
                 Button(
                     onClick = { scope.launch { onSave(rows.toList()) } },
@@ -262,7 +262,7 @@ fun SoftwareComponentsEditor(
         val cap = capture
         if (cap != null) {
             StampingCamera(
-                onCaptured = { file ->
+                onCaptured = { file, _ ->
                     val (idx, slot) = cap
                     capture = null
                     uploadingKey = "$idx:$slot"
@@ -285,7 +285,7 @@ fun SoftwareComponentsEditor(
             topBar = {
                 TopAppBar(
                     title = { Text("Software Update") },
-                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") } },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") } },
                 )
             },
         ) { pad ->
@@ -303,7 +303,7 @@ fun SoftwareComponentsEditor(
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Text("Component ${i + 1}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
                                 IconButton(onClick = { rows.removeAt(i) }) {
-                                    Icon(Icons.Default.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Rounded.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                             OutlinedTextField(
@@ -346,7 +346,7 @@ fun SoftwareComponentsEditor(
                     }
                 }
                 OutlinedButton(onClick = { rows.add(com.naarni.service.data.dto.SoftwareComponent(reason = vm.opt("software_reason").firstOrNull(), status = vm.opt("software_status").firstOrNull(), retry_count = 0)) }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Add, null); Text("  Add component")
+                    Icon(Icons.Rounded.Add, null); Text("  Add component")
                 }
                 Button(
                     onClick = { scope.launch { onSave(rows.toList()) } },

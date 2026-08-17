@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -48,10 +48,10 @@ import com.naarni.service.data.dto.ProcessStep
  * sliders, so numbers use a keypad.
  */
 
-private val PassGreen = Color(0xFF17784A)
-private val FailRed = Color(0xFFB62F27)
-private val WarnAmber = Color(0xFF99630A)
-private val NeutralGrey = Color(0xFF5F6C7A)
+internal val PassGreen = Color(0xFF17784A)
+internal val FailRed = Color(0xFFB62F27)
+internal val WarnAmber = Color(0xFF99630A)
+internal val NeutralGrey = Color(0xFF5F6C7A)
 
 /** What the operator has entered for one step, before it is sent. */
 data class StepAnswer(
@@ -395,7 +395,7 @@ private fun EvidenceNotice(text: String) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(
-            Icons.Default.Info,
+            Icons.Rounded.Info,
             contentDescription = null,
             modifier = Modifier.size(16.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,

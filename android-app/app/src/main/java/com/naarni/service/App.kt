@@ -102,11 +102,25 @@ class App : Application(), ImageLoaderFactory {
     private fun createChatChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val mgr = getSystemService(NotificationManager::class.java) ?: return
+        // The silent first-generation chat channel. Left behind, it stays in the
+        // user's notification settings for ever as a dead entry they can toggle
+        // and get nothing from.
+        runCatching { mgr.deleteNotificationChannel("chat_messages") }
+        val chatSound = Uri.parse("android.resource://$packageName/${R.raw.msg_notify}")
+        val chatAttrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
         mgr.createNotificationChannel(
             NotificationChannel(CHANNEL_CHAT, "Chat Messages", NotificationManager.IMPORTANCE_HIGH)
                 .apply {
                     description = "New messages in your depot and vehicle threads"
                     enableVibration(true)
+                    // Two short pulses rather than one long buzz: a message is a
+                    // different event from an SLA breach, and the pocket should
+                    // be able to tell them apart without the phone coming out.
+                    vibrationPattern = longArrayOf(0, 40, 90, 40)
+                    setSound(chatSound, chatAttrs)
                 }
         )
         // Upload progress is a persistent, silent notification — LOW keeps it out
@@ -125,7 +139,14 @@ class App : Application(), ImageLoaderFactory {
 
     companion object {
         const val CHANNEL_JOB_CARDS = "job_cards"
-        const val CHANNEL_CHAT = "chat_messages"
+
+        /**
+         * Suffixed because a channel's sound and vibration are fixed at creation
+         * — Android ignores every later edit to an id it already knows. Giving
+         * chat its own tone therefore requires a new id, and anyone upgrading
+         * keeps the silent original until this one replaces it.
+         */
+        const val CHANNEL_CHAT = "chat_messages_v2"
         const val CHANNEL_CHAT_UPLOADS = "chat_uploads"
     }
 }

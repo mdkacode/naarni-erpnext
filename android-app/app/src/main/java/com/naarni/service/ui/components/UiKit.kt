@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -45,7 +47,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.naarni.service.ui.theme.AppSurface
 import com.naarni.service.ui.theme.BrandGradient
+import com.naarni.service.ui.theme.Semantic
 
 /** Rounded brand mark with a gradient fill — used on the login hero. */
 @Composable
@@ -60,51 +64,82 @@ fun BrandLogo(icon: ImageVector, size: Int = 72, modifier: Modifier = Modifier) 
     }
 }
 
-/** A compact stat card (label + value) for dashboards. */
+/**
+ * A compact stat card (label + value) for dashboards.
+ *
+ * The number is the content; the icon is a label for it. So the number carries
+ * the weight and the icon sits quiet in a neutral well — previously the icon had
+ * a brand-coloured chip behind it on every tile, which meant a row of four stats
+ * put four indigo blocks on screen and the figures themselves, in plain ink,
+ * were the least prominent thing on the card.
+ *
+ * A border rather than a shadow: on the near-black canvas a drop shadow has
+ * almost nothing to fall on, and a hairline is one draw instead of a render pass.
+ */
 @Composable
 fun StatTile(label: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        shadowElevation = 1.dp,
+        color = AppSurface.raised,
+        border = BorderStroke(1.dp, AppSurface.hairline),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
                 Modifier
-                    .size(36.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(10.dp)),
+                    .size(32.dp)
+                    .background(AppSurface.sunken, RoundedCornerShape(9.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(17.dp),
+                )
             }
-            Text(value, style = MaterialTheme.typography.headlineSmall)
+            Text(value, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-/** Workflow-state colour mapping (mirrors the web SPA's status palette). */
+/**
+ * Workflow-state colour.
+ *
+ * Reduced to the five meanings the [Semantic] ramp defines rather than a distinct
+ * hue per state. Eight named colours across nine workflow states asked the reader
+ * to memorise a legend; what they actually need to know while scanning a list is
+ * whether a card is finished, moving, waiting or stuck.
+ */
+@Composable
+@ReadOnlyComposable
 fun statusColor(state: String?): Color = when (state?.lowercase()) {
-    "open" -> Color(0xFF6366F1)
-    "wip", "work in progress" -> Color(0xFFF59E0B)
-    "awaiting customer approval" -> Color(0xFF8B5CF6)
-    "awaiting parts" -> Color(0xFFEAB308)
-    "parts fitted" -> Color(0xFF06B6D4)
-    "closure from technician", "verification pending" -> Color(0xFF0EA5E9)
-    "closed" -> Color(0xFF16A34A)
-    "reopened" -> Color(0xFFEF4444)
-    else -> Color(0xFF64748B)
+    "closed" -> Semantic.positive
+    "reopened" -> Semantic.critical
+    "wip", "work in progress", "parts fitted" -> Semantic.active
+    "awaiting customer approval", "awaiting parts" -> Semantic.caution
+    "open", "closure from technician", "verification pending" -> Semantic.active
+    else -> Semantic.idle
 }
 
-/** Priority / criticality colour mapping (Low → Urgent, plus force-close severities). */
+/**
+ * Priority / criticality colour.
+ *
+ * Shares the ramp with [statusColor] and [severityColor] on purpose: "Urgent" on
+ * a ticket and "Critical" on an alert are the same message to whoever is reading
+ * them, and they used to arrive in two different reds.
+ */
+@Composable
+@ReadOnlyComposable
 fun priorityColor(value: String?): Color = when (value?.lowercase()) {
-    "urgent", "critical" -> Color(0xFFEF4444)
-    "high", "major" -> Color(0xFFF97316)
-    "medium" -> Color(0xFFEAB308)
-    "low", "minor" -> Color(0xFF22C55E)
-    else -> Color(0xFF64748B)
+    "urgent", "critical" -> Semantic.critical
+    "high", "major" -> Semantic.caution
+    "medium" -> Semantic.caution
+    "low", "minor" -> Semantic.positive
+    else -> Semantic.idle
 }
 
 /** A small labelled pill for priority / criticality. */
@@ -112,7 +147,7 @@ fun priorityColor(value: String?): Color = when (value?.lowercase()) {
 fun PriorityPill(value: String?) {
     if (value.isNullOrBlank()) return
     val c = priorityColor(value)
-    Surface(color = c.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+    Surface(color = Semantic.tint(c), shape = RoundedCornerShape(50)) {
         Text(
             value,
             color = c,
@@ -137,7 +172,7 @@ fun MetaChip(icon: ImageVector, text: String, modifier: Modifier = Modifier, tin
 @Composable
 fun StatusChip(state: String?) {
     val c = statusColor(state)
-    Surface(color = c.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+    Surface(color = Semantic.tint(c), shape = RoundedCornerShape(50)) {
         Text(
             state ?: "—",
             color = c,
@@ -225,10 +260,13 @@ fun SkeletonBox(modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape
 }
 
 /** Severity → colour (warning/critical) used for alerts. */
+@Composable
+@ReadOnlyComposable
 fun severityColor(sev: String?): Color = when (sev?.lowercase()) {
-    "critical" -> Color(0xFFEF4444)
-    "warning" -> Color(0xFFF59E0B)
-    else -> Color(0xFF64748B)
+    "critical" -> Semantic.critical
+    "warning", "high", "major" -> Semantic.caution
+    "low", "minor" -> Semantic.positive
+    else -> Semantic.idle
 }
 
 /** A coloured severity pill (Warning / Critical). */
@@ -236,7 +274,7 @@ fun severityColor(sev: String?): Color = when (sev?.lowercase()) {
 fun SeverityPill(severity: String?) {
     if (severity.isNullOrBlank()) return
     val c = severityColor(severity)
-    Surface(color = c.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+    Surface(color = Semantic.tint(c), shape = RoundedCornerShape(50)) {
         Text(
             severity.replaceFirstChar { it.uppercase() },
             color = c,
@@ -267,11 +305,19 @@ fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifie
     ) {
         Box(
             Modifier
-                .size(72.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp)),
+                .size(64.dp)
+                .background(AppSurface.sunken, RoundedCornerShape(20.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
+            // Neutral, not brand. An empty state is the absence of content, and
+            // colouring its icon made "nothing here" the most saturated thing on
+            // the screen.
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp),
+            )
         }
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text(

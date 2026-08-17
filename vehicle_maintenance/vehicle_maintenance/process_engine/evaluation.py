@@ -218,7 +218,23 @@ def evaluate(
 
 	# ---------------------------------------------------------- free-form types
 	else:  # TEXT_SHORT, TEXT_LONG, DATE, DATETIME, SIGNATURE, LINK
+		# Either field. The app has two renderers for a text step and they do not
+		# agree about which one a typed answer belongs in: the list card posts it
+		# as `response`, the full-screen runner as `value`. Reading only `response`
+		# meant every serial, batch number and date typed on the runner — which is
+		# the screen an operator actually uses — was recorded as *unanswered*, so
+		# the submit gate demanded checks that had been filled in, and the work
+		# vanished from the record entirely.
+		#
+		# Accepting both is what rescues the batches already queued on handsets;
+		# they cannot be re-typed once they arrive.
 		raw = out["response"]
+		if raw in (None, ""):
+			raw = value
+			if isinstance(raw, str):
+				raw = raw.strip()
+			if raw not in (None, ""):
+				out["response"] = str(raw)
 		if raw in (None, ""):
 			return out
 		out["value_text"] = str(raw)

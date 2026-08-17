@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.rounded.AddAPhoto
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -114,7 +114,7 @@ fun BusPhotoGrid(
                 StampingCamera(
                     label = angle,
                     onClose = { activeAngle = null },
-                    onCaptured = { file ->
+                    onCaptured = { file, _ ->
                         activeAngle = null
                         scope.launch {
                             busy = true
@@ -139,7 +139,7 @@ fun BusPhotoGrid(
                 Box(Modifier.fillMaxWidth()) {
                     Text(img.angle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     IconButton(onClick = { viewer = null }, modifier = Modifier.align(Alignment.CenterEnd).size(24.dp)) {
-                        Icon(Icons.Default.Close, "Close")
+                        Icon(Icons.Rounded.Close, "Close")
                     }
                 }
                 AsyncImage(
@@ -154,7 +154,7 @@ fun BusPhotoGrid(
                 }
                 Box(Modifier.fillMaxWidth()) {
                     TextButton(onClick = { val a = img.angle; viewer = null; activeAngle = a }, modifier = Modifier.align(Alignment.CenterStart)) {
-                        Icon(Icons.Default.AddAPhoto, null); Text("  Replace")
+                        Icon(Icons.Rounded.AddAPhoto, null); Text("  Replace")
                     }
                     TextButton(
                         onClick = {
@@ -168,7 +168,7 @@ fun BusPhotoGrid(
                         },
                         modifier = Modifier.align(Alignment.CenterEnd),
                     ) {
-                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error)
                         Text("  Delete", color = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -214,13 +214,13 @@ private fun AngleSlot(angle: String, image: BusImage?, enabled: Boolean, onTap: 
                 }
                 if (image.is_primary == 1) {
                     Icon(
-                        Icons.Default.Star, "Primary",
+                        Icons.Rounded.Star, "Primary",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(18.dp),
                     )
                 }
             } else {
-                Icon(Icons.Default.AddAPhoto, "Add $angle photo", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Rounded.AddAPhoto, "Add $angle photo", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Text(

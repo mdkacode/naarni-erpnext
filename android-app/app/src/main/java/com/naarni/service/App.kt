@@ -13,10 +13,13 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.naarni.service.core.auth.SessionManager
 import com.naarni.service.core.chat.FrappeSocket
+import com.naarni.service.core.inspection.InspectionConnectivity
 import com.naarni.service.core.network.Network
 import com.naarni.service.data.chat.ChatDatabase
+import com.naarni.service.data.inspection.InspectionDatabase
 import com.naarni.service.data.repo.AuthRepository
 import com.naarni.service.data.repo.ChatRepository
+import com.naarni.service.data.repo.InspectionRepository
 import com.naarni.service.data.repo.JobCardRepository
 import com.naarni.service.data.repo.ProcessRepository
 import com.naarni.service.data.repo.RosterRepository
@@ -74,6 +77,9 @@ class App : Application(), ImageLoaderFactory {
         createUploadChannel()
         com.naarni.service.core.push.NotificationTones.ensureChannels(this)
         retireLegacyChannels()
+        // Process-wide, not screen-scoped: an inspection queued in a shed has to
+        // go up when the van reaches signal whether or not anyone opens the app.
+        container.connectivity.start()
     }
 
     /**
@@ -149,6 +155,18 @@ class AppContainer(context: Context) {
     val chatDb by lazy { ChatDatabase.build(appContext) }
     val chatDao by lazy { chatDb.chatDao() }
     val chatRepo by lazy { ChatRepository(api, chatDao, appContext, session) }
+
+    // ---- Inspections, offline ----
+    //
+    // Its own database, deliberately: unlike chat, a queued inspection may exist
+    // nowhere else, so it takes no destructive schema fallback and shares no
+    // fate with anything that does.
+    val inspectionDb by lazy { InspectionDatabase.build(appContext) }
+    val inspectionDao by lazy { inspectionDb.dao() }
+    val inspectionRepo by lazy { InspectionRepository(api, inspectionDao, appContext) }
+
+    /** Drains the queue the moment a network appears. Started from `App.onCreate`. */
+    val connectivity by lazy { InspectionConnectivity(appContext) }
 
     /**
      * One socket for the process, bound to the app lifecycle rather than to any

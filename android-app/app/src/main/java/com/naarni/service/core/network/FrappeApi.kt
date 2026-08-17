@@ -607,6 +607,55 @@ interface FrappeApi {
         @Query("name") name: String,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.RunReport>>
 
+    // ------------------------------------------------------------ offline sync
+    //
+    // The three calls that let an engineer work with no network at all. See
+    // `data/inspection/` for the store they drain, and the module docstring on
+    // `api/process_sync.py` for why a batch is a description of state rather
+    // than a list of operations.
+
+    /**
+     * Everything needed to run every permitted process offline, in one call.
+     *
+     * Fetched while there *is* a network, so that when there is not, the app
+     * already holds the definitions. Without this an engineer who opens the app
+     * for the first time inside a shed cannot start the inspection they are
+     * standing in front of.
+     */
+    @GET("api/method/vehicle_maintenance.api.process_sync.bootstrap")
+    suspend fun processBootstrap(
+        @Query("app_capability") appCapability: Int = 1,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessBootstrap>>
+
+    /**
+     * Push one handset-held inspection. Safe to send twice — and it will be.
+     *
+     * The batch goes as a single JSON field rather than as form parameters
+     * because it carries nested lists, and because one request that either
+     * lands whole or does not land at all is far easier to reason about on a
+     * link that drops mid-upload.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process_sync.sync_run")
+    suspend fun syncProcessRun(
+        @Field("payload") payload: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.SyncRunResponse>>
+
+    /** Attach a photo taken offline, keyed so a replayed upload cannot duplicate it. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process_sync.attach_photo_synced")
+    suspend fun attachProcessPhotoSynced(
+        @Field("run") run: String,
+        @Field("step_code") stepCode: String,
+        @Field("file_url") fileUrl: String,
+        @Field("client_uuid") clientUuid: String,
+        @Field("captured_at") capturedAt: String? = null,
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+        @Field("accuracy_m") accuracyM: Double? = null,
+        @Field("location_source") locationSource: String = "Unavailable",
+    ): FrappeWrap<Envelope<JsonObject>>
+
     // ══════════════════════════════════════════════════════════════════ Chat
 
     @GET("api/method/vehicle_maintenance.api.chat.list_rooms")

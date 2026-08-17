@@ -575,6 +575,156 @@ def get_run(name: str) -> dict:
 	return _ok(_serialise_run(frappe.get_doc("Process Run", name)))
 
 
+#: Fields whose change makes an answer a *different* answer.
+#:
+#: Replaying an offline batch must not re-fire a step's actions, or one dropped
+#: response would raise a second deviation and notify the supervisor twice for
+#: work the operator did once. `photo_count` is deliberately absent: a photo
+#: arriving later changes the row without changing the answer.
+_ANSWER_IDENTITY = (
+	"response",
+	"value_numeric",
+	"value_text",
+	"is_pass",
+	"is_skipped",
+	"skip_reason",
+	"remark",
+)
+
+#: Compared as numbers, not as values.
+#:
+#: Frappe's Float and Check columns are non-nullable, so a judged `None` is
+#: stored and read back as `0.0`. Comparing the two directly made *every* replay
+#: look like a changed answer — which is precisely the bug `_ANSWER_IDENTITY`
+#: exists to prevent, and it passed unnoticed until a test asserted `changed`
+#: rather than asserting the row count.
+_NUMERIC_IDENTITY = ("value_numeric", "is_pass", "is_skipped")
+
+
+def _same_answer(existing, row_values: dict) -> bool:
+	"""Whether the stored row already says exactly what this answer says."""
+	for field in _ANSWER_IDENTITY:
+		was, now = existing.get(field), row_values[field]
+		if field in _NUMERIC_IDENTITY:
+			if flt(was) != flt(now):
+				return False
+		elif (was or "") != (now or ""):
+			# Empty string and None are the same absence of a remark.
+			return False
+	return True
+
+
+def apply_answer(
+	doc,
+	definition,
+	step_code: str,
+	response: str | None = None,
+	value: float | str | None = None,
+	remark: str | None = None,
+	skipped: int = 0,
+	skip_reason: str | None = None,
+	seconds_spent: int | None = None,
+	answered_at=None,
+) -> dict:
+	"""Judge one answer and write it onto `doc` **in memory** — no save, no commit.
+
+	The single place an answer is turned into a result row. `save_step_result`
+	calls it once per request; `process_sync.sync_run` calls it once per queued
+	answer in a batch. Keeping one implementation is the point: two evaluators
+	would agree the day they were written and disagree by the time it mattered.
+
+	Args:
+	    doc: The `Process Run` document, loaded and open.
+	    definition: Its cached `Process Definition`.
+	    step_code: Which step this answers.
+	    answered_at: When the operator answered, for a batch replaying work done
+	        offline hours ago. Defaults to now, which is right for a live save.
+
+	Returns ``{row, judged, outcome, chosen, changed}``. `changed` is False when
+	the row already said exactly this, and the caller uses it to decide whether
+	the step's actions should fire — see `_ANSWER_IDENTITY`.
+	"""
+	step = definition.expanded_step(step_code)
+	if not step:
+		frappe.throw(_("Step '{0}' is not part of {1}.").format(step_code, definition.process_name))
+
+	photo_count = len([p for p in doc.photos or [] if p.step_code == step_code])
+	scan_count = len([s for s in doc.scans or [] if s.step_code == step_code])
+
+	if step["response_type"] == C.COMPUTED:
+		# Derived server-side from earlier answers — the client's posted value is
+		# ignored, so a computed result can never disagree with its inputs.
+		value = computed.evaluate_expression(step.get("computed_expression"), _answer_map(doc))
+		skipped = 0 if value is not None else skipped
+
+	judged = evaluation.evaluate(
+		step,
+		response=response,
+		value=value,
+		skipped=bool(cint(skipped)),
+		photo_count=photo_count,
+		scan_count=scan_count,
+	)
+
+	threshold = flt(frappe.db.get_single_value("Process Engine Settings", "fast_entry_threshold_pct") or 25)
+	row_values = {
+		"step_code": step["step_code"],
+		"stage": step.get("stage"),
+		"display_no": step.get("display_no"),
+		"section": step.get("section"),
+		"label": step.get("label"),
+		"response_type": step["response_type"],
+		"method_label": step.get("method_label"),
+		"unit": step.get("unit"),
+		"spec_summary": judged["spec_summary"],
+		"response": judged["response"],
+		"value_numeric": judged["value_numeric"],
+		"value_text": judged["value_text"],
+		"is_pass": 1 if judged["is_pass"] else 0,
+		"is_deviation": 1 if judged["is_deviation"] else 0,
+		"is_critical": 1 if judged["is_critical"] else 0,
+		"is_skipped": cint(skipped),
+		"skip_reason": skip_reason,
+		"remark": remark,
+		"weight": flt(step.get("weight")),
+		"answered_by": frappe.session.user,
+		"answered_at": answered_at or frappe.utils.now_datetime(),
+		"seconds_spent": cint(seconds_spent),
+		"entry_flag": scoring.entry_flag(step, seconds_spent, threshold),
+		"photo_count": photo_count,
+	}
+
+	existing = next((r for r in doc.results or [] if r.step_code == step_code), None)
+	changed = True
+	if existing:
+		changed = not _same_answer(existing, row_values)
+		existing.update(row_values)
+	else:
+		doc.append("results", row_values)
+
+	outcome = {"client_hints": [], "warnings": []}
+	if changed:
+		judged_with_meta = {**judged, **row_values, "is_answered": judged["is_answered"]}
+		outcome = engine_actions.dispatch(doc, step, judged_with_meta, step.get("actions") or [])
+
+	chosen = next(
+		(
+			o
+			for o in step.get("options") or []
+			if (o.get("value") or "").strip() == (judged["response"] or "").strip()
+		),
+		None,
+	)
+	return {
+		"row": row_values,
+		"judged": judged,
+		"outcome": outcome,
+		"chosen": chosen,
+		"changed": changed,
+		"step": step,
+	}
+
+
 @frappe.whitelist()
 def save_step_result(
 	run: str,
@@ -596,91 +746,32 @@ def save_step_result(
 	# Re-read inside the closure: a deadlock rolls the transaction back, so a
 	# retry must start from the run as it now is, not as it was.
 	def _apply():
-		# A Computed step overwrites both of these, which would otherwise make
-		# them closure-locals and unreadable on every *other* step.
-		nonlocal value, skipped
-
 		doc = frappe.get_doc("Process Run", run)
 		frappe.has_permission("Process Run", doc=doc, ptype="write", throw=True)
 		doc.ensure_open()
 
 		definition = frappe.get_cached_doc("Process Definition", doc.process_definition)
-		step = definition.expanded_step(step_code)
-		if not step:
-			frappe.throw(_("Step '{0}' is not part of {1}.").format(step_code, definition.process_name))
-
-		photo_count = len([p for p in doc.photos or [] if p.step_code == step_code])
-		scan_count = len([s for s in doc.scans or [] if s.step_code == step_code])
-
-		if step["response_type"] == C.COMPUTED:
-			# Derived server-side from earlier answers — the client's posted value is
-			# ignored, so a computed result can never disagree with its inputs.
-			value = computed.evaluate_expression(step.get("computed_expression"), _answer_map(doc))
-			skipped = 0 if value is not None else skipped
-
-		judged = evaluation.evaluate(
-			step,
+		applied = apply_answer(
+			doc,
+			definition,
+			step_code,
 			response=response,
 			value=value,
-			skipped=bool(cint(skipped)),
-			photo_count=photo_count,
-			scan_count=scan_count,
+			remark=remark,
+			skipped=skipped,
+			skip_reason=skip_reason,
+			seconds_spent=seconds_spent,
 		)
-
-		threshold = flt(
-			frappe.db.get_single_value("Process Engine Settings", "fast_entry_threshold_pct") or 25
-		)
-		row_values = {
-			"step_code": step["step_code"],
-			"stage": step.get("stage"),
-			"display_no": step.get("display_no"),
-			"section": step.get("section"),
-			"label": step.get("label"),
-			"response_type": step["response_type"],
-			"method_label": step.get("method_label"),
-			"unit": step.get("unit"),
-			"spec_summary": judged["spec_summary"],
-			"response": judged["response"],
-			"value_numeric": judged["value_numeric"],
-			"value_text": judged["value_text"],
-			"is_pass": 1 if judged["is_pass"] else 0,
-			"is_deviation": 1 if judged["is_deviation"] else 0,
-			"is_critical": 1 if judged["is_critical"] else 0,
-			"is_skipped": cint(skipped),
-			"skip_reason": skip_reason,
-			"remark": remark,
-			"weight": flt(step.get("weight")),
-			"answered_by": frappe.session.user,
-			"answered_at": frappe.utils.now_datetime(),
-			"seconds_spent": cint(seconds_spent),
-			"entry_flag": scoring.entry_flag(step, seconds_spent, threshold),
-			"photo_count": photo_count,
-		}
-
-		existing = next((r for r in doc.results or [] if r.step_code == step_code), None)
-		if existing:
-			existing.update(row_values)
-		else:
-			doc.append("results", row_values)
-
-		judged_with_meta = {**judged, **row_values, "is_answered": judged["is_answered"]}
-		outcome = engine_actions.dispatch(doc, step, judged_with_meta, step.get("actions") or [])
 
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
 
-		chosen = next(
-			(
-				o
-				for o in step.get("options") or []
-				if (o.get("value") or "").strip() == (judged["response"] or "").strip()
-			),
-			None,
-		)
+		judged, row_values = applied["judged"], applied["row"]
+		chosen, outcome = applied["chosen"], applied["outcome"]
 		return _ok(
 			{
 				"result": row_values,
-				"needs_photo": evaluation.photo_required(step, judged["is_pass"], chosen),
+				"needs_photo": evaluation.photo_required(applied["step"], judged["is_pass"], chosen),
 				"needs_remark": bool(chosen and cint(chosen.get("requires_remark"))) and not remark,
 				"client_hints": outcome["client_hints"],
 				"run": {

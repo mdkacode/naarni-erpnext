@@ -45,11 +45,22 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!--
+            Portrait only. Every screen in this app is a form, a checklist or a
+            thread, all of which are read down the page; and the people using it
+            are holding a phone in one hand with a battery pack in the other. A
+            landscape layout nobody designed is worse than no landscape at all.
+
+            `adjustResize` is what keeps the keyboard from covering the field
+            being typed into. It only works because the app no longer opts into
+            edge-to-edge — see MainActivity and themes.xml.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTop"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.NaarniService.Splash"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

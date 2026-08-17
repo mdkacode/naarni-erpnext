@@ -1055,7 +1055,10 @@ def verify_stage(
 				_finalise(doc, definition)
 
 		doc.save(ignore_permissions=True)
-		frappe.db.commit()
+		# A verification decision is the point of the request; it is persisted
+		# before answering so a dropped response never loses a sign-off somebody
+		# has already given. Same contract as every other write in this file.
+		frappe.db.commit()  # nosemgrep
 		return _ok(_serialise_run(doc), _("Stage {0}.").format(decision.lower()))
 
 	return with_deadlock_retry(_apply)

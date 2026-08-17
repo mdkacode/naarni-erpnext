@@ -849,4 +849,61 @@ interface FrappeApi {
         @Query("from_date") fromDate: String? = null,
         @Query("to_date") toDate: String? = null,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.MyAttendance>>
+
+    // ── Profile & onboarding ─────────────────────────────────────────────────
+    // The face is fetched from `profile.avatar`, not from a file path: pictures
+    // live in the private bucket, where the raw url is readable only by their
+    // owner. See ProfileRepository.avatarUrl.
+
+    /**
+     * A standalone private upload — no doctype to hang off.
+     *
+     * The other `uploadFile` attaches to a Job Card, and Frappe uses that
+     * attachment to decide who may read the file back. A profile picture has no
+     * such parent, which is exactly why it is served through `profile.avatar`
+     * rather than by its url.
+     */
+    @Multipart
+    @POST("api/method/upload_file")
+    suspend fun uploadStandaloneFile(
+        @Part file: MultipartBody.Part,
+        @Part("is_private") isPrivate: RequestBody,
+        @Part("folder") folder: RequestBody,
+    ): FrappeWrap<FileUploadData>
+
+    @GET("api/method/vehicle_maintenance.api.profile.get_my_profile")
+    suspend fun getMyProfile(): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.update_my_profile")
+    suspend fun updateMyProfile(
+        @Field("full_name") fullName: String? = null,
+        @Field("designation") designation: String? = null,
+        @Field("about") about: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.set_profile_photo")
+    suspend fun setProfilePhoto(
+        @Field("file_url") fileUrl: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @POST("api/method/vehicle_maintenance.api.profile.remove_profile_photo")
+    suspend fun removeProfilePhoto(): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @GET("api/method/vehicle_maintenance.api.profile.list_designations")
+    suspend fun listDesignations(
+        @Query("query") query: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.DesignationsPayload>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.set_notification_tones")
+    suspend fun setNotificationTones(
+        @Field("chat_tone") chatTone: String? = null,
+        @Field("alert_tone") alertTone: String? = null,
+        @Field("vibrate") vibrate: Int? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.TonesPayload>>
+
+    @POST("api/method/vehicle_maintenance.api.profile.snooze_profile_prompt")
+    suspend fun snoozeProfilePrompt(): FrappeWrap<Envelope<kotlinx.serialization.json.JsonObject>>
 }

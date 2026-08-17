@@ -68,63 +68,22 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        createNotificationChannel()
-        createChatChannels()
-    }
-
-    /** High-importance channel (custom sound + vibration) used by FCM push. */
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val mgr = getSystemService(NotificationManager::class.java) ?: return
-        val sound = Uri.parse("android.resource://$packageName/${R.raw.notify}")
-        val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        val channel = NotificationChannel(
-            CHANNEL_JOB_CARDS,
-            "Job Card Updates",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "Assignments, approvals, SLA alerts and status changes"
-            enableVibration(true)
-            vibrationPattern = longArrayOf(0, 200, 100, 200)
-            setSound(sound, attrs)
-        }
-        mgr.createNotificationChannel(channel)
+        // Chat and alert channels are owned by NotificationTones now: a channel's
+        // sound is fixed when it is created, so the chosen tone has to be part of
+        // the id. Everything else — the upload progress channel — stays here.
+        createUploadChannel()
+        com.naarni.service.core.push.NotificationTones.ensureChannels(this)
+        retireLegacyChannels()
     }
 
     /**
-     * Chat gets its own channels so a technician can silence depot banter without
-     * also silencing SLA and breakdown alerts. Importance is fixed at creation —
-     * Android will not let it be raised later — so messages start HIGH.
+     * Upload progress: persistent, silent, and nothing to do with tones.
+     *
+     * LOW keeps it out of the shade's alerting section and off the lock screen.
      */
-    private fun createChatChannels() {
+    private fun createUploadChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val mgr = getSystemService(NotificationManager::class.java) ?: return
-        // The silent first-generation chat channel. Left behind, it stays in the
-        // user's notification settings for ever as a dead entry they can toggle
-        // and get nothing from.
-        runCatching { mgr.deleteNotificationChannel("chat_messages") }
-        val chatSound = Uri.parse("android.resource://$packageName/${R.raw.msg_notify}")
-        val chatAttrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        mgr.createNotificationChannel(
-            NotificationChannel(CHANNEL_CHAT, "Chat Messages", NotificationManager.IMPORTANCE_HIGH)
-                .apply {
-                    description = "New messages in your depot and vehicle threads"
-                    enableVibration(true)
-                    // Two short pulses rather than one long buzz: a message is a
-                    // different event from an SLA breach, and the pocket should
-                    // be able to tell them apart without the phone coming out.
-                    vibrationPattern = longArrayOf(0, 40, 90, 40)
-                    setSound(chatSound, chatAttrs)
-                }
-        )
-        // Upload progress is a persistent, silent notification — LOW keeps it out
-        // of the shade's alerting section and off the lock screen.
         mgr.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_CHAT_UPLOADS,
@@ -133,8 +92,23 @@ class App : Application(), ImageLoaderFactory {
             ).apply {
                 description = "Progress for photos and videos being sent"
                 setShowBadge(false)
-            }
+            },
         )
+    }
+
+    /**
+     * Remove the channels this app used to create for chat and alerts.
+     *
+     * Left behind they stay in the person's notification settings for ever as
+     * dead rows they can toggle and get nothing from — and worse, two entries
+     * called "Chat Messages", only one of which does anything.
+     */
+    private fun retireLegacyChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val mgr = getSystemService(NotificationManager::class.java) ?: return
+        listOf("chat_messages", CHANNEL_CHAT, CHANNEL_JOB_CARDS).forEach {
+            runCatching { mgr.deleteNotificationChannel(it) }
+        }
     }
 
     companion object {
@@ -164,6 +138,12 @@ class AppContainer(context: Context) {
     val jobCardRepo by lazy { JobCardRepository(api) }
     val processRepo by lazy { ProcessRepository(api) }
     val rosterRepo by lazy { RosterRepository(api, appContext) }
+    val profileRepo by lazy {
+        com.naarni.service.data.repo.ProfileRepository(
+            api,
+            com.naarni.service.data.repo.UploadClient(api),
+        )
+    }
 
     // ---- Chat ----
     val chatDb by lazy { ChatDatabase.build(appContext) }

@@ -163,7 +163,10 @@ object ChatNotifications {
         // alert, which is exactly what it was before.
         val shortcutId = ChatShortcuts.ensure(context, room, roomTitle, sender)
 
-        val builder = NotificationCompat.Builder(context, App.CHANNEL_CHAT)
+        // Asked for, never hardcoded: the channel id carries the chosen tone,
+        // because Android fixes a channel's sound when it is created.
+        val channel = NotificationTones.channelId(context, NotificationTones.KIND_CHAT)
+        val builder = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setStyle(style)
             .setPriority(priority)

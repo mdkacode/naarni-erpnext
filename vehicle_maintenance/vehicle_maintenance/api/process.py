@@ -15,6 +15,7 @@ Design notes worth knowing before changing anything here:
 
 from __future__ import annotations
 
+import json
 import random
 import time
 
@@ -208,6 +209,7 @@ def _serialise_step(step: dict, app_capability: int) -> dict:
 		"response_type": step.get("response_type"),
 		"options": [_serialise_option(o) for o in step.get("options") or []],
 		"link_doctype": step.get("link_doctype"),
+		"allow_inline_create": cint(step.get("allow_inline_create")),
 		"computed_expression": step.get("computed_expression"),
 		"unit": step.get("unit"),
 		"min_value": flt(step.get("min_value")),
@@ -449,7 +451,16 @@ def start_run(
 		if existing:
 			return _ok(get_run(existing)["data"], _("Resumed existing run."))
 
-	if definition.identifier_pattern and identifier:
+	# `Auto Generate` means the subject has no number until the run creates one —
+	# a gate clerk has nothing to type before the truck is open, and inventing a
+	# number is how two people end up recording the same load twice. The pattern
+	# is a Frappe naming series here, not a regex, so it is never validated as one.
+	if definition.identifier_mode == "Auto Generate":
+		if not identifier:
+			from frappe.model.naming import make_autoname
+
+			identifier = make_autoname(definition.identifier_pattern or "RUN-.YYYY.-.#####")
+	elif definition.identifier_pattern and identifier:
 		import re
 
 		if not re.match(definition.identifier_pattern, identifier):
@@ -1984,3 +1995,147 @@ def run_report(name: str) -> dict:
 			"unmatched_photos": orphans,
 		}
 	)
+
+
+# --------------------------------------------------------------- link options
+
+#: Doctypes a Link step may pick from, and create into when the step allows it.
+#:
+#: An allowlist rather than "any doctype the step names", because inline create
+#: reaches `insert(ignore_permissions=True)` — pointing a step at `User` and
+#: letting the floor create rows would be a privilege escalation with extra
+#: steps. Each entry names the field the typed text becomes, and the flag that
+#: marks the row for review.
+LINK_OPTION_SOURCES = {
+	"Part": {
+		"label_field": "part_name",
+		"extra_fields": ["part_group", "spec", "stock_uom", "has_qr", "qty_per_bus"],
+		"search_fields": ["part_name", "part_code", "spec"],
+		"filters": {"is_active": 1},
+		"created_flag": "is_gate_created",
+		"order_by": "part_name asc",
+	},
+	"Material Source": {
+		"label_field": "source_name",
+		"extra_fields": ["source_type", "city"],
+		"search_fields": ["source_name", "city"],
+		"filters": {"is_active": 1},
+		"created_flag": "is_gate_created",
+		"order_by": "source_name asc",
+	},
+}
+
+
+def _link_spec(doctype: str) -> dict:
+	spec = LINK_OPTION_SOURCES.get(doctype)
+	if not spec:
+		frappe.throw(_("{0} cannot be picked from a step.").format(doctype))
+	return spec
+
+
+@frappe.whitelist()
+def link_options(doctype: str, txt: str = "", limit: int = 30) -> dict:
+	"""Searchable options for a `Link` step.
+
+	Generic on purpose: any process with a Link step gets a real picker instead
+	of the bare text box the runner used to fall back to. A blank `txt` returns
+	the head of the list so the sheet opens usable before a keystroke, which is
+	the same contract the rest of the app's pickers keep.
+	"""
+	_assert_engine_access()
+	spec = _link_spec(doctype)
+	limit = max(1, min(int(limit or 30), 50))
+	txt = (txt or "").strip()
+
+	fields = ["name", f"{spec['label_field']} as label", *spec["extra_fields"]]
+	or_filters = [[f, "like", f"%{txt}%"] for f in spec["search_fields"]] if txt else None
+	rows = frappe.get_all(
+		doctype,
+		filters=spec["filters"],
+		or_filters=or_filters,
+		fields=fields,
+		order_by=spec["order_by"],
+		limit_page_length=limit,
+	)
+	return _ok(
+		[
+			{
+				"value": r["name"],
+				"label": r.get("label") or r["name"],
+				"sublabel": " · ".join(
+					str(r[f]) for f in spec["extra_fields"][:2] if r.get(f) and not isinstance(r[f], int)
+				)
+				or None,
+				"badge": "QR" if cint(r.get("has_qr")) else None,
+				"meta": {f: r.get(f) for f in spec["extra_fields"]},
+			}
+			for r in rows
+		]
+	)
+
+
+@frappe.whitelist()
+def create_link_option(doctype: str, label: str, extra: str | None = None) -> dict:
+	"""Create a missing Link option from the runner.
+
+	An operator holding something the list does not have cannot be told to stop
+	and phone an administrator — but an unguarded create button is how a master
+	grows four spellings of one name. So the typed text is folded (lowercased,
+	punctuation stripped) against every existing row and a match returns *that*
+	row rather than a twin, and anything genuinely new is flagged for review.
+	"""
+	_assert_engine_access()
+	spec = _link_spec(doctype)
+
+	label = (label or "").strip()
+	if len(label) < 3:
+		frappe.throw(_("Name it something you will recognise later — at least three characters."))
+
+	folded = _fold(label)
+	twin = next(
+		(
+			row.name
+			for row in frappe.get_all(
+				doctype, fields=["name", f"{spec['label_field']} as label"], limit_page_length=0
+			)
+			if _fold(row.label) == folded
+		),
+		None,
+	)
+	if twin:
+		return _ok(
+			{"value": twin, "label": frappe.db.get_value(doctype, twin, spec["label_field"]), "created": 0},
+			_("We already have this one."),
+		)
+
+	payload = {"doctype": doctype, spec["label_field"]: label, spec["created_flag"]: 1}
+	if doctype == "Part":
+		# Part is named by its code, so an inline row needs one allocated.
+		from vehicle_maintenance.api.material import _next_gate_code
+
+		payload.update({"part_code": _next_gate_code(), "stock_uom": "Nos", "is_active": 1})
+	if extra:
+		allowed = set(spec["extra_fields"])
+		for key, value in json.loads(extra).items():
+			if key in allowed:
+				payload[key] = value
+
+	doc = frappe.get_doc(payload)
+	doc.insert(ignore_permissions=True)
+	return _ok({"value": doc.name, "label": label, "created": 1}, _("“{0}” added.").format(label))
+
+
+def _fold(text: str | None) -> str:
+	"""Lowercase, strip everything that is not a letter or a digit."""
+	import re
+
+	return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _assert_engine_access() -> None:
+	"""Anyone who may run a process may read and extend its pick lists."""
+	if frappe.session.user == "Administrator":
+		return
+	allowed = {*C.ENGINE_ROLES, "System Manager", *C.MATERIAL_LINK_ROLES}
+	if not set(frappe.get_roles(frappe.session.user)) & allowed:
+		raise frappe.PermissionError(_("You do not have access to this process."))

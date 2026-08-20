@@ -9,6 +9,12 @@ app_license = "MIT"
 # unregistered here to avoid double-firing. User validate enforces phone-based
 # auth: mandatory mobile_no, synthetic email fallback from the phone.
 doc_events: dict = {
+	# A finished Material Gate run becomes a line in the gate register. Lives as a
+	# listener rather than an edit to the engine, so nothing about one particular
+	# process leaks into `api.process` — the same rule Battery QC is held to.
+	"Process Run": {
+		"on_update": "vehicle_maintenance.material_movement.gate_process.on_run_update",
+	},
 	"User": {
 		"validate": "vehicle_maintenance.overrides.user.validate_user",
 	},
@@ -106,6 +112,11 @@ after_migrate = [
 	# transcribed from the GENE 13.5M weight sheet. Back-fills blank fields on
 	# items that already exist and overwrites nothing an admin has edited.
 	"vehicle_maintenance.patches.v2_6.seed_material_movement.execute",
+	# The gate as a Process Definition: the direction/item/serial/source/photo/
+	# weight run, its outcome set and scannable entity, the seed source list, and
+	# the first operators. Seeds the process only when the family has no version,
+	# so a plant edit is never overwritten.
+	"vehicle_maintenance.patches.v2_7.seed_material_gate_process.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

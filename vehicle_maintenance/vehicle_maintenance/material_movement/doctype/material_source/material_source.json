@@ -1,0 +1,33 @@
+{
+ "name": "Material Source",
+ "module": "Material Movement",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "field:source_name",
+ "track_changes": 1,
+ "description": "Where material came from, or where it is going. A deliberately light master: the gate needs a name it can autocomplete, and forcing a clerk through a full Supplier form to record one delivery is how gate notes stop being written.",
+ "field_order": ["source_name", "source_type", "column_break_meta", "city", "is_active", "sb_contact", "contact_person", "contact_phone", "column_break_flags", "is_gate_created", "notes"],
+ "fields": [
+  {"fieldname": "source_name", "label": "Name", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1},
+  {"fieldname": "source_type", "label": "Type", "fieldtype": "Select", "options": "Supplier\nPlant\nCustomer\nJob Work\nTransporter\nScrap Vendor\nOther", "default": "Supplier", "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "column_break_meta", "fieldtype": "Column Break"},
+  {"fieldname": "city", "label": "City", "fieldtype": "Data", "in_list_view": 1},
+  {"fieldname": "is_active", "label": "Active", "fieldtype": "Check", "default": "1"},
+  {"fieldname": "sb_contact", "fieldtype": "Section Break", "label": "Contact"},
+  {"fieldname": "contact_person", "label": "Contact Person", "fieldtype": "Data"},
+  {"fieldname": "contact_phone", "label": "Contact Phone", "fieldtype": "Data"},
+  {"fieldname": "column_break_flags", "fieldtype": "Column Break"},
+  {"fieldname": "is_gate_created", "label": "Created at the Gate", "fieldtype": "Check", "read_only": 1, "in_standard_filter": 1, "description": "Added from the runner by an operator. Filter on this to review what the floor added."},
+  {"fieldname": "notes", "label": "Notes", "fieldtype": "Small Text"}
+ ],
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+  {"role": "Material Supervisor", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+  {"role": "Material Gate Operator", "read": 1, "create": 1},
+  {"role": "Process Operator", "read": 1, "create": 1},
+  {"role": "Material Viewer", "read": 1}
+ ],
+ "sort_field": "source_name",
+ "sort_order": "ASC",
+ "title_field": "source_name"
+}

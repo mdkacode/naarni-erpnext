@@ -31,6 +31,10 @@ SCAN = "Scan"
 SIGNATURE = "Signature"
 LINK = "Link"
 SECTION_NOTE = "Section Note"
+#: A weight typed in KG next to a photograph of the scale. The app reads the
+#: number off the photo with on-device OCR and pre-fills the box; the operator
+#: confirms or corrects it. Capability 2 — see STEP_TYPE_CAPABILITY below.
+WEIGHT_PHOTO = "Weight from Photo"
 
 RESPONSE_TYPES = (
 	CHOICE,
@@ -49,10 +53,11 @@ RESPONSE_TYPES = (
 	SIGNATURE,
 	LINK,
 	SECTION_NOTE,
+	WEIGHT_PHOTO,
 )
 
 #: Types whose answer is a number held in `value_numeric`.
-NUMERIC_TYPES = (NUMBER, NUMBER_IN_RANGE, NUMBER_WITH_TOLERANCE, COMPUTED)
+NUMERIC_TYPES = (NUMBER, NUMBER_IN_RANGE, NUMBER_WITH_TOLERANCE, COMPUTED, WEIGHT_PHOTO)
 
 #: Types that carry a genuine pass/fail judgement and therefore score.
 JUDGED_TYPES = (CHOICE, CHOICE_MULTI, YES_NO, *NUMERIC_TYPES)
@@ -80,6 +85,10 @@ STEP_TYPE_CAPABILITY = {
 	SIGNATURE: 1,
 	LINK: 1,
 	COMPUTED: 1,
+	# Level 2: needs an app that bundles the on-device OCR model. An older build
+	# reports capability 1, so the server marks this step unsupported and the
+	# runner shows a read-only card with an update prompt rather than crashing.
+	WEIGHT_PHOTO: 2,
 }
 
 # ---------------------------------------------------------------- pass conditions
@@ -151,6 +160,12 @@ ROLE_VERIFIER = "Process Verifier"
 ROLE_VIEWER = "Process Viewer"
 
 ENGINE_ROLES = (ROLE_AUTHOR, ROLE_OPERATOR, ROLE_VERIFIER, ROLE_VIEWER)
+
+#: Roles that may read and extend a Link step's pick list without holding an
+#: engine role — the gate staff, who run the material process but are not
+#: process authors. Kept here so `api.process` does not have to import from a
+#: sibling feature module.
+MATERIAL_LINK_ROLES = ("Material Gate Operator", "Material Supervisor")
 
 # ---------------------------------------------------------------- scan parsing
 

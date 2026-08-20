@@ -102,6 +102,10 @@ after_migrate = [
 	# The pack number is digits; raise the digits keypad for it. Fills a blank
 	# only, so an admin's own choice in Desk survives the next migrate.
 	"vehicle_maintenance.patches.v2_4.battery_qc_number_pad.execute",
+	# Back-fills `Process Operator` for staff who predate the automatic grant.
+	# Without it, uploading an inspection photo is refused by Frappe's own
+	# upload_file — and the engineer only finds out when somebody goes looking.
+	"vehicle_maintenance.patches.v2_6.grant_operator_to_everyone.execute",
 	# Material gate: the two plants, the 11 catalogue groups and the 151 items
 	# transcribed from the GENE 13.5M weight sheet. Back-fills blank fields on
 	# items that already exist and overwrites nothing an admin has edited.

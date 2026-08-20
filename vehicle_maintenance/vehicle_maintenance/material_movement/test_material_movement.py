@@ -99,7 +99,9 @@ class MaterialGateTestCase(FrappeTestCase):
 		from vehicle_maintenance.patches.v2_6 import seed_material_movement
 
 		seed_material_movement.execute()
-		frappe.db.commit()
+		# nosemgrep — FrappeTestCase rolls back once per class, not per test, so a
+		# class-level fixture has to be committed or it vanishes mid-suite.
+		frappe.db.commit()  # nosemgrep
 
 	def setUp(self):
 		frappe.set_user(OPERATOR)

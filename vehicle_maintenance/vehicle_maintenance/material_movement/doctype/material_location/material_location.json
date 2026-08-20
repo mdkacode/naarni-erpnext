@@ -1,0 +1,42 @@
+{
+ "name": "Material Location",
+ "module": "Material Movement",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "field:location_code",
+ "track_changes": 1,
+ "description": "A plant or store whose gate records material movements. Deliberately separate from Depot: a depot services buses and carries service engineers and a duty geofence, a plant builds them, and merging the two would put 'Hubli - Bus Manufacturing Plant' into every depot picker in the roster and job-card flows.",
+ "field_order": [
+  "location_code", "location_name", "plant_type",
+  "column_break_status", "is_active", "city", "state",
+  "sb_address", "address", "gates",
+  "sb_geo", "latitude", "longitude", "column_break_geo", "geofence_radius_m", "depot"
+ ],
+ "fields": [
+  {"fieldname": "location_code", "label": "Location Code", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1, "description": "Short uppercase code, e.g. HUBLI."},
+  {"fieldname": "location_name", "label": "Location Name", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "plant_type", "label": "Plant Type", "fieldtype": "Select", "options": "Bus Manufacturing\nBattery Manufacturing\nAssembly\nWarehouse\nService Depot\nOther", "default": "Other", "in_list_view": 1},
+  {"fieldname": "column_break_status", "fieldtype": "Column Break"},
+  {"fieldname": "is_active", "label": "Active", "fieldtype": "Check", "default": "1"},
+  {"fieldname": "city", "label": "City", "fieldtype": "Data"},
+  {"fieldname": "state", "label": "State", "fieldtype": "Data"},
+  {"fieldname": "sb_address", "fieldtype": "Section Break", "label": "Address & Gates"},
+  {"fieldname": "address", "label": "Address", "fieldtype": "Small Text"},
+  {"fieldname": "gates", "label": "Gates", "fieldtype": "Small Text", "description": "One gate name per line. Offered as a dropdown at the gate; free text stays allowed because a new gate opens faster than a master is edited."},
+  {"fieldname": "sb_geo", "fieldtype": "Section Break", "label": "Geo"},
+  {"fieldname": "latitude", "label": "Latitude", "fieldtype": "Float", "precision": "6"},
+  {"fieldname": "longitude", "label": "Longitude", "fieldtype": "Float", "precision": "6"},
+  {"fieldname": "column_break_geo", "fieldtype": "Column Break"},
+  {"fieldname": "geofence_radius_m", "label": "Geofence Radius (m)", "fieldtype": "Int", "default": "500", "description": "Advisory only. A movement captured outside it is flagged for the supervisor, never refused - a gate is often a hundred metres from where the phone gets a fix."},
+  {"fieldname": "depot", "label": "Linked Depot", "fieldtype": "Link", "options": "Depot", "description": "Optional. Set when this plant is co-located with a service depot."}
+ ],
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
+  {"role": "Material Supervisor", "read": 1, "export": 1, "report": 1},
+  {"role": "Material Gate Operator", "read": 1},
+  {"role": "Material Viewer", "read": 1}
+ ],
+ "sort_field": "location_name",
+ "sort_order": "ASC",
+ "title_field": "location_name"
+}

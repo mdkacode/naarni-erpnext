@@ -1,0 +1,35 @@
+{
+ "name": "Material Movement Photo",
+ "module": "Material Movement",
+ "doctype": "DocType",
+ "istable": 1,
+ "engine": "InnoDB",
+ "editable_grid": 1,
+ "description": "One stamped photograph. Photos live on the parent and POINT AT an item row via item_row rather than nesting inside it, because Frappe has no grandchild table - the same shape Process Run Photo uses against step_code.",
+ "field_order": [
+  "file_url", "kind", "item_row", "caption",
+  "column_break_who", "captured_by", "captured_at", "server_received_at",
+  "sb_geo", "latitude", "longitude", "accuracy_m",
+  "column_break_flags", "is_stamped", "client_uuid"
+ ],
+ "fields": [
+  {"fieldname": "file_url", "label": "Photo", "fieldtype": "Attach Image", "reqd": 1, "in_list_view": 1, "columns": 3},
+  {"fieldname": "kind", "label": "Kind", "fieldtype": "Select", "options": "Item\nDocument\nVehicle\nGate\nDamage", "default": "Item", "in_list_view": 1, "columns": 1},
+  {"fieldname": "item_row", "label": "Item Row", "fieldtype": "Data", "search_index": 1, "in_list_view": 1, "columns": 2, "description": "The row_uuid of the Material Movement Item this photo evidences. Blank for header photos - the truck, the challan, the gate."},
+  {"fieldname": "caption", "label": "Caption", "fieldtype": "Data", "in_list_view": 1, "columns": 2},
+  {"fieldname": "column_break_who", "fieldtype": "Column Break"},
+  {"fieldname": "captured_by", "label": "Captured By", "fieldtype": "Link", "options": "User"},
+  {"fieldname": "captured_at", "label": "Captured At", "fieldtype": "Datetime", "description": "When the shutter fired on the phone - not when the server received it. The two differ by hours when a gate is offline."},
+  {"fieldname": "server_received_at", "label": "Server Received At", "fieldtype": "Datetime", "read_only": 1},
+  {"fieldname": "sb_geo", "fieldtype": "Section Break", "label": "Where"},
+  {"fieldname": "latitude", "label": "Latitude", "fieldtype": "Float", "precision": "6"},
+  {"fieldname": "longitude", "label": "Longitude", "fieldtype": "Float", "precision": "6"},
+  {"fieldname": "accuracy_m", "label": "Accuracy (m)", "fieldtype": "Float"},
+  {"fieldname": "column_break_flags", "fieldtype": "Column Break"},
+  {"fieldname": "is_stamped", "label": "Stamped", "fieldtype": "Check", "default": "1", "description": "Date-time, lat/long and the capturing user's name burned into the pixels."},
+  {"fieldname": "client_uuid", "label": "Client UUID", "fieldtype": "Data", "search_index": 1}
+ ],
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC"
+}

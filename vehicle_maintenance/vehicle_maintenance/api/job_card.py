@@ -1158,7 +1158,9 @@ def list_parts(part_group: str = "", txt: str = "", limit: int = 20) -> dict:
 	rows = frappe.get_all(
 		"Part",
 		filters=filters,
-		fields=["name", "part_name", "part_group", "uom"],
+		# `stock_uom` is the column; the app's PartItem DTO reads `uom`, so it is
+		# aliased rather than renamed on either side.
+		fields=["name", "part_name", "part_group", "stock_uom as uom"],
 		order_by="part_name asc",
 		limit_page_length=int(limit or 20),
 	)

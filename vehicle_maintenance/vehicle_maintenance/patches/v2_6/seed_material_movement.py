@@ -17,6 +17,14 @@ import frappe
 from vehicle_maintenance.material_movement import catalogue
 
 # (location_code, location_name, plant_type, city, state, gates)
+#
+# Coordinates are deliberately NOT seeded. The geofence is advisory — it flags a
+# movement recorded away from the plant for the supervisor — and a guessed
+# city-centre coordinate would sit kilometres from the actual gate and flag
+# every single movement "Outside", which is worse than the honest "Unknown" a
+# blank produces. An admin sets latitude/longitude on the Material Location form
+# once, standing at the gate, and the advisory starts working from that moment
+# with no deploy.
 LOCATIONS = [
 	(
 		"HUBLI",

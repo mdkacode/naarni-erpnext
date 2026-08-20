@@ -79,6 +79,14 @@ Fields: `location_code`, `location_name`, `plant_type`, `city`, `state`,
 
 Adding a third plant is a Desk form, not a deployment.
 
+**One setup step after the first deploy.** Latitude and longitude are seeded
+blank on purpose, so `geofence_status` reads `Unknown` until somebody fills them
+in. A guessed city-centre coordinate would sit kilometres from the actual gate
+and flag every movement `Outside`, which is worse than an honest `Unknown`. An
+admin opens each Material Location once — ideally standing at the gate — sets the
+two numbers, and the advisory starts working with no deploy. The fence is never
+a block either way (§7.4).
+
 ---
 
 ## 4. Roles

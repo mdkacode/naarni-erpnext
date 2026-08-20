@@ -438,10 +438,15 @@ def search_items(txt: str = "", group: str = "", limit: int = MAX_SUGGESTIONS) -
 		results.extend(_fields(rows, recent=False))
 		seen.update(r["value"] for r in results)
 
-	if len(results) < limit:
+	# Top up from the catalogue ONLY on a blank query. Padding a *search* is how
+	# "8.7" comes back as two windshields followed by thirty-eight unrelated
+	# items, which buries the answer under the thing the clerk did not ask for.
+	# On a blank query the padding is the whole point: the sheet opens usable
+	# before a keystroke.
+	if not txt and len(results) < limit:
 		filler = frappe.get_all(
 			"Part",
-			filters=base + ([["name", "not in", list(seen)]] if seen else []),
+			filters=[*base, ["name", "not in", list(seen)]] if seen else base,
 			fields=fields,
 			order_by="part_name asc",
 			limit_page_length=limit - len(results),

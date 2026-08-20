@@ -423,6 +423,23 @@ class TestPermissions(MaterialGateTestCase):
 		results = material.search_items()["data"]
 		self.assertGreater(len(results), 0)
 
+	def test_a_typed_search_is_not_padded_with_unrelated_items(self):
+		"""A search returns matches only — never matches topped up from the catalogue.
+
+		Padding a blank query is the point: the sheet opens usable before a
+		keystroke. Padding a *typed* one buries the answer, which is what made
+		"8.7" come back as two windshields followed by thirty-eight unrelated
+		items.
+		"""
+		hits = material.search_items(txt="8.7")["data"]
+		self.assertEqual({r["value"] for r in hits}, {"EXT-012", "EXT-013"})
+
+		# …while a blank query still opens populated.
+		self.assertGreater(len(material.search_items()["data"]), len(hits))
+
+	def test_a_search_that_matches_nothing_returns_nothing(self):
+		self.assertEqual(material.search_items(txt="zzz-no-such-item-zzz")["data"], [])
+
 	def test_the_item_picker_searches_code_name_and_spec_together(self):
 		by_name = {r["value"] for r in material.search_items(txt="Windshield")["data"]}
 		self.assertIn("EXT-012", by_name)

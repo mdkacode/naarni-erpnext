@@ -114,14 +114,85 @@
       "fieldname": "image",
       "label": "Image",
       "fieldtype": "Attach Image"
+    },
+    {
+      "fieldname": "sec_gate",
+      "fieldtype": "Section Break",
+      "label": "Gate & Manufacturing"
+    },
+    {
+      "fieldname": "has_qr",
+      "label": "Carries a QR / Serial Label",
+      "fieldtype": "Check",
+      "description": "Default for the material gate: when set, the app opens the scanner as soon as this item is picked. A default, not a rule — an operator may record a serial on any item, and may move a labelled item that arrived without a readable label."
+    },
+    {
+      "fieldname": "qty_per_bus",
+      "label": "Qty per Bus",
+      "fieldtype": "Float",
+      "precision": "3",
+      "description": "Quantity stated on the engineering weight sheet. Pre-fills the gate's quantity box; never limits it."
+    },
+    {
+      "fieldname": "column_break_gate",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "spec",
+      "label": "Specification",
+      "fieldtype": "Data",
+      "description": "Short spec line, e.g. 'Glass, 8.7 mm'. Searched by the item picker, so '8.7' finds both windshields."
+    },
+    {
+      "fieldname": "sheet_ref",
+      "label": "Source Sheet Ref",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "description": "Line number(s) in the GENE 13.5M weight sheet this item was transcribed from."
+    },
+    {
+      "fieldname": "is_gate_created",
+      "label": "Created at the Gate",
+      "fieldtype": "Check",
+      "read_only": 1,
+      "description": "Added inline by an operator because the item was not in the catalogue. Filter on this to review what the floor invented."
     }
   ],
   "permissions": [
-    {"role": "Depot Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1, "export": 1},
-    {"role": "Service Engineer", "read": 1, "write": 1, "create": 1, "delete": 0, "report": 1},
-    {"role": "Technician", "read": 1},
-    {"role": "Central Ops", "read": 1, "write": 0, "create": 0, "delete": 0, "report": 1, "export": 1},
-    {"role": "Customer", "read": 0}
+    {
+      "role": "Depot Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "report": 1,
+      "export": 1
+    },
+    {
+      "role": "Service Engineer",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 0,
+      "report": 1
+    },
+    {
+      "role": "Technician",
+      "read": 1
+    },
+    {
+      "role": "Central Ops",
+      "read": 1,
+      "write": 0,
+      "create": 0,
+      "delete": 0,
+      "report": 1,
+      "export": 1
+    },
+    {
+      "role": "Customer",
+      "read": 0
+    }
   ],
   "sort_field": "modified",
   "sort_order": "DESC",

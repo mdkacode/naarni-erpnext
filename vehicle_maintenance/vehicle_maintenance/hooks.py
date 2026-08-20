@@ -51,6 +51,9 @@ permission_query_conditions = {
 	# operator sees only their own — enforced here so every endpoint touching
 	# Process Run inherits it, rather than each one remembering to filter.
 	"Process Run": "vehicle_maintenance.process_engine.doctype.process_run.process_run.get_permission_query_conditions",
+	# Same split at the material gate: a supervisor sees the plant's movements, an
+	# operator sees the ones they recorded.
+	"Material Movement": "vehicle_maintenance.material_movement.doctype.material_movement.material_movement.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -58,6 +61,7 @@ has_permission = {
 	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.has_permission",
 	"VM Daily Status": "vehicle_maintenance.fleet_service.doctype.vm_daily_status.vm_daily_status.has_permission",
 	"Process Run": "vehicle_maintenance.process_engine.doctype.process_run.process_run.has_permission",
+	"Material Movement": "vehicle_maintenance.material_movement.doctype.material_movement.material_movement.has_permission",
 }
 
 # Idempotent seeders run after every migrate. Each function checks existence
@@ -98,6 +102,10 @@ after_migrate = [
 	# The pack number is digits; raise the digits keypad for it. Fills a blank
 	# only, so an admin's own choice in Desk survives the next migrate.
 	"vehicle_maintenance.patches.v2_4.battery_qc_number_pad.execute",
+	# Material gate: the two plants, the 11 catalogue groups and the 151 items
+	# transcribed from the GENE 13.5M weight sheet. Back-fills blank fields on
+	# items that already exist and overwrites nothing an admin has edited.
+	"vehicle_maintenance.patches.v2_6.seed_material_movement.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -124,6 +132,12 @@ APP_ROLES = [
 	# Owns the Battery Assembly QC process specifically: holds Process Author but
 	# is listed in that process's author_roles, so it cannot edit Vehicle PDI.
 	"Battery QA Admin",
+	# Material gate (inward/outward). Operator records, supervisor verifies —
+	# separate roles because a movement is verified by somebody other than the
+	# person who recorded it.
+	"Material Gate Operator",
+	"Material Supervisor",
+	"Material Viewer",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.

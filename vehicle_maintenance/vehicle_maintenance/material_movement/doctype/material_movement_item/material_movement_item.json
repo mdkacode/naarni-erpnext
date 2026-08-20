@@ -1,0 +1,43 @@
+{
+ "name": "Material Movement Item",
+ "module": "Material Movement",
+ "doctype": "DocType",
+ "istable": 1,
+ "engine": "InnoDB",
+ "editable_grid": 1,
+ "description": "One catalogued item on one gate movement: what it is, how much of it, what condition it arrived in, and the serial it carries. Keyed on row_uuid so a retried save updates the row it created rather than adding a second one.",
+ "field_order": [
+  "row_uuid", "item", "item_name", "item_group",
+  "column_break_qty", "qty", "uom", "expected_qty", "condition",
+  "sb_identity", "has_qr", "qr_code", "qr_source", "qr_scanned_at",
+  "column_break_batch", "batch_no", "mfg_date", "is_new_item",
+  "sb_evidence", "photo_count", "no_photo_reason", "remarks"
+ ],
+ "fields": [
+  {"fieldname": "row_uuid", "label": "Row UUID", "fieldtype": "Data", "read_only": 1, "search_index": 1, "description": "Client-generated idempotency key. The server upserts on this, never on row position."},
+  {"fieldname": "item", "label": "Item", "fieldtype": "Link", "options": "Part", "reqd": 1, "in_list_view": 1, "columns": 3},
+  {"fieldname": "item_name", "label": "Item Name", "fieldtype": "Data", "in_list_view": 1, "columns": 3, "description": "Denormalised at write time, so the row still reads correctly if the master is later renamed."},
+  {"fieldname": "item_group", "label": "Group", "fieldtype": "Data"},
+  {"fieldname": "column_break_qty", "fieldtype": "Column Break"},
+  {"fieldname": "qty", "label": "Quantity", "fieldtype": "Float", "reqd": 1, "default": "1", "in_list_view": 1, "columns": 1, "precision": "3"},
+  {"fieldname": "uom", "label": "UOM", "fieldtype": "Data", "in_list_view": 1, "columns": 1},
+  {"fieldname": "expected_qty", "label": "Expected Qty", "fieldtype": "Float", "precision": "3", "description": "Sheet quantity per bus. A hint that pre-fills the box - never a limit."},
+  {"fieldname": "condition", "label": "Condition", "fieldtype": "Select", "options": "OK\nDamaged\nShort\nExcess\nRejected", "default": "OK", "in_list_view": 1, "columns": 1},
+  {"fieldname": "sb_identity", "fieldtype": "Section Break", "label": "Identity"},
+  {"fieldname": "has_qr", "label": "Item Carries a QR", "fieldtype": "Check", "description": "Copied from the item master at capture time."},
+  {"fieldname": "qr_code", "label": "QR / Serial No", "fieldtype": "Data", "search_index": 1},
+  {"fieldname": "qr_source", "label": "QR Source", "fieldtype": "Select", "options": "\nScanned\nTyped", "description": "An audit cares which. A typed serial is a claim; a scanned one is a reading."},
+  {"fieldname": "qr_scanned_at", "label": "Captured At", "fieldtype": "Datetime"},
+  {"fieldname": "column_break_batch", "fieldtype": "Column Break"},
+  {"fieldname": "batch_no", "label": "Batch", "fieldtype": "Data", "search_index": 1},
+  {"fieldname": "mfg_date", "label": "Mfg Date", "fieldtype": "Date"},
+  {"fieldname": "is_new_item", "label": "Item Created at the Gate", "fieldtype": "Check", "read_only": 1},
+  {"fieldname": "sb_evidence", "fieldtype": "Section Break", "label": "Evidence"},
+  {"fieldname": "photo_count", "label": "Photos", "fieldtype": "Int", "read_only": 1, "in_list_view": 1, "columns": 1},
+  {"fieldname": "no_photo_reason", "label": "Reason for No Photo", "fieldtype": "Select", "options": "\nSealed packaging\nPoor light\nCamera unavailable\nBulk item\nOther"},
+  {"fieldname": "remarks", "label": "Remarks", "fieldtype": "Small Text"}
+ ],
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC"
+}

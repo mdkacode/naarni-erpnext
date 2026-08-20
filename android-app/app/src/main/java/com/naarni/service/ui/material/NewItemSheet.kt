@@ -1,6 +1,13 @@
 package com.naarni.service.ui.material
 
 import androidx.compose.foundation.layout.Arrangement
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.components.SmartSelect
+import com.naarni.service.ui.components.HairlineDivider
+import com.naarni.service.data.dto.SuggestionItem
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -62,12 +69,16 @@ fun NewItemSheet(
     var hasQr by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+      Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+        // Body scrolls, action row is pinned — see the note in ItemEditorSheet.
+        // With eleven catalogue groups and seven units this sheet is taller than
+        // a phone, and "Add item" was falling off the bottom edge.
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp)
-                .navigationBarsPadding(),
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Add a new item", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -86,18 +97,22 @@ fun NewItemSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Group", style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    groups.forEach { option ->
-                        FilterChip(
-                            selected = group == option.name,
-                            onClick = { group = if (group == option.name) "" else option.name },
-                            label = { Text(option.part_group_name.ifBlank { option.name }) },
-                        )
-                    }
-                }
-            }
+            // A searchable picker, not a wall of chips. The Part Group master runs
+            // to fifty-odd rows once the service catalogue is counted, and laying
+            // those out as chips buried every control beneath them.
+            SmartSelect(
+                label = "Group",
+                value = groups.firstOrNull { it.name == group }
+                    ?.let { SuggestionItem(value = it.name, label = it.part_group_name.ifBlank { it.name }) },
+                placeholder = "Pick a group",
+                fetch = { query ->
+                    groups.filter {
+                        query.isBlank() || it.part_group_name.contains(query, ignoreCase = true)
+                    }.map { SuggestionItem(value = it.name, label = it.part_group_name.ifBlank { it.name }) }
+                },
+                onSelect = { group = it.value },
+                fetchOnOpen = true,
+            )
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Unit", style = MaterialTheme.typography.labelLarge)
@@ -124,15 +139,24 @@ fun NewItemSheet(
                 Switch(checked = hasQr, onCheckedChange = { hasQr = it })
             }
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                Button(
-                    onClick = { onCreate(name.trim(), group, uom, hasQr) },
-                    enabled = name.trim().length >= 3 && !saving,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Add item") }
-            }
         }
+
+        HairlineDivider()
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(AppSurface.raised)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+            Button(
+                onClick = { onCreate(name.trim(), group, uom, hasQr) },
+                enabled = name.trim().length >= 3 && !saving,
+                modifier = Modifier.weight(1f),
+            ) { Text("Add item") }
+        }
+      }
     }
 }
 

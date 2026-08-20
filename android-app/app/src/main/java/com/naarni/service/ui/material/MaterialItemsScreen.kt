@@ -1,6 +1,9 @@
 package com.naarni.service.ui.material
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,6 +66,7 @@ import com.naarni.service.data.repo.MaterialRepository
 import com.naarni.service.ui.components.AppBar
 import com.naarni.service.ui.components.BarcodeScannerScreen
 import com.naarni.service.ui.components.EmptyState
+import com.naarni.service.ui.components.HairlineDivider
 import com.naarni.service.ui.components.LoadingOverlay
 import com.naarni.service.ui.components.PhotoStrip
 import com.naarni.service.ui.components.ReviewablePhoto
@@ -707,12 +711,18 @@ private fun ItemEditorSheet(
     var suggestions by remember { mutableStateOf<List<GateItemSuggestion>>(emptyList()) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+      Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+        // The body scrolls; the buttons do not.
+        //
+        // Without this the sheet was a plain Column taller than the screen, so
+        // "Save item" sat below the bottom edge with no way to reach it — the
+        // one control the whole sheet exists for was the one you could not press.
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp)
-                .navigationBarsPadding(),
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
@@ -821,12 +831,21 @@ private fun ItemEditorSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                Button(onClick = onSave, enabled = row.isValid, modifier = Modifier.weight(1f)) {
-                    Text("Save item")
-                }
+        }
+
+        HairlineDivider()
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(AppSurface.raised)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+            Button(onClick = onSave, enabled = row.isValid, modifier = Modifier.weight(1f)) {
+                Text("Save item")
             }
         }
+      }
     }
 }

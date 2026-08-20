@@ -17,6 +17,7 @@ coroutines = "1.9.0"
 coil = "2.7.0"
 camerax = "1.4.2"
 mlkitBarcode = "17.3.0"   # bundled model — decodes with no Play Services and no network          # 1.4.0+ ships 16 KB page-size-aligned native libs
+mlkitTextRecognition = "16.0.1"  # bundled model — reads the scale display offline
 playLocation = "21.3.0"
 securityCrypto = "1.1.0-alpha06"
 datastore = "1.1.1"
@@ -77,6 +78,7 @@ media3-transformer = { group = "androidx.media3", name = "media3-transformer", v
 media3-effect = { group = "androidx.media3", name = "media3-effect", version.ref = "media3" }
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
 mlkit-barcode = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 play-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playLocation" }
 
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }

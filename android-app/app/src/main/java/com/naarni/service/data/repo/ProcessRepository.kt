@@ -2,10 +2,15 @@ package com.naarni.service.data.repo
 
 import com.naarni.service.core.network.FrappeApi
 import com.naarni.service.core.network.payload
+import com.naarni.service.data.dto.FoundRun
 import com.naarni.service.data.dto.OpenRun
 import com.naarni.service.data.dto.ProcessDefinition
+import com.naarni.service.data.dto.RunBoard
+import com.naarni.service.data.dto.ProcessHistory
+import com.naarni.service.data.dto.RunReport
 import com.naarni.service.data.dto.ProcessRun
 import com.naarni.service.data.dto.ProcessStep
+import com.naarni.service.data.dto.LinkOption
 import com.naarni.service.data.dto.ProcessSummary
 import com.naarni.service.data.dto.RecordScanResponse
 import com.naarni.service.data.dto.SaveResultResponse
@@ -23,9 +28,18 @@ import com.naarni.service.data.dto.SaveResultResponse
  * prompt instead of crashing. Without that, the first new step type published
  * would break every phone on the floor at once.
  */
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+
 class ProcessRepository(private val api: FrappeApi) {
 
     private val definitions = mutableMapOf<String, ProcessDefinition>()
+
+    /** Last blank-query page per Link doctype, so the picker opens offline. */
+    private val linkCache = mutableMapOf<String, List<LinkOption>>()
 
     suspend fun listProcesses(): List<ProcessSummary> = api.listProcesses().payload()
 
@@ -40,6 +54,36 @@ class ProcessRepository(private val api: FrappeApi) {
     }
 
     fun cached(process: String): ProcessDefinition? = definitions[process]
+
+    /**
+     * Options behind a `Link` step, with the last answer for each doctype cached.
+     *
+     * The cache is what makes a Link step usable in a shed: the catalogue is 151
+     * rows and changes about as often as the process does, so holding the last
+     * blank-query page per doctype means opening the picker offline shows the
+     * list rather than a spinner and an error. A typed search still needs the
+     * network — and falls back to filtering the cached page rather than showing
+     * nothing.
+     */
+    suspend fun linkOptions(doctype: String, txt: String = ""): List<LinkOption> {
+        val cached = linkCache[doctype].orEmpty()
+        return try {
+            api.linkOptions(doctype = doctype, txt = txt).payload().also { fresh ->
+                if (txt.isBlank()) linkCache[doctype] = fresh
+            }
+        } catch (_: Exception) {
+            if (txt.isBlank()) cached
+            else cached.filter {
+                it.label.contains(txt, ignoreCase = true) ||
+                    it.value.contains(txt, ignoreCase = true) ||
+                    it.sublabel?.contains(txt, ignoreCase = true) == true
+            }
+        }
+    }
+
+    /** Add a missing option. Needs the network — creating offline would invent an id. */
+    suspend fun createLinkOption(doctype: String, label: String): LinkOption =
+        api.createLinkOption(doctype, label).payload().also { linkCache.remove(doctype) }
 
     suspend fun startRun(
         process: String,
@@ -62,6 +106,12 @@ class ProcessRepository(private val api: FrappeApi) {
     suspend fun run(name: String): ProcessRun = api.getProcessRun(name).payload()
 
     suspend fun openRuns(): List<OpenRun> = api.myOpenProcessRuns().payload()
+
+    /** This operator's own record — never cached, because the point is the tally. */
+    suspend fun history(limit: Int = 30, offset: Int = 0, scope: String = "finished"): ProcessHistory =
+        api.myProcessHistory(limit, offset, scope).payload()
+
+    suspend fun report(name: String): RunReport = api.processRunReport(name).payload()
 
     suspend fun saveResult(
         run: String,
@@ -125,15 +175,70 @@ class ProcessRepository(private val api: FrappeApi) {
         )
     }
 
+    /**
+     * Upload a stamped photo and map it to a step, in one call.
+     *
+     * Two round trips, deliberately sequenced: Frappe's `upload_file` stores the
+     * bytes and hands back a File URL, and only then can `attach_photo` record
+     * what that URL *is*. Doing it the other way round would leave a Process Run
+     * Photo row pointing at a file that may never arrive.
+     *
+     * The coordinates are not passed here because they are already burnt into
+     * the image by `PhotoStamper` at capture time; the server row keeps its own
+     * copy for querying, which the caller supplies when it has a fix.
+     */
+    suspend fun uploadStepPhoto(
+        run: String,
+        stepCode: String,
+        file: File,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        accuracyM: Double? = null,
+    ) {
+        val part = MultipartBody.Part.createFormData(
+            "file", file.name, file.asRequestBody("image/jpeg".toMediaType()),
+        )
+        fun text(v: String) = v.toRequestBody("text/plain".toMediaType())
+        // `upload_file` returns its payload in `message`, not the app's own
+        // `{success,data}` envelope — it is Frappe's endpoint, not ours.
+        val fileUrl = api.uploadFile(
+            part,
+            text("Process Run"),
+            text(run),
+            // Private: an inspection photo carries a serial, a location and a
+            // person's name, and none of that belongs on a public URL.
+            text("1"),
+        ).message?.file_url ?: error("Photo upload failed")
+        attachPhoto(
+            run = run,
+            stepCode = stepCode,
+            fileUrl = fileUrl,
+            capturedAt = null,
+            latitude = latitude,
+            longitude = longitude,
+            accuracyM = accuracyM,
+            locationSource = if (latitude != null) "GPS" else "Unavailable",
+        )
+    }
+
     suspend fun submitStage(run: String, stage: String, remarks: String? = null): ProcessRun =
         api.submitProcessStage(run, stage, remarks).payload()
+
+    /** The modules of one run, with the last pair of hands on each. */
+    suspend fun board(run: String): RunBoard = api.processRunBoard(run).payload()
+
+    /** Is this pack already being inspected? Asked straight off the scan. */
+    suspend fun findOpenRun(process: String, identifier: String): FoundRun =
+        api.findOpenProcessRun(process, identifier).payload()
 
     suspend fun verifyStage(run: String, stage: String, approve: Boolean, remarks: String? = null): ProcessRun =
         api.verifyProcessStage(run, stage, if (approve) "Approved" else "Rejected", remarks).payload()
 
     companion object {
         /** Step-type capability this build renders. See the class docstring. */
-        const val APP_STEP_CAPABILITY = 1
+        // 2: this build renders `Weight from Photo` — a weight typed beside a
+        // photograph of the scale, with the number read off it by on-device OCR.
+        const val APP_STEP_CAPABILITY = 2
     }
 }
 

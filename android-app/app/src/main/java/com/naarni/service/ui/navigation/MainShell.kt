@@ -1,10 +1,11 @@
 package com.naarni.service.ui.navigation
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.rounded.Assignment
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -16,27 +17,44 @@ import com.naarni.service.ui.chat.ChatThreadScreen
 import com.naarni.service.ui.chat.ChatViewModel
 import com.naarni.service.ui.chat.NewChatScreen
 import com.naarni.service.ui.chat.NewGroupScreen
-import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
+import com.naarni.service.ui.components.HairlineDivider
+import com.naarni.service.ui.theme.AppSurface
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.naarni.service.appContainer
 import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.screens.AlertDetailScreen
 import com.naarni.service.ui.screens.AlertsScreen
@@ -46,8 +64,16 @@ import com.naarni.service.ui.screens.TicketDetailScreen
 import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardDetailScreen
 import com.naarni.service.ui.screens.JobCardsScreen
+import com.naarni.service.ui.material.MaterialDetailScreen
+import com.naarni.service.ui.material.MaterialItemsScreen
+import com.naarni.service.ui.material.MaterialListScreen
+import com.naarni.service.ui.material.MaterialStartScreen
+import com.naarni.service.ui.material.MaterialViewModel
 import com.naarni.service.ui.screens.NotificationsScreen
+import com.naarni.service.ui.screens.ProcessHistoryScreen
+import com.naarni.service.ui.screens.ProcessBoardScreen
 import com.naarni.service.ui.screens.ProcessListScreen
+import com.naarni.service.ui.screens.ProcessRunReportScreen
 import com.naarni.service.ui.screens.ProcessRunnerScreen
 import com.naarni.service.ui.screens.ProcessStartScreen
 import com.naarni.service.ui.screens.ProfileScreen
@@ -58,22 +84,86 @@ import com.naarni.service.ui.screens.VehiclesScreen
 /**
  * Bottom-nav destinations.
  *
- * Trimmed to Home, Alerts and Battery for this release. Jobs, Fleet and Tickets
+ * Trimmed to Home, Alerts and Checks for this release. Jobs, Fleet and Tickets
  * still exist as routes below — deep links from notifications keep working, and
  * the Home screen can still open a job card — they simply have no tab. Profile
  * stays because logout, the depot picker and account deletion live there.
  *
- * [Battery] points at the generic process engine; it is called Battery because
- * that is the only published process today, and renaming it is a one-line change
- * when a second process ships.
+ * [Checks] is the generic process engine. It was called "Battery" while battery
+ * QC was the only published process, which stopped being true the moment a
+ * second one could be authored — and a tab named after one process is a tab
+ * nobody looks in for the others.
+ *
+ * "Checks" rather than "Processes" deliberately. A process is what an admin
+ * authors; a check is what the person holding the phone actually does, and the
+ * app already counts them that way everywhere else ("59 checks", "Not answered",
+ * "Can't check this?"). The route has always been `processes` and stays that
+ * way, so every existing deep link keeps working.
  */
-enum class Tab(val route: String, val label: String, val icon: ImageVector) {
-    Home("home", "Home", Icons.Default.Home),
-    Chat("chat", "Chat", Icons.AutoMirrored.Filled.Chat),
-    Alerts("alerts", "Alerts", Icons.Default.Notifications),
-    Battery("processes", "Battery", Icons.Default.BatteryChargingFull),
-    Profile("profile", "Profile", Icons.Default.Person),
+enum class Tab(
+    val route: String,
+    val label: String,
+    val icon: ImageVector,
+    /**
+     * Roles that may see this tab. `null` means everyone signed in.
+     *
+     * This hides the tab; it does not secure it. The server decides what a user
+     * may actually read or write — see `process_run.get_permission_query_conditions`
+     * — and this exists so a technician who will never run an inspection is not
+     * given a tab that answers every tap with a permission error.
+     */
+    val requiredRoles: Set<String>? = null,
+) {
+    Home("home", "Home", Icons.Rounded.Home),
+    Chat("chat", "Chat", Icons.AutoMirrored.Rounded.Chat),
+    Alerts("alerts", "Alerts", Icons.Rounded.Notifications),
+    Checks(
+        "processes",
+        "Checks",
+        Icons.Rounded.Checklist,
+        requiredRoles = PROCESS_ROLES,
+    ),
+    /**
+     * The material gate — inward and outward at Hubli and Narsapura.
+     *
+     * Role-gated like [Checks]: a technician who will never stand at a gate is
+     * not given a tab that answers every tap with a permission error. This hides
+     * the tab; the server decides what may actually be read or written — see
+     * `material_movement.get_permission_query_conditions`.
+     */
+    Material(
+        "material",
+        "Material",
+        Icons.Rounded.Inventory2,
+        requiredRoles = MATERIAL_ROLES,
+    ),
+    Profile("profile", "Profile", Icons.Rounded.Person),
+    ;
+
+    fun isVisibleTo(roles: Set<String>): Boolean =
+        requiredRoles == null || roles.any { it in requiredRoles }
 }
+
+/** Anyone who runs, verifies or oversees an inspection. */
+private val PROCESS_ROLES = setOf(
+    "Process Operator",
+    "Process Author",
+    "Process Verifier",
+    "Process Viewer",
+    "Battery QA Admin",
+    "System Manager",
+    "Administrator",
+)
+
+/** Anyone who records, verifies or oversees a material movement. */
+private val MATERIAL_ROLES = setOf(
+    "Material Gate Operator",
+    "Material Supervisor",
+    "Material Viewer",
+    "Depot Manager",
+    "System Manager",
+    "Administrator",
+)
 
 /** Routes that still exist for deep links but are no longer tabs. */
 private object HiddenRoute {
@@ -85,7 +175,10 @@ private object HiddenRoute {
 @Composable
 fun MainShell(vm: AppViewModel) {
     val nav = rememberNavController()
-    val tabs = Tab.entries
+    // Roles are stored at login; a signed-in user always has at least one, and a
+    // stale set only costs a hidden tab, never access — the server is the gate.
+    val roles = LocalContext.current.appContainer.session.roles
+    val tabs = remember(roles) { Tab.entries.filter { it.isVisibleTo(roles) } }
 
     // Hoisted to the shell so the tab badge stays live regardless of which tab is
     // showing, and so the socket is owned by the shell rather than by a screen.
@@ -152,35 +245,72 @@ fun MainShell(vm: AppViewModel) {
     Scaffold(
         bottomBar = {
             if (isTopLevel) {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = current == tab.route,
-                            onClick = {
-                                nav.navigate(tab.route) {
-                                    launchSingleTop = true
-                                    popUpTo(Tab.Home.route) { saveState = true }
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                // Badge reads a single Room-backed Flow, so it is
-                                // correct offline and on a cold start with no network.
-                                if (tab == Tab.Chat && unreadChats > 0) {
-                                    BadgedBox(badge = {
-                                        Badge { Text(if (unreadChats > 99) "99+" else "$unreadChats") }
-                                    }) { Icon(tab.icon, contentDescription = tab.label) }
-                                } else {
-                                    Icon(tab.icon, contentDescription = tab.label)
-                                }
-                            },
-                            label = { Text(tab.label) },
-                        )
+                Column {
+                    // The nav bar sits on the same ground as the content, so a
+                    // rule is what separates them rather than a tonal step. On a
+                    // near-black scheme the default elevation tint is almost
+                    // invisible, which left the bar floating with no edge.
+                    HairlineDivider()
+                    NavigationBar(
+                        containerColor = AppSurface.raised,
+                        tonalElevation = 0.dp,
+                    ) {
+                        tabs.forEach { tab ->
+                            val selected = current == tab.route
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    nav.navigate(tab.route) {
+                                        launchSingleTop = true
+                                        popUpTo(Tab.Home.route) { saveState = true }
+                                        restoreState = true
+                                    }
+                                },
+                                icon = {
+                                    // Badge reads a single Room-backed Flow, so it is
+                                    // correct offline and on a cold start with no network.
+                                    if (tab == Tab.Chat && unreadChats > 0) {
+                                        BadgedBox(badge = {
+                                            Badge { Text(if (unreadChats > 99) "99+" else "$unreadChats") }
+                                        }) { Icon(tab.icon, contentDescription = tab.label) }
+                                    } else {
+                                        Icon(tab.icon, contentDescription = tab.label)
+                                    }
+                                },
+                                label = { Text(tab.label) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    // No pill behind the selected icon. With five
+                                    // tabs it put a permanent coloured lozenge on
+                                    // screen competing with whatever the screen
+                                    // itself was trying to point at; the accent on
+                                    // the icon and label says the same thing.
+                                    indicatorColor = Color.Transparent,
+                                ),
+                            )
+                        }
                     }
                 }
             }
         },
     ) { padding ->
+        // A brand-new account goes through onboarding first — but only an account
+        // that has never answered, and only once. `has_name` is the test rather
+        // than `profile_complete`: a phone-provisioned user starts named after
+        // its own number, and somebody who deliberately skipped the photo must
+        // not be asked again on every cold start.
+        val myProfile = com.naarni.service.ui.screens.rememberMyProfile()
+        var onboarded by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(myProfile?.has_name) {
+            if (!onboarded && myProfile != null && !myProfile.has_name) {
+                onboarded = true
+                nav.navigate("onboarding") { launchSingleTop = true }
+            }
+        }
+
         NavHost(
             navController = nav,
             startDestination = Tab.Home.route,
@@ -196,13 +326,34 @@ fun MainShell(vm: AppViewModel) {
                 .consumeWindowInsets(padding),
         ) {
             composable(Tab.Home.route) {
-                HomeScreen(
-                    vm = vm,
-                    onCreateJobCard = { nav.navigate("create") },
-                    onOpenNotifications = { nav.navigate("notifications") },
-                    onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
-                    onOpenDuty = { nav.navigate("duty") },
-                )
+                val profile = com.naarni.service.ui.screens.rememberMyProfile()
+                var promptDismissed by rememberSaveable { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
+                val ctx = LocalContext.current
+                Column(Modifier.fillMaxSize()) {
+                    // Above the screen rather than inside it: the prompt is about
+                    // the account, not about anything on the home screen, and it
+                    // must never push a job card out of reach.
+                    if (!promptDismissed) {
+                        com.naarni.service.ui.screens.ProfilePromptBanner(
+                            profile = profile,
+                            onOpen = { nav.navigate("editprofile") },
+                            onDismiss = {
+                                promptDismissed = true
+                                scope.launch {
+                                    runCatching { ctx.appContainer.profileRepo.snoozePrompt() }
+                                }
+                            },
+                        )
+                    }
+                    HomeScreen(
+                        vm = vm,
+                        onCreateJobCard = { nav.navigate("create") },
+                        onOpenNotifications = { nav.navigate("notifications") },
+                        onOpenJobCard = { name -> nav.navigate("jobcard/$name") },
+                        onOpenDuty = { nav.navigate("duty") },
+                    )
+                }
             }
 
             // Roster + attendance history. Reached from the duty card rather than
@@ -263,11 +414,83 @@ fun MainShell(vm: AppViewModel) {
             }
 
             // ---- Process engine: one list, one start screen, one generic runner.
-            composable(Tab.Battery.route) {
+            composable(Tab.Checks.route) {
                 ProcessListScreen(
                     vm,
                     onOpenProcess = { family -> nav.navigate("process/$family") },
                     onResumeRun = { run -> nav.navigate("run/$run") },
+                    onOpenHistory = { nav.navigate("myinspections") },
+                )
+            }
+            // ── Material gate ──
+            //
+            // One MaterialViewModel is shared by the list, the wizard, the items
+            // screen and the detail screen. They are one task: giving each its
+            // own would mean refetching the movement on every navigation, which
+            // is a spinner between "add item" and the list of items just added.
+            composable(Tab.Material.route) {
+                val materialVm: MaterialViewModel = viewModel()
+                MaterialListScreen(
+                    vm = materialVm,
+                    onOpen = { name -> nav.navigate("movement/$name") },
+                    onNew = { type -> nav.navigate("newmovement/$type") },
+                )
+            }
+            composable("newmovement/{type}") { entry ->
+                val materialVm: MaterialViewModel = viewModel(
+                    remember(entry) { nav.getBackStackEntry(Tab.Material.route) },
+                )
+                MaterialStartScreen(
+                    vm = materialVm,
+                    initialType = entry.arguments?.getString("type") ?: "Inward",
+                    onBack = { nav.popBackStack() },
+                    onOpened = { name ->
+                        nav.navigate("movementitems/$name") {
+                            // Drop the wizard so Back returns to the list rather
+                            // than into a form that would open a second movement.
+                            popUpTo("newmovement/{type}") { inclusive = true }
+                        }
+                    },
+                )
+            }
+            composable("movementitems/{name}") { entry ->
+                val materialVm: MaterialViewModel = viewModel(
+                    remember(entry) { nav.getBackStackEntry(Tab.Material.route) },
+                )
+                MaterialItemsScreen(
+                    vm = materialVm,
+                    movementName = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onDone = {
+                        nav.navigate(Tab.Material.route) {
+                            popUpTo(Tab.Material.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            composable("movement/{name}") { entry ->
+                val materialVm: MaterialViewModel = viewModel(
+                    remember(entry) { nav.getBackStackEntry(Tab.Material.route) },
+                )
+                MaterialDetailScreen(
+                    vm = materialVm,
+                    movementName = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onEdit = { name -> nav.navigate("movementitems/$name") },
+                )
+            }
+            composable("myinspections") {
+                ProcessHistoryScreen(
+                    vm,
+                    onBack = { nav.popBackStack() },
+                    onOpenRun = { run -> nav.navigate("runreport/$run") },
+                )
+            }
+            composable("runreport/{name}") { entry ->
+                ProcessRunReportScreen(
+                    vm,
+                    runName = entry.arguments?.getString("name").orEmpty(),
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable("process/{family}") { entry ->
@@ -279,22 +502,36 @@ fun MainShell(vm: AppViewModel) {
                         nav.navigate("run/$run") {
                             // Drop the start screen so Back returns to the list,
                             // not into a run the operator already began.
-                            popUpTo(Tab.Battery.route)
+                            popUpTo(Tab.Checks.route)
                         }
                     },
                 )
             }
+            // The board comes first, then the stepper. A pack is worked by more
+            // than one person, so the first thing an operator needs is which
+            // module is done, which is busy and which is free — not question one.
             composable("run/{name}") { entry ->
-                ProcessRunnerScreen(
+                ProcessBoardScreen(
                     vm,
                     runName = entry.arguments?.getString("name").orEmpty(),
+                    onOpenModule = { runUuid, stage -> nav.navigate("run/$runUuid/$stage") },
                     onBack = { nav.popBackStack() },
                     onFinished = {
-                        nav.navigate(Tab.Battery.route) {
-                            popUpTo(Tab.Battery.route) { inclusive = true }
+                        nav.navigate(Tab.Checks.route) {
+                            popUpTo(Tab.Checks.route) { inclusive = true }
                             launchSingleTop = true
                         }
                     },
+                )
+            }
+            composable("run/{name}/{stage}") { entry ->
+                ProcessRunnerScreen(
+                    vm,
+                    runName = entry.arguments?.getString("name").orEmpty(),
+                    stageCode = entry.arguments?.getString("stage"),
+                    // Submitting a module lands back on the board, where the next
+                    // one is chosen — see the runner for why it is not automatic.
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable("ticket/{name}") { entry ->
@@ -357,7 +594,29 @@ fun MainShell(vm: AppViewModel) {
                     onBack = { nav.popBackStack() },
                 )
             }
-            composable(Tab.Profile.route) { ProfileScreen(vm) }
+            composable(Tab.Profile.route) {
+                ProfileScreen(
+                    vm,
+                    onEditProfile = { nav.navigate("editprofile") },
+                    onSounds = { nav.navigate("sounds") },
+                )
+            }
+            composable("editprofile") {
+                com.naarni.service.ui.screens.EditProfileScreen(onBack = { nav.popBackStack() })
+            }
+            composable("sounds") {
+                com.naarni.service.ui.screens.NotificationSoundsScreen(onBack = { nav.popBackStack() })
+            }
+            composable("onboarding") {
+                com.naarni.service.ui.screens.OnboardingFlow(
+                    onDone = {
+                        nav.navigate(Tab.Home.route) {
+                            popUpTo("onboarding") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
             composable("create") {
                 CreateJobCardScreen(
                     vm,

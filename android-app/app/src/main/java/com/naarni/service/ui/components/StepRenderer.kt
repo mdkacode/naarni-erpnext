@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -22,8 +22,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -32,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.naarni.service.data.dto.ProcessOption
 import com.naarni.service.data.dto.ProcessStep
+import kotlinx.coroutines.delay
 
 /**
  * The single renderer that draws every step type.
@@ -48,10 +55,10 @@ import com.naarni.service.data.dto.ProcessStep
  * sliders, so numbers use a keypad.
  */
 
-private val PassGreen = Color(0xFF17784A)
-private val FailRed = Color(0xFFB62F27)
-private val WarnAmber = Color(0xFF99630A)
-private val NeutralGrey = Color(0xFF5F6C7A)
+internal val PassGreen = Color(0xFF17784A)
+internal val FailRed = Color(0xFFB62F27)
+internal val WarnAmber = Color(0xFF99630A)
+internal val NeutralGrey = Color(0xFF5F6C7A)
 
 /** What the operator has entered for one step, before it is sent. */
 data class StepAnswer(
@@ -60,6 +67,17 @@ data class StepAnswer(
     val remark: String? = null,
     val skipped: Boolean = false,
     val skipReason: String? = null,
+    /**
+     * The human-readable name behind [response] on a `Link` step.
+     *
+     * A Link answer is a document name — "AGG-001", "NEW-0004" — which is what
+     * the server stores and what every report joins on. Showing that back to the
+     * operator who picked "HVAC Unit" would be a different answer as far as they
+     * are concerned, so the label rides alongside for display only. It is not
+     * sent to the server and not persisted; a resumed run re-derives it from the
+     * cached option list, and its absence degrades to showing the code.
+     */
+    val valueLabel: String? = null,
 )
 
 fun optionColor(option: ProcessOption): Color = when (option.color) {
@@ -295,11 +313,24 @@ private fun NumericControl(step: ProcessStep, answer: StepAnswer, onAnswer: (Ste
     val inBand = parsed?.let { withinBand(step, it) }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Local state, storage told afterwards — the same rule as the full-screen
+        // renderer, and for the same reason: binding the field straight to a value
+        // that comes back from Room made it drop and reorder characters.
+        var typed by remember(step.step_code) { mutableStateOf(raw) }
+        var typing by remember(step.step_code) { mutableStateOf(false) }
+        LaunchedEffect(raw) { if (!typing && raw != typed) typed = raw }
+        LaunchedEffect(typed, typing) {
+            if (!typing) return@LaunchedEffect
+            delay(FIELD_COMMIT_MS)
+            onAnswer(answer.copy(value = typed, skipped = false, skipReason = null))
+            typing = false
+        }
         OutlinedTextField(
-            value = raw,
+            value = typed,
             onValueChange = { text ->
                 if (text.isEmpty() || text.matches(Regex("^-?[0-9]*\\.?[0-9]*$"))) {
-                    onAnswer(answer.copy(value = text, skipped = false, skipReason = null))
+                    typed = text
+                    typing = true
                 }
             },
             label = { Text(step.unit?.let { "Value ($it)" } ?: "Value") },
@@ -308,7 +339,12 @@ private fun NumericControl(step: ProcessStep, answer: StepAnswer, onAnswer: (Ste
             textStyle = MaterialTheme.typography.headlineSmall,
             shape = RoundedCornerShape(10.dp),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
+                if (!state.isFocused && typing) {
+                    onAnswer(answer.copy(value = typed, skipped = false, skipReason = null))
+                    typing = false
+                }
+            },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -376,16 +412,40 @@ private fun TextControl(
     singleLine: Boolean,
     hint: String? = null,
 ) {
+    val stored = answer.response.orEmpty()
+    var typed by remember(step.step_code) { mutableStateOf(stored) }
+    var typing by remember(step.step_code) { mutableStateOf(false) }
+    LaunchedEffect(stored) { if (!typing && stored != typed) typed = stored }
+    LaunchedEffect(typed, typing) {
+        if (!typing) return@LaunchedEffect
+        delay(FIELD_COMMIT_MS)
+        onAnswer(answer.copy(response = typed, skipped = false))
+        typing = false
+    }
     OutlinedTextField(
-        value = answer.response.orEmpty(),
-        onValueChange = { onAnswer(answer.copy(response = it, skipped = false)) },
+        value = typed,
+        onValueChange = { typed = it; typing = true },
         label = { Text(hint ?: step.photo_hint ?: "Notes") },
         singleLine = singleLine,
         minLines = if (singleLine) 1 else 3,
         shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
+            if (!state.isFocused && typing) {
+                onAnswer(answer.copy(response = typed, skipped = false))
+                typing = false
+            }
+        },
     )
 }
+
+/**
+ * How long typing has to stop before the answer is written.
+ *
+ * Every commit is a Room write *and* a WorkManager enqueue. At one per keystroke
+ * — which is what a directly-bound field does — a ten character serial meant ten
+ * of each, and the field stopped responding to the person typing into it.
+ */
+private const val FIELD_COMMIT_MS = 400L
 
 @Composable
 private fun EvidenceNotice(text: String) {
@@ -395,7 +455,7 @@ private fun EvidenceNotice(text: String) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(
-            Icons.Default.Info,
+            Icons.Rounded.Info,
             contentDescription = null,
             modifier = Modifier.size(16.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,

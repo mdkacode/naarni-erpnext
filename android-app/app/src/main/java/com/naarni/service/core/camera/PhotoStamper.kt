@@ -35,6 +35,15 @@ object PhotoStamper {
         val label: String? = null,
         /** The scanned serial / pack number this photo belongs to. */
         val subject: String? = null,
+        /**
+         * A single word painted across the top of the picture — INWARD or OUTWARD.
+         *
+         * Deliberately not another line in the corner block. A gate photograph is
+         * looked at months later, often printed, sometimes by somebody settling an
+         * argument about whether a part arrived or left; the direction has to be
+         * readable at a glance and at thumbnail size, which the small text is not.
+         */
+        val banner: String? = null,
     )
 
     /** Build stamp text from raw inputs at capture time. */
@@ -44,6 +53,7 @@ object PhotoStamper {
         userRole: String,
         whenMillis: Long = System.currentTimeMillis(),
         label: String? = null,
+        banner: String? = null,
         subject: String? = null,
     ): StampData {
         val ts = SimpleDateFormat("dd MMM yyyy, HH:mm:ss z", Locale.getDefault())
@@ -60,6 +70,7 @@ object PhotoStamper {
             by = "By: $userFullName ($userRole)",
             label = label,
             subject = subject?.trim()?.takeIf { it.isNotEmpty() },
+            banner = banner?.trim()?.takeIf { it.isNotEmpty() }?.uppercase(),
         )
     }
 
@@ -85,13 +96,21 @@ object PhotoStamper {
         // Serial first: it is the line a person scanning a folder of photos is
         // actually looking for, and the top line of the block is where the eye
         // lands. The label follows it, then the accountability trio.
-        val lines = listOfNotNull(
-            data.subject?.let { "SN: $it" },
-            data.label?.let { "📷 $it" },
-            data.dateTime,
-            data.location,
-            data.by,
-        )
+        //
+        // The label wraps rather than being cut. Callers used to trim it to forty
+        // characters before handing it over, because a long check title ran off
+        // the right edge of the photograph — so the stamp on a photo of
+        // "Check the busbar torque and mark the bolt head after torquing" said
+        // "Check the busbar torque and mark the bolt he". Wrapping is what makes
+        // the whole title fit; trimming only made the loss quieter.
+        val available = w - pad * 3
+        val lines = buildList {
+            data.subject?.let { add("SN: $it") }
+            data.label?.let { addAll(wrapToWidth("📷 $it", text, available)) }
+            add(data.dateTime)
+            add(data.location)
+            add(data.by)
+        }
         val maxLineW = lines.maxOf {
             if (data.subject != null && it.startsWith("SN: ")) text.measureText(it) * 1.25f
             else text.measureText(it)
@@ -120,6 +139,82 @@ object PhotoStamper {
             canvas.drawText(line, left, y, paint)
             y += lineH
         }
+
+        data.banner?.let { drawBanner(canvas, it, w, textSize, pad) }
         return bmp
+    }
+
+    /**
+     * The direction, across the top of the picture.
+     *
+     * Sized off the image width and drawn on its own bar so it stays legible
+     * when the photo is a 72dp thumbnail in a grid — which is how these are
+     * almost always seen first. Colour carries the meaning a second time, never
+     * the only time: the word itself is the signal, so it survives printing in
+     * black and white.
+     */
+    private fun drawBanner(canvas: Canvas, banner: String, w: Int, baseTextSize: Float, pad: Float) {
+        val size = (w * 0.075f).coerceAtLeast(46f)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = size
+            typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
+            letterSpacing = 0.12f
+            setShadowLayer(size * 0.10f, 0f, 0f, Color.BLACK)
+        }
+        val tint = when (banner) {
+            "INWARD" -> Color.argb(210, 21, 101, 42)
+            "OUTWARD" -> Color.argb(210, 21, 63, 122)
+            else -> Color.argb(190, 0, 0, 0)
+        }
+        val textW = paint.measureText(banner)
+        val barH = size * 1.6f
+        canvas.drawRect(0f, 0f, w.toFloat(), barH, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint })
+        canvas.drawText(banner, (w - textW) / 2f, barH * 0.5f + size * 0.36f, paint)
+    }
+
+    /**
+     * Break one line into as many as it takes to fit, on word boundaries.
+     *
+     * Falls back to a hard split for a single "word" longer than the image is
+     * wide — a serial with no spaces in it, typically — because dropping the tail
+     * of *that* is the one thing this whole stamp exists to prevent.
+     */
+    private fun wrapToWidth(line: String, paint: Paint, maxWidth: Float): List<String> {
+        if (maxWidth <= 0f || paint.measureText(line) <= maxWidth) return listOf(line)
+
+        val out = mutableListOf<String>()
+        var current = StringBuilder()
+
+        fun flush() {
+            if (current.isNotEmpty()) {
+                out += current.toString()
+                current = StringBuilder()
+            }
+        }
+
+        for (word in line.split(" ")) {
+            val candidate = if (current.isEmpty()) word else "$current $word"
+            when {
+                paint.measureText(candidate) <= maxWidth -> current = StringBuilder(candidate)
+                current.isNotEmpty() -> {
+                    flush()
+                    current = StringBuilder(word)
+                }
+                else -> {
+                    // One unbreakable word wider than the image.
+                    var rest = word
+                    while (paint.measureText(rest) > maxWidth && rest.length > 1) {
+                        var cut = rest.length
+                        while (cut > 1 && paint.measureText(rest.substring(0, cut)) > maxWidth) cut--
+                        out += rest.substring(0, cut)
+                        rest = rest.substring(cut)
+                    }
+                    current = StringBuilder(rest)
+                }
+            }
+        }
+        flush()
+        return out
     }
 }

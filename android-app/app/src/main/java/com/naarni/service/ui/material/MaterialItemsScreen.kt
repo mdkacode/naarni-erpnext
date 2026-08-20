@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.QrCode2
@@ -56,12 +57,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.naarni.service.data.dto.GateItemSuggestion
 import com.naarni.service.data.dto.MovementItem
+import com.naarni.service.data.dto.MovementPhoto
 import com.naarni.service.data.dto.SuggestionItem
 import com.naarni.service.data.repo.MaterialRepository
 import com.naarni.service.ui.components.AppBar
 import com.naarni.service.ui.components.BarcodeScannerScreen
 import com.naarni.service.ui.components.EmptyState
 import com.naarni.service.ui.components.LoadingOverlay
+import com.naarni.service.ui.components.PhotoStrip
+import com.naarni.service.ui.components.ReviewablePhoto
 import com.naarni.service.ui.components.SmartSelect
 import com.naarni.service.ui.components.StampingCamera
 import com.naarni.service.ui.theme.AppSurface
@@ -79,6 +83,14 @@ import com.naarni.service.ui.theme.Semantic
  * and submitting with rows below the bar asks rather than refuses. A clerk who
  * cannot record the truck records nothing, and nothing is worse than imperfect.
  */
+/**
+ * Camera target meaning "this photo belongs to the movement, not to a line".
+ *
+ * A sentinel rather than a nullable target, because `photoFor` being null is
+ * already how the camera stays shut.
+ */
+private const val DOCUMENT_ROW = "__document__"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MaterialItemsScreen(
@@ -95,10 +107,13 @@ fun MaterialItemsScreen(
         if (ui.context == null) vm.load()
     }
 
+    val photosByRow = remember(movement?.photos) { movement?.photos.orEmpty().byItemRow() }
+
     // ── transient UI state ──
     var editing by remember { mutableStateOf<EditingRow?>(null) }
     var scanningFor by remember { mutableStateOf<EditingRow?>(null) }
     var photoFor by remember { mutableStateOf<String?>(null) }
+    var photoKind by remember { mutableStateOf("Item") }
     var newItemName by remember { mutableStateOf<String?>(null) }
     var lastGroup by remember { mutableStateOf<String?>(null) }
     var confirmSubmit by remember { mutableStateOf(false) }
@@ -127,15 +142,29 @@ fun MaterialItemsScreen(
     }
 
     photoFor?.let { rowUuid ->
+        val header = rowUuid == DOCUMENT_ROW
         val row = movement?.items?.firstOrNull { it.row_uuid == rowUuid }
         StampingCamera(
             onCaptured = { file, fix ->
-                vm.attachPhoto(rowUuid, file, fix?.latitude, fix?.longitude)
+                vm.attachPhoto(
+                    // A document belongs to the movement, not to a line, so it is
+                    // attached with no item row — which is what puts it in the
+                    // header bucket the Documents strip reads.
+                    rowUuid = if (header) "" else rowUuid,
+                    file = file,
+                    latitude = fix?.latitude,
+                    longitude = fix?.longitude,
+                    kind = photoKind,
+                )
                 photoFor = null
+                photoKind = "Item"
             },
-            onClose = { photoFor = null },
-            label = row?.item_name,
-            subject = row?.qr_code,
+            onClose = { photoFor = null; photoKind = "Item" },
+            label = if (header) "Document" else row?.item_name,
+            subject = if (header) movement?.reference_no else row?.qr_code,
+            // The direction, across the top — the same word the gate process
+            // prints, so a photo from either route reads identically later.
+            banner = movement?.movement_type?.uppercase(),
         )
         return
     }
@@ -154,6 +183,14 @@ fun MaterialItemsScreen(
         Box(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.fillMaxSize()) {
                 movement?.let { EvidenceBar(it.total_items, it.evidence_pct, it.rowsWithoutEvidence()) }
+
+                movement?.let {
+                    DocumentRow(
+                        photos = photosByRow[null].orEmpty(),
+                        editable = it.can_edit,
+                        onCapture = { photoKind = "Document"; photoFor = DOCUMENT_ROW },
+                    )
+                }
 
                 Box(Modifier.weight(1f)) {
                     if (movement == null || movement.items.isEmpty()) {
@@ -174,6 +211,7 @@ fun MaterialItemsScreen(
                                     row = row,
                                     warnings = ui.warnings[row.row_uuid].orEmpty().map { it.message },
                                     editable = movement.can_edit,
+                                    photos = photosByRow[row.row_uuid].orEmpty(),
                                     onEdit = { editing = EditingRow.of(row) },
                                     onPhoto = { photoFor = row.row_uuid },
                                     onDelete = { deleting = row },
@@ -189,6 +227,11 @@ fun MaterialItemsScreen(
                         saving = ui.saving,
                         onAdd = { editing = EditingRow.blank() },
                         onSubmit = {
+                            // Every item needs a photograph, or an explicit reason
+                            // it has none. The confirmation is not a nag to click
+                            // through: it names the rows and sends the operator
+                            // back to them, because the fix takes one tap and
+                            // whoever verifies this later cannot take the photo.
                             if (movement.rowsWithoutEvidence() > 0) confirmSubmit = true
                             else vm.submit(onDone = onDone)
                         },
@@ -220,6 +263,8 @@ fun MaterialItemsScreen(
             onScan = { scanningFor = row },
             onChange = { editing = it },
             onSave = {
+                val needsShot = row.noPhotoReason.isBlank() &&
+                    movement?.photos.orEmpty().none { it.item_row == row.rowUuid }
                 vm.saveItem(
                     rowUuid = row.rowUuid,
                     item = row.item,
@@ -231,6 +276,16 @@ fun MaterialItemsScreen(
                     noPhotoReason = row.noPhotoReason,
                     remarks = row.remarks,
                     isNewItem = row.isNewItem,
+                    onSaved = { saved ->
+                        // Every item needs a photograph, so the camera opens on
+                        // saving rather than leaving a red row for the operator to
+                        // notice later. Asking at the moment they are still stood
+                        // in front of the item is the only time the answer is easy.
+                        if (needsShot) {
+                            photoKind = "Item"
+                            photoFor = saved
+                        }
+                    },
                 )
                 editing = null
             },
@@ -258,24 +313,32 @@ fun MaterialItemsScreen(
     // ── confirmations ──
 
     if (confirmSubmit && movement != null) {
-        val missing = movement.rowsWithoutEvidence()
+        val missing = movement.items.filter { it.needsPhoto }
         AlertDialog(
             onDismissRequest = { confirmSubmit = false },
             icon = { Icon(Icons.Rounded.PhotoCamera, contentDescription = null) },
-            title = { Text("Submit without every photo?") },
+            title = { Text("${missing.size} ${if (missing.size == 1) "item has" else "items have"} no photo") },
             text = {
-                Text(
-                    "${movement.total_items - missing} of ${movement.total_items} items have a photo. " +
-                        "You can still submit — the supervisor sees the same number.",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Every item needs one before this can be submitted:")
+                    missing.take(6).forEach { Text("•  ${it.item_name}", fontWeight = FontWeight.Medium) }
+                    if (missing.size > 6) Text("…and ${missing.size - 6} more")
+                    Text(
+                        "If one genuinely cannot be photographed, open it and give a reason.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             },
             confirmButton = {
                 Button(onClick = {
                     confirmSubmit = false
-                    vm.submit(onDone = onDone)
-                }) { Text("Submit anyway") }
+                    // Straight to the camera for the first one that needs it —
+                    // the whole point is that fixing this is easier than dismissing it.
+                    missing.firstOrNull()?.let { photoKind = "Item"; photoFor = it.row_uuid }
+                }) { Text("Photograph it") }
             },
-            dismissButton = { TextButton(onClick = { confirmSubmit = false }) { Text("Keep adding") } },
+            dismissButton = { TextButton(onClick = { confirmSubmit = false }) { Text("Back") } },
         )
     }
 
@@ -356,6 +419,26 @@ data class EditingRow(
     }
 }
 
+/**
+ * The movement's photos, bucketed by the item row each belongs to.
+ *
+ * `null` is the key for header photos — the challan, the truck — which belong to
+ * the movement rather than to any one line.
+ */
+fun List<MovementPhoto>.byItemRow(): Map<String?, List<ReviewablePhoto>> =
+    groupBy { it.item_row?.takeIf { row -> row.isNotBlank() } }
+        .mapValues { (_, rows) ->
+            rows.map {
+                ReviewablePhoto(
+                    id = it.client_uuid.ifBlank { it.file_url },
+                    remoteUrl = it.file_url,
+                    caption = it.caption,
+                    // It came back from the server, so by definition it is up.
+                    uploaded = true,
+                )
+            }
+        }
+
 /** "12.0" reads wrong on a quantity box; "12" does. */
 fun Double.trimTrailingZero(): String =
     if (this % 1.0 == 0.0) toLong().toString() else toString()
@@ -388,12 +471,72 @@ private fun EvidenceBar(items: Int, evidencePct: Double, missing: Int) {
     }
 }
 
+/**
+ * The paperwork: invoice, delivery challan, e-way bill, gate pass.
+ *
+ * Optional, deliberately — a truck at the gate is not always accompanied by its
+ * documents, and a clerk blocked on a challan they have not been handed records
+ * the load on a scrap of paper instead. But when the paperwork *is* there,
+ * photographing it is the cheapest evidence in the whole movement, so it gets a
+ * row of its own rather than being buried as one more item.
+ */
+@Composable
+private fun DocumentRow(
+    photos: List<ReviewablePhoto>,
+    editable: Boolean,
+    onCapture: () -> Unit,
+) {
+    if (!editable && photos.isEmpty()) return
+    Surface(color = AppSurface.raised, modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.Description,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "  Documents",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "  optional",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Box(Modifier.weight(1f))
+                if (editable) {
+                    TextButton(onClick = onCapture) {
+                        Icon(Icons.Rounded.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text(if (photos.isEmpty()) "  Add" else "  Another")
+                    }
+                }
+            }
+            if (photos.isNotEmpty()) {
+                PhotoStrip(photos = photos)
+            } else if (editable) {
+                Text(
+                    "Invoice, delivery challan, e-way bill — photograph them if you have them.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ItemRow(
     row: MovementItem,
     warnings: List<String>,
     editable: Boolean,
+    photos: List<ReviewablePhoto>,
     onEdit: () -> Unit,
     onPhoto: () -> Unit,
     onDelete: () -> Unit,
@@ -453,6 +596,13 @@ private fun ItemRow(
                 }
             }
 
+            // The photographs themselves, not a count. A count tells you a number
+            // was incremented; it does not tell you the picture is of the item
+            // rather than of somebody's boot.
+            if (photos.isNotEmpty()) {
+                PhotoStrip(photos = photos)
+            }
+
             warnings.forEach {
                 Text(
                     it,
@@ -462,13 +612,28 @@ private fun ItemRow(
             }
 
             if (editable) {
+                if (row.needsPhoto) {
+                    Text(
+                        "Every item needs a photo before this can be submitted.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Semantic.caution,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onPhoto) {
-                        Icon(Icons.Rounded.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text(if (row.photo_count == 0) "  Add photo" else "  Another photo")
-                    }
+                    // A required photo gets the filled button; once there is one,
+                    // taking another is a secondary action.
                     if (row.needsPhoto) {
+                        Button(onClick = onPhoto) {
+                            Icon(Icons.Rounded.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text("  Add photo")
+                        }
                         TextButton(onClick = onEdit) { Text("Can't photograph this") }
+                    } else {
+                        OutlinedButton(onClick = onPhoto) {
+                            Icon(Icons.Rounded.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text("  Another photo")
+                        }
                     }
                 }
             }

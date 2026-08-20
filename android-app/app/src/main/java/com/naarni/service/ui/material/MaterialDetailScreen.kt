@@ -47,6 +47,8 @@ import com.naarni.service.data.dto.MovementItem
 import com.naarni.service.ui.components.AppBar
 import com.naarni.service.ui.components.LoadingOverlay
 import com.naarni.service.ui.components.MetaChip
+import com.naarni.service.ui.components.PhotoStrip
+import com.naarni.service.ui.components.ReviewablePhoto
 import com.naarni.service.ui.components.SectionHeader
 import com.naarni.service.ui.theme.AppSurface
 import com.naarni.service.ui.theme.Semantic
@@ -101,8 +103,15 @@ fun MaterialDetailScreen(
                         }
                         Facts(movement)
 
+                        val photosByRow = movement.photos.byItemRow()
+
+                        photosByRow[null].orEmpty().takeIf { it.isNotEmpty() }?.let { documents ->
+                            SectionHeader("Documents (${documents.size})")
+                            PhotoStrip(photos = documents)
+                        }
+
                         SectionHeader("Items (${movement.total_items})")
-                        movement.items.forEach { ReadOnlyItem(it) }
+                        movement.items.forEach { ReadOnlyItem(it, photosByRow[it.row_uuid].orEmpty()) }
 
                         movement.remarks?.takeIf { it.isNotBlank() }?.let {
                             SectionHeader("Remarks")
@@ -219,7 +228,7 @@ private fun Facts(movement: Movement) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ReadOnlyItem(row: MovementItem) {
+private fun ReadOnlyItem(row: MovementItem, photos: List<ReviewablePhoto>) {
     Surface(shape = RoundedCornerShape(12.dp), color = AppSurface.raised, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row {
@@ -246,6 +255,12 @@ private fun ReadOnlyItem(row: MovementItem) {
                 style = MaterialTheme.typography.labelSmall,
                 color = if (row.condition != "OK") Semantic.caution else MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // The evidence itself. A supervisor deciding whether to verify has to
+            // be able to look at what was photographed, not read that two things
+            // were — which is the entire difference between a record and a count.
+            if (photos.isNotEmpty()) {
+                PhotoStrip(photos = photos)
+            }
         }
     }
 }

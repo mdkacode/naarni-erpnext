@@ -1055,6 +1055,8 @@ def my_movements(scope: str = "open", location: str = "", limit: int = 25, offse
 		limit_start=offset,
 	)
 
+	_attach_headlines(rows)
+
 	awaiting = frappe.db.count("Material Movement", {"status": C.STATUS_AWAITING_VERIFICATION, "is_test": 0})
 	return _ok(
 		{
@@ -1064,6 +1066,43 @@ def my_movements(scope: str = "open", location: str = "", limit: int = 25, offse
 			"can_verify": _can_verify(),
 		}
 	)
+
+
+def _attach_headlines(rows: list[dict]) -> None:
+	"""What each movement is *of* — the part, and the bus it is for.
+
+	A gate line's headline used to be the party, which is wrong twice over: the
+	capture flow does not ask for one, so every line read "Unnamed party"; and
+	even when it is set, nobody looking down a register is looking for the
+	supplier. They are looking for the part.
+
+	One query for the whole page rather than one per row — a register of
+	twenty-five movements is a screen, not twenty-five round trips.
+	"""
+	if not rows:
+		return
+
+	names = [r["name"] for r in rows]
+	items = frappe.get_all(
+		"Material Movement Item",
+		filters={"parent": ["in", names]},
+		fields=["parent", "item_name", "item", "chassis_no", "idx"],
+		order_by="parent asc, idx asc",
+		limit_page_length=0,
+	)
+
+	by_movement: dict[str, list[dict]] = {}
+	for row in items:
+		by_movement.setdefault(row.parent, []).append(row)
+
+	for row in rows:
+		lines = by_movement.get(row["name"], [])
+		first = lines[0] if lines else None
+		row["headline"] = (first.item_name or first.item) if first else _("No items yet")
+		# "…and 3 more" rather than a list: the rest belong on the movement, not
+		# in a row somebody is scanning past.
+		row["more_items"] = max(0, len(lines) - 1)
+		row["chassis_no"] = next((line.chassis_no for line in lines if line.chassis_no), "")
 
 
 @frappe.whitelist()

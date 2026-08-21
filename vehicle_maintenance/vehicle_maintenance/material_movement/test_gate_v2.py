@@ -257,7 +257,7 @@ class TestTheOperatorsList(GateV2TestCase):
 		from vehicle_maintenance.api import material
 
 		run = self._start()
-		self._answer_everything(run)
+		part = self._answer_everything(run)
 		api.submit_stage(run=run, stage="GATE")
 		frappe.db.commit()  # nosemgrep — the projection runs on the run's own save
 
@@ -271,6 +271,14 @@ class TestTheOperatorsList(GateV2TestCase):
 		# does not fill up with them; cleared here because the list query filters
 		# on exactly that flag, and the thing being tested is the list query.
 		frappe.db.set_value("Material Movement", name, "is_test", 0)
-		visible = {m["name"] for m in material.my_movements(scope="open")["data"]["movements"]}
-		self.assertIn(name, visible)
+		rows = material.my_movements(scope="open")["data"]["movements"]
 		self.addCleanup(frappe.db.set_value, "Material Movement", name, "is_test", 1)
+		self.assertIn(name, {m["name"] for m in rows})
+
+		# And it is named by what crossed the gate. The row used to lead with the
+		# party, which this flow never asks for — so every entry read "Unnamed
+		# party" and the register told you nothing without opening each line.
+		row = next(m for m in rows if m["name"] == name)
+		self.assertEqual(row["headline"], frappe.db.get_value("Part", part, "part_name"))
+		self.assertEqual(row["chassis_no"], "KA25AB1234")
+		self.assertEqual(row["more_items"], 0)

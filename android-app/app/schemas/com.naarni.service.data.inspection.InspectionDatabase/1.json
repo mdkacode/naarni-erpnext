@@ -1,0 +1,643 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "805326b9f26259eb0526f94faa0b66fc",
+    "entities": [
+      {
+        "tableName": "runs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`clientUuid` TEXT NOT NULL, `serverName` TEXT, `processFamily` TEXT NOT NULL, `definitionName` TEXT NOT NULL, `definitionVersion` INTEGER NOT NULL, `processName` TEXT NOT NULL, `identifier` TEXT, `stageLabel` TEXT NOT NULL, `status` TEXT NOT NULL, `currentStage` TEXT, `startedAt` INTEGER NOT NULL, `pendingSubmits` TEXT NOT NULL, `passCount` INTEGER NOT NULL, `failCount` INTEGER NOT NULL, `criticalCount` INTEGER NOT NULL, `answeredCount` INTEGER NOT NULL, `scorePct` REAL NOT NULL, `tracePct` REAL NOT NULL, `quarantineReason` TEXT, `closed` INTEGER NOT NULL, `syncState` TEXT NOT NULL, `lastSyncAt` INTEGER, `lastError` TEXT, `outstanding` TEXT, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`clientUuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "clientUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverName",
+            "columnName": "serverName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "processFamily",
+            "columnName": "processFamily",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "definitionName",
+            "columnName": "definitionName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "definitionVersion",
+            "columnName": "definitionVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processName",
+            "columnName": "processName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "identifier",
+            "columnName": "identifier",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "stageLabel",
+            "columnName": "stageLabel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentStage",
+            "columnName": "currentStage",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pendingSubmits",
+            "columnName": "pendingSubmits",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passCount",
+            "columnName": "passCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failCount",
+            "columnName": "failCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "criticalCount",
+            "columnName": "criticalCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "answeredCount",
+            "columnName": "answeredCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scorePct",
+            "columnName": "scorePct",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tracePct",
+            "columnName": "tracePct",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quarantineReason",
+            "columnName": "quarantineReason",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "closed",
+            "columnName": "closed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncState",
+            "columnName": "syncState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSyncAt",
+            "columnName": "lastSyncAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "outstanding",
+            "columnName": "outstanding",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "clientUuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_runs_syncState",
+            "unique": false,
+            "columnNames": [
+              "syncState"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_runs_syncState` ON `${TABLE_NAME}` (`syncState`)"
+          },
+          {
+            "name": "index_runs_serverName",
+            "unique": false,
+            "columnNames": [
+              "serverName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_runs_serverName` ON `${TABLE_NAME}` (`serverName`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "answers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`runUuid` TEXT NOT NULL, `stepCode` TEXT NOT NULL, `response` TEXT, `value` TEXT, `remark` TEXT, `skipped` INTEGER NOT NULL, `skipReason` TEXT, `secondsSpent` INTEGER NOT NULL, `clientSeq` INTEGER NOT NULL, `answeredAt` INTEGER NOT NULL, `localPass` INTEGER NOT NULL, `localDeviation` INTEGER NOT NULL, `localCritical` INTEGER NOT NULL, `localAnswered` INTEGER NOT NULL, `specSummary` TEXT, `serverPass` INTEGER, `synced` INTEGER NOT NULL, `rejectedReason` TEXT, PRIMARY KEY(`runUuid`, `stepCode`))",
+        "fields": [
+          {
+            "fieldPath": "runUuid",
+            "columnName": "runUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stepCode",
+            "columnName": "stepCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "response",
+            "columnName": "response",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "remark",
+            "columnName": "remark",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "skipped",
+            "columnName": "skipped",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skipReason",
+            "columnName": "skipReason",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "secondsSpent",
+            "columnName": "secondsSpent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientSeq",
+            "columnName": "clientSeq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "answeredAt",
+            "columnName": "answeredAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localPass",
+            "columnName": "localPass",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localDeviation",
+            "columnName": "localDeviation",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localCritical",
+            "columnName": "localCritical",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localAnswered",
+            "columnName": "localAnswered",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "specSummary",
+            "columnName": "specSummary",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serverPass",
+            "columnName": "serverPass",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "synced",
+            "columnName": "synced",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rejectedReason",
+            "columnName": "rejectedReason",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "runUuid",
+            "stepCode"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_answers_runUuid",
+            "unique": false,
+            "columnNames": [
+              "runUuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_answers_runUuid` ON `${TABLE_NAME}` (`runUuid`)"
+          },
+          {
+            "name": "index_answers_runUuid_synced",
+            "unique": false,
+            "columnNames": [
+              "runUuid",
+              "synced"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_answers_runUuid_synced` ON `${TABLE_NAME}` (`runUuid`, `synced`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "scans",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scanUuid` TEXT NOT NULL, `runUuid` TEXT NOT NULL, `entityType` TEXT NOT NULL, `stepCode` TEXT, `positionIndex` INTEGER NOT NULL, `payload` TEXT NOT NULL, `manual` INTEGER NOT NULL, `latitude` REAL, `longitude` REAL, `scannedAt` INTEGER NOT NULL, `synced` INTEGER NOT NULL, `duplicateOf` TEXT, PRIMARY KEY(`scanUuid`))",
+        "fields": [
+          {
+            "fieldPath": "scanUuid",
+            "columnName": "scanUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runUuid",
+            "columnName": "runUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entityType",
+            "columnName": "entityType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stepCode",
+            "columnName": "stepCode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "positionIndex",
+            "columnName": "positionIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manual",
+            "columnName": "manual",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "scannedAt",
+            "columnName": "scannedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "synced",
+            "columnName": "synced",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "duplicateOf",
+            "columnName": "duplicateOf",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scanUuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_scans_runUuid",
+            "unique": false,
+            "columnNames": [
+              "runUuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_scans_runUuid` ON `${TABLE_NAME}` (`runUuid`)"
+          },
+          {
+            "name": "index_scans_runUuid_synced",
+            "unique": false,
+            "columnNames": [
+              "runUuid",
+              "synced"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_scans_runUuid_synced` ON `${TABLE_NAME}` (`runUuid`, `synced`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "photos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`photoUuid` TEXT NOT NULL, `runUuid` TEXT NOT NULL, `stepCode` TEXT NOT NULL, `path` TEXT NOT NULL, `capturedAt` INTEGER NOT NULL, `latitude` REAL, `longitude` REAL, `accuracyM` REAL, `state` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `lastError` TEXT, `fileUrl` TEXT, PRIMARY KEY(`photoUuid`))",
+        "fields": [
+          {
+            "fieldPath": "photoUuid",
+            "columnName": "photoUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runUuid",
+            "columnName": "runUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stepCode",
+            "columnName": "stepCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracyM",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fileUrl",
+            "columnName": "fileUrl",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "photoUuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_photos_runUuid",
+            "unique": false,
+            "columnNames": [
+              "runUuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_photos_runUuid` ON `${TABLE_NAME}` (`runUuid`)"
+          },
+          {
+            "name": "index_photos_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_photos_state` ON `${TABLE_NAME}` (`state`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "definitions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `family` TEXT NOT NULL, `version` INTEGER NOT NULL, `json` TEXT NOT NULL, `fetchedAt` INTEGER NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "family",
+            "columnName": "family",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchedAt",
+            "columnName": "fetchedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "name"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_definitions_family",
+            "unique": false,
+            "columnNames": [
+              "family"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_definitions_family` ON `${TABLE_NAME}` (`family`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "process_summaries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `json` TEXT NOT NULL, `sortKey` TEXT NOT NULL, `fetchedAt` INTEGER NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortKey",
+            "columnName": "sortKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchedAt",
+            "columnName": "fetchedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "name"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '805326b9f26259eb0526f94faa0b66fc')"
+    ]
+  }
+}

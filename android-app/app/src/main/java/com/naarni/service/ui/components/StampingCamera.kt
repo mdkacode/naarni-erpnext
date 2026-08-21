@@ -4,12 +4,15 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.location.Location
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Box
@@ -79,14 +82,50 @@ fun StampingCamera(
      * surrounding context is gone.
      */
     subject: String? = null,
+    /**
+     * A word painted across the top of the picture — INWARD or OUTWARD at the
+     * material gate. Unlike [label] it is not part of the small corner block:
+     * it has to be readable at thumbnail size and after printing.
+     */
+    banner: String? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val session = remember { context.appContainer.session }
     val locationProvider = remember { LocationProvider(context) }
-    val imageCapture = remember { ImageCapture.Builder().build() }
+    val imageCapture = remember {
+        ImageCapture.Builder()
+            // Latency over resolution, deliberately. The stamp has to be legible
+            // and the defect has to be recognisable; neither needs twelve
+            // megapixels, and the full-sensor path costs twice over — the camera
+            // encodes a 5 MB JPEG, then we decode all of it back to stamp it.
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setResolutionSelector(
+                ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(CAPTURE_LONG_EDGE, CAPTURE_SHORT_EDGE),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                        ),
+                    )
+                    .build(),
+            )
+            .build()
+    }
     val executor = remember { Executors.newSingleThreadExecutor() }
+
+    // The fix, fetched while the operator is still aiming.
+    //
+    // This used to be requested *on the shutter*, at high accuracy, with a six
+    // second timeout — so inside a shed, where a GPS fix is exactly what is hard
+    // to get, every single photograph made somebody stand and watch a spinner for
+    // six seconds before the stamping had even begun. On a fifty-nine check sheet
+    // that is minutes of a shift spent waiting for a satellite.
+    //
+    // Aiming a camera takes a second or two anyway. Starting the request when the
+    // viewfinder opens spends that time instead of the operator's.
+    var fix by remember { mutableStateOf<Location?>(null) }
 
     var hasCamera by remember {
         mutableStateOf(
@@ -139,6 +178,14 @@ fun StampingCamera(
         )
     }
 
+    LaunchedEffect(hasCamera, showDisclosure) {
+        if (!hasCamera || showDisclosure || !hasLocationPerm()) return@LaunchedEffect
+        // Cheap and instant first, so there is always *something* to stamp with,
+        // then upgrade to a real fix if one arrives while the operator is aiming.
+        fix = locationProvider.lastKnown()
+        locationProvider.current()?.let { fix = it }
+    }
+
     if (!hasCamera) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Button(onClick = {
@@ -189,8 +236,10 @@ fun StampingCamera(
 
                         override fun onImageSaved(results: ImageCapture.OutputFileResults) {
                             scope.launch {
-                                val location =
-                                    if (hasLocationPerm()) locationProvider.current() else null
+                                // Whatever the prefetch has by now. No fix is a
+                                // stamp that says so — never a reason to hold up
+                                // somebody who has already taken the photograph.
+                                val location = fix
                                 withContext(Dispatchers.IO) {
                                     // Downscaled *before* stamping, never after.
                                     // Decoding a 12-megapixel capture whole costs
@@ -206,6 +255,7 @@ fun StampingCamera(
                                         userRole = session.primaryRole,
                                         label = label,
                                         subject = subject,
+                                        banner = banner,
                                     )
                                     val stamped = PhotoStamper.stamp(src, stamp)
                                     FileOutputStream(temp).use { out ->
@@ -236,6 +286,17 @@ fun StampingCamera(
         ) { Text("Close") }
     }
 }
+
+/**
+ * What the camera is asked to produce, in pixels.
+ *
+ * Sized for what these photographs are for: a legible stamp and a recognisable
+ * defect, viewed on a phone or in a PDF. A full-sensor capture costs the encode,
+ * the decode and the heap, and every one of those is paid while an operator
+ * stands waiting at a bench.
+ */
+private const val CAPTURE_LONG_EDGE = 1920
+private const val CAPTURE_SHORT_EDGE = 1080
 
 /**
  * Decode a capture at upload resolution, rotated upright.

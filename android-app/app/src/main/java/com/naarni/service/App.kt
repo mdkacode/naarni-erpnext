@@ -13,11 +13,15 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.naarni.service.core.auth.SessionManager
 import com.naarni.service.core.chat.FrappeSocket
+import com.naarni.service.core.inspection.InspectionConnectivity
 import com.naarni.service.core.network.Network
 import com.naarni.service.data.chat.ChatDatabase
+import com.naarni.service.data.inspection.InspectionDatabase
 import com.naarni.service.data.repo.AuthRepository
 import com.naarni.service.data.repo.ChatRepository
+import com.naarni.service.data.repo.InspectionRepository
 import com.naarni.service.data.repo.JobCardRepository
+import com.naarni.service.data.repo.MaterialRepository
 import com.naarni.service.data.repo.ProcessRepository
 import com.naarni.service.data.repo.RosterRepository
 import kotlinx.coroutines.CoroutineScope
@@ -68,49 +72,25 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        createNotificationChannel()
-        createChatChannels()
-    }
-
-    /** High-importance channel (custom sound + vibration) used by FCM push. */
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val mgr = getSystemService(NotificationManager::class.java) ?: return
-        val sound = Uri.parse("android.resource://$packageName/${R.raw.notify}")
-        val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        val channel = NotificationChannel(
-            CHANNEL_JOB_CARDS,
-            "Job Card Updates",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "Assignments, approvals, SLA alerts and status changes"
-            enableVibration(true)
-            vibrationPattern = longArrayOf(0, 200, 100, 200)
-            setSound(sound, attrs)
-        }
-        mgr.createNotificationChannel(channel)
+        // Chat and alert channels are owned by NotificationTones now: a channel's
+        // sound is fixed when it is created, so the chosen tone has to be part of
+        // the id. Everything else — the upload progress channel — stays here.
+        createUploadChannel()
+        com.naarni.service.core.push.NotificationTones.ensureChannels(this)
+        retireLegacyChannels()
+        // Process-wide, not screen-scoped: an inspection queued in a shed has to
+        // go up when the van reaches signal whether or not anyone opens the app.
+        container.connectivity.start()
     }
 
     /**
-     * Chat gets its own channels so a technician can silence depot banter without
-     * also silencing SLA and breakdown alerts. Importance is fixed at creation —
-     * Android will not let it be raised later — so messages start HIGH.
+     * Upload progress: persistent, silent, and nothing to do with tones.
+     *
+     * LOW keeps it out of the shade's alerting section and off the lock screen.
      */
-    private fun createChatChannels() {
+    private fun createUploadChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val mgr = getSystemService(NotificationManager::class.java) ?: return
-        mgr.createNotificationChannel(
-            NotificationChannel(CHANNEL_CHAT, "Chat Messages", NotificationManager.IMPORTANCE_HIGH)
-                .apply {
-                    description = "New messages in your depot and vehicle threads"
-                    enableVibration(true)
-                }
-        )
-        // Upload progress is a persistent, silent notification — LOW keeps it out
-        // of the shade's alerting section and off the lock screen.
         mgr.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_CHAT_UPLOADS,
@@ -119,14 +99,50 @@ class App : Application(), ImageLoaderFactory {
             ).apply {
                 description = "Progress for photos and videos being sent"
                 setShowBadge(false)
-            }
+            },
         )
+        // Its own channel rather than sharing the chat one. An engineer who
+        // silences chat attachment progress must not also silence the only
+        // visible sign that a morning's inspection photographs are going up.
+        mgr.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_INSPECTION_UPLOADS,
+                "Inspection Uploads",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = "Progress for inspection answers and photos being sent"
+                setShowBadge(false)
+            },
+        )
+    }
+
+    /**
+     * Remove the channels this app used to create for chat and alerts.
+     *
+     * Left behind they stay in the person's notification settings for ever as
+     * dead rows they can toggle and get nothing from — and worse, two entries
+     * called "Chat Messages", only one of which does anything.
+     */
+    private fun retireLegacyChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val mgr = getSystemService(NotificationManager::class.java) ?: return
+        listOf("chat_messages", CHANNEL_CHAT, CHANNEL_JOB_CARDS).forEach {
+            runCatching { mgr.deleteNotificationChannel(it) }
+        }
     }
 
     companion object {
         const val CHANNEL_JOB_CARDS = "job_cards"
-        const val CHANNEL_CHAT = "chat_messages"
+
+        /**
+         * Suffixed because a channel's sound and vibration are fixed at creation
+         * — Android ignores every later edit to an id it already knows. Giving
+         * chat its own tone therefore requires a new id, and anyone upgrading
+         * keeps the silent original until this one replaces it.
+         */
+        const val CHANNEL_CHAT = "chat_messages_v2"
         const val CHANNEL_CHAT_UPLOADS = "chat_uploads"
+        const val CHANNEL_INSPECTION_UPLOADS = "inspection_uploads"
     }
 }
 
@@ -142,12 +158,31 @@ class AppContainer(context: Context) {
     val authRepo by lazy { AuthRepository(api, session) }
     val jobCardRepo by lazy { JobCardRepository(api) }
     val processRepo by lazy { ProcessRepository(api) }
+    val materialRepo by lazy { MaterialRepository(api) }
     val rosterRepo by lazy { RosterRepository(api, appContext) }
+    val profileRepo by lazy {
+        com.naarni.service.data.repo.ProfileRepository(
+            api,
+            com.naarni.service.data.repo.UploadClient(api),
+        )
+    }
 
     // ---- Chat ----
     val chatDb by lazy { ChatDatabase.build(appContext) }
     val chatDao by lazy { chatDb.chatDao() }
     val chatRepo by lazy { ChatRepository(api, chatDao, appContext, session) }
+
+    // ---- Inspections, offline ----
+    //
+    // Its own database, deliberately: unlike chat, a queued inspection may exist
+    // nowhere else, so it takes no destructive schema fallback and shares no
+    // fate with anything that does.
+    val inspectionDb by lazy { InspectionDatabase.build(appContext) }
+    val inspectionDao by lazy { inspectionDb.dao() }
+    val inspectionRepo by lazy { InspectionRepository(api, inspectionDao, appContext) }
+
+    /** Drains the queue the moment a network appears. Started from `App.onCreate`. */
+    val connectivity by lazy { InspectionConnectivity(appContext) }
 
     /**
      * One socket for the process, bound to the app lifecycle rather than to any

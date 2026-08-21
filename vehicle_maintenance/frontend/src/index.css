@@ -1,27 +1,159 @@
+/**
+ * NaArNi Design Language — base layer.
+ *
+ * Tokens first, then Tailwind, then the handful of global decisions that are
+ * genuinely global: the two text colours, the focus ring, tabular figures, and
+ * a scrollbar that does not look like a different operating system.
+ *
+ * There are no component classes in this file. Components live in `src/ui/`.
+ */
+
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import "./styles/tokens.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--ndl-hairline);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply bg-canvas text-ink font-sans text-body antialiased;
+    /* `cv11` gives Inter the single-storey `l` and disambiguated `1`, which is
+       what makes a registration number readable at 12px. `ss01` tightens the
+       punctuation. */
+    font-feature-settings: "cv11", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Numbers must not shift width as they change — a counter that ticks from 9
+     to 10 should not move the column beside it. */
+  table,
+  input[type="number"],
+  .tabular,
+  [data-tabular] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "cv11";
+  }
+
+  /* One focus treatment for the whole product. Never removed, never a colour
+     change alone — a 2px accent ring at 2px offset, on whatever the ground is. */
+  :focus-visible {
+    outline: 2px solid var(--ndl-accent);
+    outline-offset: 2px;
+    border-radius: var(--ndl-radius-xs);
+  }
+
+  /* The forms plugin ships a focus ring of its own; ours is the only one. */
+  [type="text"]:focus,
+  [type="email"]:focus,
+  [type="tel"]:focus,
+  [type="number"]:focus,
+  [type="password"]:focus,
+  [type="search"]:focus,
+  [type="date"]:focus,
+  [type="datetime-local"]:focus,
+  select:focus,
+  textarea:focus {
+    --tw-ring-shadow: none;
+    box-shadow: none;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold text-ink;
+    text-wrap: balance;
+  }
+
+  a {
+    @apply text-accent;
+    text-underline-offset: 2px;
+  }
+
+  ::placeholder {
+    @apply text-subtle;
+  }
+
+  ::selection {
+    background: var(--ndl-accent-soft);
+    color: var(--ndl-accent-ink);
+  }
+
+  /* A scrollbar sized for a dense table: present, quiet, and the same on every
+     platform that lets us say so. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ndl-border) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--ndl-border);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ndl-text-subtle);
+    border: 3px solid transparent;
+    background-clip: content-box;
   }
 }
 
-@layer components {
-  /* Workflow state badge base */
-  .badge-status {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+@layer utilities {
+  /* Visible to a screen reader, invisible to everyone else. Used for the
+     accessible name of an icon-only control and for live regions. */
+  .sr-only-ndl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
   }
 
-  .badge-open        { background-color: #e0e7ff; color: #3730a3; }
-  .badge-wip         { background-color: #fef3c7; color: #92400e; }
-  .badge-approval    { background-color: #ede9fe; color: #5b21b6; }
-  .badge-parts       { background-color: #fce7f3; color: #9d174d; }
-  .badge-fitted      { background-color: #cffafe; color: #155e75; }
-  .badge-verify      { background-color: #ffedd5; color: #9a3412; }
-  .badge-closed      { background-color: #dcfce7; color: #166534; }
-  .badge-breach      { background-color: #fee2e2; color: #991b1b; }
+  /* A control painted at 28-32px still needs a 44px box a gloved thumb can hit.
+     The box is drawn only where the pointer is coarse, so it never steals a
+     hover or a click from a neighbouring control on a desktop. */
+  .touch-target::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+
+  @media (pointer: fine) {
+    .touch-target::after {
+      display: none;
+    }
+  }
+
+  /* Truncate to N lines. `line-clamp-2` on a list row's secondary text keeps a
+     verbose complaint from making one row three rows tall. */
+  .clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 }

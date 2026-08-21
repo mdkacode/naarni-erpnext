@@ -49,6 +49,7 @@ import com.naarni.service.ui.components.AppBar
 import com.naarni.service.ui.components.HairlineDivider
 import com.naarni.service.ui.components.SearchField
 import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Radii
 
 /**
  * Create a group.
@@ -110,7 +111,7 @@ fun NewGroupScreen(
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(Radii.lg)
                             .clickable(enabled = canCreate) {
                                 feedback.tap()
                                 busy = true
@@ -157,7 +158,7 @@ fun NewGroupScreen(
                 items(picked.value, key = { it.name }) { user ->
                     Surface(
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = Radii.xl,
                     ) {
                         Row(
                             Modifier
@@ -279,7 +280,7 @@ fun NewGroupScreen(
 /** The group-name field, on the brand gradient. */
 @Composable
 private fun GroupField(value: String, onChange: (String) -> Unit, placeholder: String) {
-    Surface(color = AppSurface.sunken, shape = RoundedCornerShape(14.dp)) {
+    Surface(color = AppSurface.sunken, shape = Radii.lg) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp)) {
             if (value.isEmpty()) {
                 Text(

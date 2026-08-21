@@ -26,15 +26,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Assignment
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -81,8 +81,17 @@ import com.naarni.service.ui.components.SkeletonBox
 import com.naarni.service.ui.components.StatusChip
 import com.naarni.service.ui.components.VehicleNumber
 import kotlinx.coroutines.launch
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Stroke
+import com.naarni.service.ui.theme.Elevation
+import com.naarni.service.ui.theme.Radii
+import androidx.compose.runtime.ReadOnlyComposable
+import com.naarni.service.ui.theme.Semantic
 
-private val ResolvedGreen = Color(0xFF16A34A)
+/** "Resolved" is the same green as "Closed", "Pass" and a healthy score. */
+private val ResolvedGreen: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.positive
 
 // ─────────────────────────── shared bits ───────────────────────────
 
@@ -102,7 +111,7 @@ private fun openMaps(ctx: android.content.Context, link: String?, lat: Double?, 
 
 @Composable
 private fun DetailCard(title: String, rail: Color = MaterialTheme.colorScheme.primary, content: @Composable () -> Unit) {
-    Surface(shape = MaterialTheme.shapes.large, tonalElevation = 1.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large, tonalElevation = Elevation.e0, shadowElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.labelLarge, color = rail, fontWeight = FontWeight.Bold)
             content()
@@ -124,13 +133,13 @@ private fun KV(label: String, value: String?) {
 @Composable
 private fun CompactHeader(reg: String?, alertName: String?, severity: String?, status: String?, meta: String?, fallback: String) {
     val color = com.naarni.service.ui.components.severityColor(severity)
-    Surface(shape = MaterialTheme.shapes.large, tonalElevation = 1.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large, tonalElevation = Elevation.e0, shadowElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(5.dp).fillMaxHeight().background(color))
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(40.dp).background(color.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Rounded.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
                     }
                     Column(Modifier.weight(1f)) {
                         VehicleNumber(reg?.takeIf { it.isNotBlank() } ?: fallback, style = MaterialTheme.typography.titleLarge)
@@ -181,7 +190,7 @@ private fun FixSheetContent(responses: List<QuickResponse>, busy: Boolean, onPic
                 }
             }
             OutlinedButton(enabled = !busy, onClick = { showOther = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Icon(Icons.Filled.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Other…")
+                Icon(Icons.Rounded.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Other…")
             }
         }
     }
@@ -200,7 +209,7 @@ private fun FixSheetContent(responses: List<QuickResponse>, busy: Boolean, onPic
 @Composable
 private fun EpisodeRow(ep: TicketEpisode) {
     Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = ResolvedGreen, modifier = Modifier.size(18.dp))
+        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = ResolvedGreen, modifier = Modifier.size(18.dp))
         Column(Modifier.weight(1f)) {
             Text(ep.resolution_response_text ?: ep.resolution_reason ?: "Resolved", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text(
@@ -277,13 +286,13 @@ fun AlertDetailScreen(
         topBar = {
             TopAppBar(
                 title = { Text(d?.let { humanize(it.alert_name) } ?: "Alert", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
             )
         },
         bottomBar = {
             val g = d
             if (g != null) {
-                Surface(tonalElevation = 3.dp, shadowElevation = 8.dp) {
+                Surface(color = AppSurface.raised, tonalElevation = Elevation.e0, shadowElevation = Elevation.e3) {
                     Row(
                         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -291,18 +300,18 @@ fun AlertDetailScreen(
                     ) {
                         if (g.open_ticket != null) {
                             Button(enabled = !busy, onClick = { showFix = true }, modifier = Modifier.weight(1f).height(56.dp)) {
-                                Icon(Icons.Filled.CheckCircle, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("How did you fix it?", maxLines = 1)
+                                Icon(Icons.Rounded.CheckCircle, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("How did you fix it?", maxLines = 1)
                             }
                         } else {
-                            Surface(color = ResolvedGreen.copy(alpha = 0.14f), shape = RoundedCornerShape(50), modifier = Modifier.weight(1f).height(56.dp)) {
+                            Surface(color = ResolvedGreen.copy(alpha = 0.14f), shape = Radii.pill, modifier = Modifier.weight(1f).height(56.dp)) {
                                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = ResolvedGreen); Spacer(Modifier.width(8.dp))
+                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = ResolvedGreen); Spacer(Modifier.width(8.dp))
                                     Text("Resolved", color = ResolvedGreen, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
                         FilledTonalIconButton(onClick = { showHistory = true }, modifier = Modifier.size(56.dp)) {
-                            Icon(Icons.Filled.History, contentDescription = "History")
+                            Icon(Icons.Rounded.History, contentDescription = "History")
                         }
                     }
                 }
@@ -345,7 +354,7 @@ fun AlertDetailScreen(
                                 relExact(lr?.triggered_at ?: lr?.occurred_at)?.let { KV("When", it) }
                                 if (!lr?.maps_link.isNullOrBlank() || (lr?.latitude != null && lr.longitude != null)) {
                                     OutlinedButton(onClick = { openMaps(ctx, lr?.maps_link, lr?.latitude, lr?.longitude) }) {
-                                        Icon(Icons.Filled.Place, null); Spacer(Modifier.width(8.dp)); Text("Open in Maps")
+                                        Icon(Icons.Rounded.Place, null); Spacer(Modifier.width(8.dp)); Text("Open in Maps")
                                     }
                                 }
                             }
@@ -369,12 +378,12 @@ fun AlertDetailScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 (g.open_ticket ?: g.episodes.firstOrNull()?.ticket)?.let { t ->
                                     OutlinedButton(onClick = { onOpenTicket(t) }, modifier = Modifier.weight(1f)) {
-                                        Icon(Icons.Filled.ConfirmationNumber, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Ticket")
+                                        Icon(Icons.Rounded.ConfirmationNumber, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Ticket")
                                     }
                                 }
                                 g.vehicle?.takeIf { it.isNotBlank() }?.let { v ->
                                     OutlinedButton(onClick = { onOpenVehicle(v) }, modifier = Modifier.weight(1f)) {
-                                        Icon(Icons.Filled.DirectionsBus, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Vehicle")
+                                        Icon(Icons.Rounded.DirectionsBus, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Vehicle")
                                     }
                                 }
                             }
@@ -470,16 +479,16 @@ fun TicketDetailScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Ticket") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
             )
         },
         bottomBar = {
             val d = t
             if (d != null && !(d.status ?: "").equals("Resolved", true)) {
-                Surface(tonalElevation = 3.dp, shadowElevation = 8.dp) {
+                Surface(color = AppSurface.raised, tonalElevation = Elevation.e0, shadowElevation = Elevation.e3) {
                     Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
                         Button(enabled = !busy, onClick = { showFix = true }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                            Icon(Icons.Filled.CheckCircle, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("How did you fix it?")
+                            Icon(Icons.Rounded.CheckCircle, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("How did you fix it?")
                         }
                     }
                 }
@@ -529,7 +538,7 @@ fun TicketDetailScreen(
                             if (!d.maps_link.isNullOrBlank() || (d.latitude != null && d.longitude != null)) {
                                 DetailCard("Location") {
                                     OutlinedButton(onClick = { openMaps(ctx, d.maps_link, d.latitude, d.longitude) }) {
-                                        Icon(Icons.Filled.Place, null); Spacer(Modifier.width(8.dp)); Text("Open in Maps")
+                                        Icon(Icons.Rounded.Place, null); Spacer(Modifier.width(8.dp)); Text("Open in Maps")
                                     }
                                 }
                             }
@@ -546,21 +555,21 @@ fun TicketDetailScreen(
                             val status = d.status ?: ""
                             if (status.equals("Open", true)) {
                                 OutlinedButton(enabled = !busy, onClick = { act { vm.jobCards.acknowledgeTicket(d.name) } }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                                    Icon(Icons.Filled.CheckCircle, null); Spacer(Modifier.width(8.dp)); Text("Acknowledge")
+                                    Icon(Icons.Rounded.CheckCircle, null); Spacer(Modifier.width(8.dp)); Text("Acknowledge")
                                 }
                             }
                             if (d.job_card.isNullOrBlank()) {
                                 OutlinedButton(enabled = !busy, onClick = { act { vm.jobCards.createJobCardFromTicket(d.name).let { onOpenJobCard(it) } } }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                                    Icon(Icons.AutoMirrored.Filled.Assignment, null); Spacer(Modifier.width(8.dp)); Text("Create job card")
+                                    Icon(Icons.AutoMirrored.Rounded.Assignment, null); Spacer(Modifier.width(8.dp)); Text("Create job card")
                                 }
                             } else {
                                 OutlinedButton(onClick = { onOpenJobCard(d.job_card!!) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                                    Icon(Icons.AutoMirrored.Filled.Assignment, null); Spacer(Modifier.width(8.dp)); Text("Open job card")
+                                    Icon(Icons.AutoMirrored.Rounded.Assignment, null); Spacer(Modifier.width(8.dp)); Text("Open job card")
                                 }
                             }
                             d.vehicle?.takeIf { it.isNotBlank() }?.let { v ->
                                 OutlinedButton(onClick = { onOpenVehicle(v) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                                    Icon(Icons.Filled.DirectionsBus, null); Spacer(Modifier.width(8.dp)); Text("Open vehicle")
+                                    Icon(Icons.Rounded.DirectionsBus, null); Spacer(Modifier.width(8.dp)); Text("Open vehicle")
                                 }
                             }
                             Spacer(Modifier.height(8.dp))

@@ -1,5 +1,6 @@
 package com.naarni.service.data.dto
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -84,6 +85,8 @@ data class ProcessStep(
     val response_type: String = "Choice",
     val options: List<ProcessOption> = emptyList(),
     val link_doctype: String? = null,
+    /** Whether the runner may add a missing option to [link_doctype] inline. */
+    val allow_inline_create: Int = 0,
     val computed_expression: String? = null,
     val unit: String? = null,
     val min_value: Double = 0.0,
@@ -112,13 +115,40 @@ data class ProcessStep(
     val expected_seconds: Int = 0,
     val visibility_conditions: List<ProcessCondition> = emptyList(),
     /**
-     * False when this install is too old to render the step type. The runner
-     * shows a read-only card with an update prompt rather than crashing, so one
-     * new step type cannot break every phone on the floor at once.
+     * What the server thought when it sent this — see [supported], which is the
+     * one the app should ask.
      */
-    val supported: Boolean = true,
+    @SerialName("supported")
+    val server_supported: Boolean = true,
     val required_capability: Int = 1,
-)
+) {
+    /**
+     * Whether this build can render the step type. Read-only card and an update
+     * prompt when it cannot, so one new step type cannot break every phone on
+     * the floor at once.
+     *
+     * Judged here rather than taken from the server's answer, because the
+     * server's answer is baked into a definition that is then cached on the
+     * handset for as long as the version lives. A build that raises its
+     * capability would keep reading a verdict passed on the build before it —
+     * which is exactly what hid `Weight from Photo` behind "this check needs a
+     * newer version of the app" on a phone that could render it perfectly well.
+     */
+    val supported: Boolean
+        get() = required_capability <= APP_STEP_CAPABILITY
+}
+
+/**
+ * Step-type capability this build renders. One constant, deliberately:
+ * there were two, they disagreed, and the runner happened to hold the stale one.
+ *
+ * 1: everything the engine shipped with.
+ * 2: `Weight from Photo` — a weight typed beside a photograph of the scale,
+ *    with the number read off it by on-device OCR.
+ * 3: `Review & Confirm` — the run's own answers and photographs read back on a
+ *    last screen, each line a tap back to the question.
+ */
+const val APP_STEP_CAPABILITY = 3
 
 @Serializable
 data class ProcessEntityType(
@@ -145,6 +175,12 @@ data class ProcessDefinition(
     val subject_label: String? = null,
     val identifier_mode: String = "Scan QR",
     val identifier_pattern: String? = null,
+    /**
+     * "Text" or "Numbers Only". A pack number that is digits deserves the digits
+     * keypad: on a full QWERTY the numbers are the small row along the top, and
+     * one mistyped character opens an inspection of a battery that does not exist.
+     */
+    val identifier_keypad: String = "Text",
     val allow_offline: Int = 1,
     val allow_resume: Int = 1,
     val expected_minutes: Int = 0,
@@ -209,6 +245,78 @@ data class ProcessSignoffRow(
     val remarks: String? = null,
 )
 
+// ------------------------------------------------------------ shared packs
+//
+// A battery is fifty-nine checks across several modules and a shift puts more
+// than one person on it. These types are how the app shows that: who is on this
+// pack, which module they were last in, and what is still free to pick up.
+
+/** One person who has actually done something on a run. */
+@Serializable
+data class RunParticipant(
+    val user: String = "",
+    val full_name: String = "",
+    val answers: Int = 0,
+    val last_at: String? = null,
+    val last_stage: String? = null,
+)
+
+/** One module of a run, as it appears on the board. */
+@Serializable
+data class BoardStage(
+    val stage_code: String = "",
+    val label: String = "",
+    val sequence: Int = 0,
+    val total: Int = 0,
+    val answered: Int = 0,
+    /** Mandatory checks still missing — what actually holds the run open. */
+    val outstanding: Int = 0,
+    val blocked: Boolean = false,
+    val submitted: Boolean = false,
+    val submitted_by: String? = null,
+    val submitted_at: String? = null,
+    val last_user: String? = null,
+    val last_by: String? = null,
+    val last_at: String? = null,
+    /** Somebody answered here within the last ten minutes. */
+    val active_now: Boolean = false,
+) {
+    val isDone: Boolean get() = submitted || (total > 0 && answered >= total)
+    val fraction: Float get() = if (total <= 0) 0f else answered.toFloat() / total
+}
+
+/** Every module of one run, plus everyone working it. */
+@Serializable
+data class RunBoard(
+    val run: String = "",
+    val run_identifier: String? = null,
+    val process_name: String = "",
+    /** What operators call a module here — never hardcode "Stage". */
+    val stage_label: String = "Stage",
+    val status: String = "",
+    val current_stage: String? = null,
+    val answered_count: Int = 0,
+    val quarantine_reason: String? = null,
+    val stages: List<BoardStage> = emptyList(),
+    val participants: List<RunParticipant> = emptyList(),
+)
+
+/** What a scanned label turns out to be: a pack in progress, or a new one. */
+@Serializable
+data class FoundRun(
+    val found: Boolean = false,
+    val run: String = "",
+    val run_identifier: String? = null,
+    val process_name: String = "",
+    val stage_label: String = "Stage",
+    val status: String = "",
+    val current_stage: String? = null,
+    val answered_count: Int = 0,
+    val started_at: String? = null,
+    val stages: List<BoardStage> = emptyList(),
+    val participants: List<RunParticipant> = emptyList(),
+)
+
 /** A run in progress or finished — the whole state the runner needs to resume. */
 @Serializable
 data class ProcessRun(
@@ -236,7 +344,17 @@ data class ProcessRun(
     val blocked_stages: List<String> = emptyList(),
     val started_at: String? = null,
     val completed_at: String? = null,
+    /**
+     * Present only when a submit did *not* finish the run: what is still to do.
+     *
+     * The server keeps a run open rather than stamping a verdict on a half-done
+     * inspection, so the operator has to be told why they are back on the first
+     * screen instead of on the summary.
+     */
+    val outstanding: ProcessOutstanding? = null,
     val is_test_run: Int = 0,
+    /** Everyone who has worked this pack, most recent first. */
+    val participants: List<RunParticipant> = emptyList(),
     val results: List<ProcessResultRow> = emptyList(),
     val scans: List<ProcessScanRow> = emptyList(),
     val photos: List<ProcessPhotoRow> = emptyList(),
@@ -244,6 +362,16 @@ data class ProcessRun(
 )
 
 /** Live totals returned alongside a saved answer, so the runner updates without a refetch. */
+@Serializable
+data class ProcessOutstanding(
+    val stages: List<String> = emptyList(),
+    val steps: List<String> = emptyList(),
+) {
+    fun isEmpty() = stages.isEmpty() && steps.isEmpty()
+
+    fun summary(): String = (stages + steps).joinToString(", ")
+}
+
 @Serializable
 data class ProcessRunTotals(
     val status: String = "",
@@ -299,4 +427,347 @@ data class OpenRun(
     val current_stage: String? = null,
     val answered_count: Int = 0,
     val started_at: String? = null,
+    val started_by: String? = null,
+    /** How many people have worked this pack. 1 means it is yours alone. */
+    val participant_count: Int = 1,
 )
+
+// ---------------------------------------------------------- operator history
+//
+// What one person did, read back to that person. Distinct from [ProcessRun],
+// which is the live state of a run being worked: these types are a record, so
+// they carry the label and spec that were in force at the time rather than a
+// pointer into a definition that may since have been re-published.
+
+/** Headline counts for the operator's own work. */
+@Serializable
+data class HistoryStats(
+    val total: Int = 0,
+    val today: Int = 0,
+    val week: Int = 0,
+    val passed: Int = 0,
+    val quarantined: Int = 0,
+    val open: Int = 0,
+)
+
+/** One finished inspection, as a row in the history list. */
+@Serializable
+data class HistoryRun(
+    val name: String = "",
+    val process_definition: String = "",
+    val process_name: String = "",
+    val run_identifier: String? = null,
+    val status: String = "",
+    val result: String? = null,
+    val score_pct: Double = 0.0,
+    val pass_count: Int = 0,
+    val fail_count: Int = 0,
+    val skip_count: Int = 0,
+    val critical_count: Int = 0,
+    val answered_count: Int = 0,
+    val trace_completeness_pct: Double = 0.0,
+    val started_at: String? = null,
+    val completed_at: String? = null,
+    val photo_count: Int = 0,
+    /** First photo of the run — what makes a row of identical serials recognisable. */
+    val thumb: String? = null,
+    val started_by: String? = null,
+    /** How many people worked this pack. Shown when it is more than one. */
+    val participant_count: Int = 1,
+)
+
+@Serializable
+data class ProcessHistory(
+    val stats: HistoryStats = HistoryStats(),
+    val runs: List<HistoryRun> = emptyList(),
+)
+
+@Serializable
+data class ReportPhoto(
+    val file_url: String = "",
+    val caption: String? = null,
+    val captured_at: String? = null,
+    val captured_by: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracy_m: Double? = null,
+    val location_source: String? = null,
+    val geofence_status: String? = null,
+)
+
+/** One answer as it was recorded, with the photos taken at that step. */
+@Serializable
+data class ReportStep(
+    val step_code: String = "",
+    val display_no: String? = null,
+    val section: String? = null,
+    val label: String = "",
+    val response_type: String? = null,
+    val response: String? = null,
+    val value_numeric: Double? = null,
+    val value_text: String? = null,
+    val unit: String? = null,
+    val spec_summary: String? = null,
+    val is_pass: Int = 0,
+    val is_deviation: Int = 0,
+    val is_critical: Int = 0,
+    val is_skipped: Int = 0,
+    val skip_reason: String? = null,
+    val remark: String? = null,
+    val answered_at: String? = null,
+    val photos: List<ReportPhoto> = emptyList(),
+)
+
+@Serializable
+data class ReportStage(
+    val stage: String = "",
+    val label: String = "",
+    val steps: List<ReportStep> = emptyList(),
+)
+
+/** Photos taken against a step with no answer row — evidence someone looked. */
+@Serializable
+data class UnmatchedPhotoGroup(
+    val step_code: String = "",
+    val label: String = "",
+    val photos: List<ReportPhoto> = emptyList(),
+)
+
+// ------------------------------------------------------------- offline sync
+//
+// What travels between the handset's local store and `api/process_sync.py`.
+// The batch types are what the device *sends*; everything else here is what it
+// gets back and treats as authoritative — the server's judgement replaces the
+// on-device one on arrival, always.
+
+/** One queued answer, as it goes up. */
+@Serializable
+data class SyncAnswer(
+    val step_code: String,
+    val response: String? = null,
+    val value: String? = null,
+    val remark: String? = null,
+    val skipped: Int = 0,
+    val skip_reason: String? = null,
+    val seconds_spent: Int = 0,
+    /**
+     * The device's own monotonic counter for this run.
+     *
+     * Two jobs: it tells the server the order the engineer actually answered
+     * in, and it is what the reconcile matches on — an answer corrected while
+     * the batch was in flight has a higher sequence and stays queued rather
+     * than being marked delivered.
+     */
+    val client_seq: Long = 0,
+    /** `yyyy-MM-dd HH:mm:ss`, from the handset's clock. When the work was done. */
+    val answered_at: String? = null,
+)
+
+/** One queued scan. `client_uuid` is the dedup key — never the serial. */
+@Serializable
+data class SyncScan(
+    val client_uuid: String,
+    val entity_type: String,
+    val payload: String,
+    val step_code: String? = null,
+    val position_index: Int = 0,
+    val is_manual_entry: Int = 0,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val scanned_at: String? = null,
+)
+
+/** One inspection's worth of queued work. */
+@Serializable
+data class SyncBatch(
+    /** The run's identity, minted when the engineer pressed Start. */
+    val client_uuid: String? = null,
+    /** Instead of the UUID, for a run that was created online before signal went. */
+    val run: String? = null,
+    val process: String? = null,
+    val identifier: String? = null,
+    val started_at: String? = null,
+    val station: String? = null,
+    val shift: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val answers: List<SyncAnswer> = emptyList(),
+    val scans: List<SyncScan> = emptyList(),
+    val submit_stages: List<String> = emptyList(),
+)
+
+@Serializable
+data class SyncAnswerAck(
+    val step_code: String = "",
+    /** False when the row already said exactly this — a replay, not a new answer. */
+    val changed: Boolean = false,
+    val is_pass: Int = 0,
+    val is_deviation: Int = 0,
+    val is_critical: Int = 0,
+)
+
+@Serializable
+data class SyncRejection(
+    val step_code: String = "",
+    val stage: String = "",
+    val reason: String = "",
+    val missing: List<String> = emptyList(),
+)
+
+@Serializable
+data class SyncScanWarning(
+    val client_uuid: String = "",
+    val serial_no: String? = null,
+    val duplicate_of: String? = null,
+    val message: String = "",
+)
+
+/** What the server did with each part of the batch. */
+@Serializable
+data class SyncReport(
+    val created: Boolean = false,
+    /** The run is finished server-side; the device should stop sending for it. */
+    val already_closed: Boolean = false,
+    val answers_applied: List<SyncAnswerAck> = emptyList(),
+    val answers_rejected: List<SyncRejection> = emptyList(),
+    val scans_applied: List<String> = emptyList(),
+    val scan_warnings: List<SyncScanWarning> = emptyList(),
+    val stages_submitted: List<String> = emptyList(),
+    val stages_rejected: List<SyncRejection> = emptyList(),
+    val outstanding: ProcessOutstanding = ProcessOutstanding(),
+)
+
+/**
+ * A synced run: the full server-side state, plus the report.
+ *
+ * Every field of [ProcessRun] is repeated rather than nested, because the
+ * server returns one flat object and the device wants both halves — the run to
+ * replace its local copy with, and the report to reconcile its queue against.
+ */
+@Serializable
+data class SyncRunResponse(
+    val name: String = "",
+    val process_definition: String = "",
+    val process_name: String = "",
+    val run_identifier: String? = null,
+    val status: String = "In Progress",
+    val current_stage: String? = null,
+    val result: String? = null,
+    val score_pct: Double = 0.0,
+    val pass_count: Int = 0,
+    val fail_count: Int = 0,
+    val skip_count: Int = 0,
+    val critical_count: Int = 0,
+    val answered_count: Int = 0,
+    val trace_completeness_pct: Double = 0.0,
+    val quarantine_reason: String? = null,
+    val started_at: String? = null,
+    val completed_at: String? = null,
+    val results: List<ProcessResultRow> = emptyList(),
+    val scans: List<ProcessScanRow> = emptyList(),
+    val photos: List<ProcessPhotoRow> = emptyList(),
+    val sync: SyncReport = SyncReport(),
+)
+
+/** Settings the on-device evaluator needs to agree with the server. */
+@Serializable
+data class ProcessEngineSettings(
+    val fast_entry_threshold_pct: Double = 25.0,
+    val geofence_enabled: Int = 0,
+    val geofence_radius_m: Int = 0,
+    val plant_latitude: Double? = null,
+    val plant_longitude: Double? = null,
+)
+
+/** One call that leaves the handset able to work with no network at all. */
+@Serializable
+data class ProcessBootstrap(
+    val processes: List<ProcessSummary> = emptyList(),
+    val definitions: List<ProcessDefinition> = emptyList(),
+    val settings: ProcessEngineSettings = ProcessEngineSettings(),
+    val server_time: String? = null,
+)
+
+@Serializable
+data class RunReport(
+    val name: String = "",
+    val process_name: String = "",
+    val run_identifier: String? = null,
+    val status: String = "",
+    val result: String? = null,
+    val score_pct: Double = 0.0,
+    val pass_count: Int = 0,
+    val fail_count: Int = 0,
+    val skip_count: Int = 0,
+    val critical_count: Int = 0,
+    val answered_count: Int = 0,
+    val trace_completeness_pct: Double = 0.0,
+    val quarantine_reason: String? = null,
+    val station: String? = null,
+    val started_by: String? = null,
+    val started_by_name: String? = null,
+    val started_at: String? = null,
+    val completed_at: String? = null,
+    val photo_count: Int = 0,
+    val stages: List<ReportStage> = emptyList(),
+    val unmatched_photos: List<UnmatchedPhotoGroup> = emptyList(),
+)
+
+/** One option behind a `Link` step, as `process.link_options` returns it. */
+@kotlinx.serialization.Serializable
+data class LinkOption(
+    val value: String,
+    val label: String = "",
+    val sublabel: String? = null,
+    val badge: String? = null,
+)
+
+
+/**
+ * One pack waiting for a signature, as the queue lists it.
+ *
+ * `stage` is carried because the verify call needs it and the list is the only
+ * place that knows it: a run in Awaiting Verification does not move
+ * `current_stage`, so a multi-stage process would otherwise be signed off on
+ * the wrong module.
+ */
+@Serializable
+data class VerificationRun(
+    val name: String = "",
+    val run_identifier: String? = null,
+    val process_name: String = "",
+    val stage: String = "",
+    val stage_label: String = "",
+    val started_by: String? = null,
+    val started_by_name: String? = null,
+    val started_at: String? = null,
+    val completed_at: String? = null,
+    val modified: String? = null,
+    val pass_count: Int = 0,
+    val fail_count: Int = 0,
+    val critical_count: Int = 0,
+    val answered_count: Int = 0,
+    val photo_count: Int = 0,
+    val score_pct: Double = 0.0,
+    val result: String? = null,
+)
+
+/**
+ * The queue, plus why it is empty when it is.
+ *
+ * "Nothing to verify" and "you are not set up to verify anything" look
+ * identical on a screen and are not the same problem — one is a good morning,
+ * the other is an administrator's job. [reason] tells them apart.
+ */
+@Serializable
+data class VerificationQueue(
+    val runs: List<VerificationRun> = emptyList(),
+    val plant: String? = null,
+    val plant_name: String = "",
+    val has_more: Boolean = false,
+    /** `"no_role"` when this person verifies nothing anywhere; null otherwise. */
+    val reason: String? = null,
+) {
+    /** No plant on the profile: an administrator has to set one. */
+    val plantMissing: Boolean get() = plant.isNullOrBlank() && reason == null
+}

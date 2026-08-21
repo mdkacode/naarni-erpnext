@@ -14,11 +14,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +53,9 @@ import com.naarni.service.ui.components.StampingCamera
 import com.naarni.service.ui.components.rememberInspectionState
 import kotlinx.coroutines.launch
 import java.io.File
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Stroke
+import com.naarni.service.ui.theme.Elevation
 
 /**
  * Auto-fill create flow: pick type + vehicle, one `get_job_card_form_context`
@@ -102,7 +105,7 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit
 
     if (showCamera) {
         StampingCamera(
-            onCaptured = { file -> photo = file; showCamera = false },
+            onCaptured = { file, _ -> photo = file; showCamera = false },
             onClose = { showCamera = false },
         )
         return
@@ -110,7 +113,7 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit
 
     if (showVinCamera) {
         StampingCamera(
-            onCaptured = { file -> vinPhoto = file; showVinCamera = false },
+            onCaptured = { file, _ -> vinPhoto = file; showVinCamera = false },
             onClose = { showVinCamera = false },
         )
         return
@@ -131,7 +134,7 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
             }
             Text("New Job Card", style = MaterialTheme.typography.titleLarge)
         }
@@ -170,7 +173,7 @@ fun CreateJobCardScreen(vm: AppViewModel, onDone: () -> Unit, onBack: () -> Unit
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         context?.let { ctx ->
-            Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+            Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large, tonalElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Auto-filled", fontWeight = FontWeight.SemiBold)
                     if (!ctx.customer.isNullOrBlank()) AutoRow("Customer", ctx.customer_name ?: ctx.customer)
@@ -358,7 +361,7 @@ private fun SuccessView(name: String, onDone: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.height(72.dp))
+        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.height(72.dp))
         Spacer(Modifier.height(16.dp))
         Text("Job Card created", style = MaterialTheme.typography.titleLarge)
         Text(name, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

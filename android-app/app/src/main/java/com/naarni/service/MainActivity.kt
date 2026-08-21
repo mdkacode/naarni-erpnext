@@ -3,10 +3,10 @@ package com.naarni.service
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -42,8 +42,20 @@ class MainActivity : ComponentActivity() {
         // Must run before super.onCreate — swaps the launch/splash theme for the app theme.
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        blockScreenCapture()
         captureDeepLink(intent)
-        enableEdgeToEdge()
+        // Deliberately *not* edge-to-edge.
+        //
+        // `enableEdgeToEdge()` calls `setDecorFitsSystemWindows(window, false)`,
+        // and that quietly turns the manifest's `adjustResize` into a no-op: the
+        // window stops resizing for the keyboard and every screen becomes
+        // responsible for consuming `WindowInsets.ime` itself. Exactly one did.
+        // Everywhere else — login, the inspection runner, job cards, onboarding
+        // — the keyboard came up over the field being typed into, which is about
+        // as fundamental as a bug gets on a phone that exists to be typed into.
+        //
+        // Letting the system inset the window is the fix. Drawing under the
+        // status bar was never worth a field an engineer cannot see.
         setContent {
             NaarniTheme {
                 CompositionLocalProvider(LocalFeedback provides rememberFeedback()) {
@@ -139,6 +151,33 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Stash a notification's deep-link route so MainShell can navigate to it. */
+    /**
+     * Blocks screenshots, screen recording and cast/mirror capture across the
+     * whole app.
+     *
+     * One flag on the one window covers every surface, because this is a
+     * single-Activity app: the screenshot gesture fails with the system's
+     * "can't take screenshot" toast, a recording or a cast captures a black
+     * frame, and — the leak people forget — the recent-apps thumbnail renders
+     * blank.
+     *
+     * Set unconditionally rather than per screen. The material gate, the battery
+     * QC inspections and chat all carry commercially sensitive content, and a
+     * per-screen allowlist is a list somebody eventually forgets to add to.
+     * `BuildConfig.DEBUG` is deliberately not an exemption either: a debug build
+     * on a desk is exactly where a screenshot of production data gets taken.
+     *
+     * Two limits, stated because a security control that is oversold is worse
+     * than none: it cannot stop a photograph of the screen, and it is a request
+     * the OS honours — a rooted device or a modified ROM can ignore it.
+     */
+    private fun blockScreenCapture() {
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE,
+        )
+    }
+
     private fun captureDeepLink(intent: Intent?) {
         val route = intent?.data?.toString() ?: intent?.getStringExtra("route")
         if (!route.isNullOrBlank()) DeepLinkBus.pending = route

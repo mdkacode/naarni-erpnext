@@ -7,12 +7,14 @@ import androidx.paging.PagingData
 import com.naarni.service.core.auth.SessionManager
 import com.naarni.service.core.network.FrappeApi
 import com.naarni.service.core.network.payload
+import com.naarni.service.core.push.ChatNotifications
 import com.naarni.service.data.chat.ChatDao
 import com.naarni.service.data.chat.ChatMessageEntity
 import com.naarni.service.data.chat.ChatRoomEntity
 import com.naarni.service.data.chat.ChatUploadEntity
 import com.naarni.service.data.chat.PENDING_BASE
 import com.naarni.service.data.chat.SendStatus
+import com.naarni.service.data.chat.ServerTime
 import com.naarni.service.data.chat.previewOf
 import com.naarni.service.data.dto.ChatMessageDto
 import com.naarni.service.data.dto.ChatReactionDto
@@ -20,11 +22,14 @@ import com.naarni.service.data.dto.ChatRoomDto
 import com.naarni.service.data.dto.ChatTicketDto
 import com.naarni.service.data.dto.ChatUserDto
 import com.naarni.service.data.dto.PresencePayload
+import com.naarni.service.data.dto.RoomDelta
+import com.naarni.service.data.dto.SyncCursor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -132,12 +137,14 @@ class ChatRepository(
      * re-rendering or notifying.
      */
     suspend fun sync(): Boolean {
-        val cursors = dao.syncCursors().associate { it.name to it.lastSeq }
+        val cursors = dao.syncCursors().associate {
+            it.name to SyncCursor(seq = it.lastSeq, del = it.lastDeleteSeq)
+        }
         val payload = api.chatSync(json.encodeToString(cursors)).payload()
         var changed = false
         for ((room, delta) in payload.rooms) {
             if (delta.messages.isEmpty()) continue
-            dao.applyDelta(room, delta.messages.map { it.toEntity() }, delta.last_seq)
+            applyDelta(room, delta)
             changed = true
             // The server caps a delta page; if more remains, keep pulling rather
             // than leaving a hole a week-offline device would never fill.
@@ -149,13 +156,35 @@ class ChatRepository(
     private suspend fun syncRoomForward(room: String) {
         var guard = 0
         while (guard++ < MAX_SYNC_PAGES) {
-            val since = dao.highestSeq(room) ?: 0
-            val delta = api.chatSync(json.encodeToString(mapOf(room to since)))
+            val cursor = SyncCursor(
+                seq = dao.highestSeq(room) ?: 0,
+                del = dao.highestDeleteSeq(room) ?: 0,
+            )
+            val delta = api.chatSync(json.encodeToString(mapOf(room to cursor)))
                 .payload().rooms[room] ?: return
             if (delta.messages.isEmpty()) return
-            dao.applyDelta(room, delta.messages.map { it.toEntity() }, delta.last_seq)
+            applyDelta(room, delta)
             if (!delta.more) return
         }
+    }
+
+    /**
+     * Write one room's delta down, tombstones included.
+     *
+     * Deletions arrive in the same array as new messages, as complete rows the
+     * server has already emptied, so the ordinary upsert applies them. The one
+     * thing it cannot do is reach the copy on this device's own disk — a photo
+     * withdrawn by its sender would otherwise stay in app storage indefinitely —
+     * so those are cleaned out here, where touching the filesystem belongs.
+     */
+    private suspend fun applyDelta(room: String, delta: RoomDelta) {
+        val rows = delta.messages.map { it.toEntity() }
+        val withdrawn = delta.messages.filter { it.deleted }
+        for (dto in withdrawn) {
+            dao.message(dto.client_id)?.localPath?.let { runCatching { File(it).delete() } }
+        }
+        dao.applyDelta(room, rows, delta.last_seq)
+        if (withdrawn.isNotEmpty()) dismissNotification(room)
     }
 
     /** Older history for infinite scroll. */
@@ -226,6 +255,116 @@ class ChatRepository(
             serverName,
             payload.reactions.takeIf { it.isNotEmpty() }?.let { json.encodeToString(it) },
         )
+    }
+
+    // --------------------------------------------------------------- deleting
+
+    /**
+     * Withdraw a message from the conversation for everyone in it.
+     *
+     * Hidden here and now — a technician who mis-sent a photo should not have to
+     * watch a spinner — and then delivered by a WorkManager job with a CONNECTED
+     * constraint, so a delete asked for underground still lands when the phone
+     * comes back up.
+     *
+     * Two-phase deliberately. This step only sets the flag; the body and the
+     * attachment survive until the server confirms, which is what lets
+     * [restoreAfterRefusedDelete] put the bubble back if the request is
+     * permanently refused. Hiding and erasing in one step would mean any
+     * refusal cost the sender their message anyway.
+     *
+     * A message the server has never seen has nobody to delete it *for*: it is
+     * simply removed, along with its queued upload and the file behind it.
+     */
+    suspend fun deleteMessage(clientId: String): Boolean {
+        val row = dao.message(clientId) ?: return false
+        if (row.serverName.isNullOrBlank()) {
+            row.localPath?.let { runCatching { File(it).delete() } }
+            dao.deleteUpload(clientId)
+            dao.deleteMessage(clientId)
+            dao.refreshPreview(row.room)
+            return false
+        }
+        dao.hideLocally(clientId)
+        dao.refreshPreview(row.room)
+        return true
+    }
+
+    /** Perform the actual delete. Called from the worker, never from the UI. */
+    suspend fun deliverDelete(clientId: String) {
+        val row = dao.message(clientId) ?: return
+        val serverName = row.serverName ?: return
+        val payload = api.chatDeleteMessage(serverName).payload()
+        applyTombstone(
+            clientId = clientId,
+            room = row.room,
+            deleteSeq = payload.message.delete_seq,
+            deletedBy = payload.message.deleted_by,
+        )
+    }
+
+    /**
+     * Put a message back after the server refused to delete it for good.
+     *
+     * Only reachable if somebody's roles changed between composing the request
+     * and it being sent, since the UI offers the action on your own messages.
+     * Showing the message again is nonetheless the honest outcome: the room can
+     * still see it, and a device quietly disagreeing with the room about what
+     * was said is worse than an undo nobody expected.
+     */
+    suspend fun restoreAfterRefusedDelete(clientId: String) {
+        val row = dao.message(clientId) ?: return
+        dao.unhideLocally(clientId)
+        dao.refreshPreview(row.room)
+    }
+
+    /**
+     * Apply a deletion frame from the socket.
+     *
+     * Handled apart from [onRealtimeMessage] for the same reason receipts are:
+     * it carries no new `seq`, so the gap check there would read it as a
+     * duplicate and drop it. There is also nothing to fetch — the frame names
+     * the message, and the deletion is the whole fact.
+     */
+    suspend fun onRealtimeDeleted(body: JsonObject) {
+        val room = body["room"]?.jsonPrimitive?.content ?: return
+        val clientId = body["client_id"]?.jsonPrimitive?.content ?: return
+        applyTombstone(
+            clientId = clientId,
+            room = room,
+            deleteSeq = body["delete_seq"]?.jsonPrimitive?.longOrNull ?: 0L,
+            deletedBy = body["deleted_by"]?.jsonPrimitive?.contentOrNull,
+        )
+    }
+
+    /**
+     * Make a deletion real on this device: wipe the row's content, take the
+     * local copy of any attachment off the disk, and redraw the room's line.
+     */
+    private suspend fun applyTombstone(
+        clientId: String,
+        room: String,
+        deleteSeq: Long,
+        deletedBy: String?,
+    ) {
+        dao.message(clientId)?.localPath?.let { runCatching { File(it).delete() } }
+        dao.markDeleted(clientId, deleteSeq, deletedBy)
+        dao.refreshPreview(room)
+        dismissNotification(room)
+    }
+
+    /**
+     * Take the room's notification out of the tray after a deletion.
+     *
+     * Notifications are per-room summaries, not per-message, so there is no way
+     * to remove one line from one — and a lock screen still quoting a message
+     * the sender has withdrawn is the one place the deletion visibly failed.
+     * Dropping the whole summary costs the room's other unread lines a place in
+     * the tray; the unread badge and the thread itself are untouched, which is a
+     * far smaller price than leaving the text up.
+     */
+    private fun dismissNotification(room: String) {
+        runCatching { ChatNotifications.clear(context, room) }
     }
 
     /** Apply a reaction frame from the socket. */
@@ -553,6 +692,15 @@ class ChatRepository(
         lat = lat,
         lon = lon,
         deleted = deleted,
+        deleteSeq = delete_seq,
+        deletedBy = deleted_by,
+        // When the message was actually sent, not when this row happened to be
+        // written. Without this the entity default — System.currentTimeMillis()
+        // — stood in for every synced message, so a week-old thread showed the
+        // current time on every bubble and a single "Today" divider over the
+        // lot. Falls back to now only when the server sent nothing parseable,
+        // which keeps a bubble plausible rather than dating it to 1970.
+        createdAt = ServerTime.millisOr(created_at),
         status = SendStatus.SENT,
         uploadPct = 100,
     )

@@ -26,6 +26,13 @@ import com.naarni.service.data.dto.DepotHit
 import com.naarni.service.data.dto.FileUploadData
 import com.naarni.service.data.dto.FleetResponse
 import com.naarni.service.data.dto.FormContext
+import com.naarni.service.data.dto.GateContext
+import com.naarni.service.data.dto.LinkOption
+import com.naarni.service.data.dto.GateItemSuggestion
+import com.naarni.service.data.dto.Movement
+import com.naarni.service.data.dto.MovementPage
+import com.naarni.service.data.dto.SaveItemResult
+import com.naarni.service.data.dto.SerialTrace
 import com.naarni.service.data.dto.JobCardDetail
 import com.naarni.service.data.dto.TicketItem
 import com.naarni.service.data.dto.JobCardListItem
@@ -584,28 +591,117 @@ interface FrappeApi {
         @Field("remarks") remarks: String? = null,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessRun>>
 
+    /**
+     * Packs waiting for this user to sign them off — their plant, their roles.
+     *
+     * Not a filter over the inspection list: which stage is waiting, and whether
+     * this person is the one it is waiting on, are decided server-side against
+     * the published definitions.
+     */
+    @GET("api/method/vehicle_maintenance.api.process.verification_queue")
+    suspend fun verificationQueue(
+        @Query("limit") limit: Int = 50,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.VerificationQueue>>
+
     /** Runs this user started and has not finished — the resume list. */
     @GET("api/method/vehicle_maintenance.api.process.my_open_runs")
     suspend fun myOpenProcessRuns(): FrappeWrap<Envelope<List<com.naarni.service.data.dto.OpenRun>>>
 
     /**
-     * This operator's own inspection record — counts, plus a page of runs.
+     * The inspection record — this operator's by default, everyone's on request.
      *
-     * Scoped server-side to the calling user, so there is no id to pass and no
-     * way to ask for anyone else's work.
+     * `mine = 0` widens it to every inspection on the site. The `stats` block
+     * stays personal whatever the scope: it is the operator's own tally, and a
+     * number that silently became the whole plant's output would be a worse lie
+     * than hiding the list ever was.
      */
     @GET("api/method/vehicle_maintenance.api.process.my_history")
     suspend fun myProcessHistory(
         @Query("limit") limit: Int = 30,
         @Query("offset") offset: Int = 0,
         @Query("scope") scope: String = "finished",
+        @Query("mine") mine: Int = 1,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessHistory>>
+
+    /**
+     * The modules of one run, with progress and the last pair of hands on each.
+     *
+     * Polled while the board is open. One document read server-side and no
+     * joins, so it is cheap enough to ask again every few seconds — which is
+     * what makes a colleague's progress appear without anybody refreshing.
+     */
+    @GET("api/method/vehicle_maintenance.api.process.run_board")
+    suspend fun processRunBoard(
+        @Query("run") run: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.RunBoard>>
+
+    /**
+     * Is this pack already being inspected, and how far along is it?
+     *
+     * Called the instant a label is scanned, before anything is created.
+     * Answering "yes, and Ravi is in Module 3" is the difference between two
+     * people working one battery together and two people each recording half.
+     */
+    @GET("api/method/vehicle_maintenance.api.process.find_open_run")
+    suspend fun findOpenProcessRun(
+        @Query("process") process: String,
+        @Query("identifier") identifier: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.FoundRun>>
 
     /** One run as it was filled in, with the photos grouped onto their steps. */
     @GET("api/method/vehicle_maintenance.api.process.run_report")
     suspend fun processRunReport(
         @Query("name") name: String,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.RunReport>>
+
+    // ------------------------------------------------------------ offline sync
+    //
+    // The three calls that let an engineer work with no network at all. See
+    // `data/inspection/` for the store they drain, and the module docstring on
+    // `api/process_sync.py` for why a batch is a description of state rather
+    // than a list of operations.
+
+    /**
+     * Everything needed to run every permitted process offline, in one call.
+     *
+     * Fetched while there *is* a network, so that when there is not, the app
+     * already holds the definitions. Without this an engineer who opens the app
+     * for the first time inside a shed cannot start the inspection they are
+     * standing in front of.
+     */
+    @GET("api/method/vehicle_maintenance.api.process_sync.bootstrap")
+    suspend fun processBootstrap(
+        @Query("app_capability") appCapability: Int = 1,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessBootstrap>>
+
+    /**
+     * Push one handset-held inspection. Safe to send twice — and it will be.
+     *
+     * The batch goes as a single JSON field rather than as form parameters
+     * because it carries nested lists, and because one request that either
+     * lands whole or does not land at all is far easier to reason about on a
+     * link that drops mid-upload.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process_sync.sync_run")
+    suspend fun syncProcessRun(
+        @Field("payload") payload: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.SyncRunResponse>>
+
+    /** Attach a photo taken offline, keyed so a replayed upload cannot duplicate it. */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process_sync.attach_photo_synced")
+    suspend fun attachProcessPhotoSynced(
+        @Field("run") run: String,
+        @Field("step_code") stepCode: String,
+        @Field("file_url") fileUrl: String,
+        @Field("client_uuid") clientUuid: String,
+        @Field("captured_at") capturedAt: String? = null,
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+        @Field("accuracy_m") accuracyM: Double? = null,
+        @Field("location_source") locationSource: String = "Unavailable",
+    ): FrappeWrap<Envelope<JsonObject>>
 
     // ══════════════════════════════════════════════════════════════════ Chat
 
@@ -685,6 +781,19 @@ interface FrappeApi {
         @Field("message") message: String,
         @Field("reaction") reaction: String,
     ): FrappeWrap<Envelope<ReactionsPayload>>
+
+    /**
+     * Withdraw a message from the conversation for everyone in it.
+     *
+     * Soft on the server: the row, the body and any attachment stay on record —
+     * only the room stops being served them. Idempotent, so the worker behind
+     * this can retry a request whose response was lost without a second thought.
+     */
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.chat.delete_message")
+    suspend fun chatDeleteMessage(
+        @Field("message") message: String,
+    ): FrappeWrap<Envelope<SendPayload>>
 
     @FormUrlEncoded
     @POST("api/method/vehicle_maintenance.api.chat.set_typing")
@@ -849,4 +958,221 @@ interface FrappeApi {
         @Query("from_date") fromDate: String? = null,
         @Query("to_date") toDate: String? = null,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.MyAttendance>>
+
+    // ── Profile & onboarding ─────────────────────────────────────────────────
+    // The face is fetched from `profile.avatar`, not from a file path: pictures
+    // live in the private bucket, where the raw url is readable only by their
+    // owner. See ProfileRepository.avatarUrl.
+
+    /**
+     * A standalone private upload — no doctype to hang off.
+     *
+     * The other `uploadFile` attaches to a Job Card, and Frappe uses that
+     * attachment to decide who may read the file back. A profile picture has no
+     * such parent, which is exactly why it is served through `profile.avatar`
+     * rather than by its url.
+     */
+    @Multipart
+    @POST("api/method/upload_file")
+    suspend fun uploadStandaloneFile(
+        @Part file: MultipartBody.Part,
+        @Part("is_private") isPrivate: RequestBody,
+        @Part("folder") folder: RequestBody,
+    ): FrappeWrap<FileUploadData>
+
+    @GET("api/method/vehicle_maintenance.api.profile.get_my_profile")
+    suspend fun getMyProfile(): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.update_my_profile")
+    suspend fun updateMyProfile(
+        @Field("full_name") fullName: String? = null,
+        @Field("designation") designation: String? = null,
+        @Field("about") about: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.set_profile_photo")
+    suspend fun setProfilePhoto(
+        @Field("file_url") fileUrl: String,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @POST("api/method/vehicle_maintenance.api.profile.remove_profile_photo")
+    suspend fun removeProfilePhoto(): FrappeWrap<Envelope<com.naarni.service.data.dto.ProfileDto>>
+
+    @GET("api/method/vehicle_maintenance.api.profile.list_designations")
+    suspend fun listDesignations(
+        @Query("query") query: String? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.DesignationsPayload>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.profile.set_notification_tones")
+    suspend fun setNotificationTones(
+        @Field("chat_tone") chatTone: String? = null,
+        @Field("alert_tone") alertTone: String? = null,
+        @Field("vibrate") vibrate: Int? = null,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.TonesPayload>>
+
+    @POST("api/method/vehicle_maintenance.api.profile.snooze_profile_prompt")
+    suspend fun snoozeProfilePrompt(): FrappeWrap<Envelope<kotlinx.serialization.json.JsonObject>>
+
+    // ── Material gate: inward / outward movements ──
+    //
+    // Every write carries a client-generated key (`client_uuid` on a movement,
+    // `row_uuid` on a line) because a plant gate is the worst network in the
+    // building: a request that times out is retried, and the key is what makes
+    // the retry update the row it created rather than adding a second one.
+
+    @GET("api/method/vehicle_maintenance.api.material.get_gate_context")
+    suspend fun getGateContext(): FrappeWrap<Envelope<GateContext>>
+
+    @GET("api/method/vehicle_maintenance.api.material.search_items")
+    suspend fun searchGateItems(
+        @Query("txt") txt: String = "",
+        @Query("group") group: String = "",
+        @Query("limit") limit: Int = 40,
+    ): FrappeWrap<Envelope<List<GateItemSuggestion>>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.create_item")
+    suspend fun createGateItem(
+        @Field("item_name") itemName: String,
+        @Field("item_group") itemGroup: String = "",
+        @Field("uom") uom: String = "Nos",
+        @Field("has_qr") hasQr: Int = 0,
+    ): FrappeWrap<Envelope<GateItemSuggestion>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.start_movement")
+    suspend fun startMovement(
+        @Field("movement_type") movementType: String,
+        @Field("location") location: String,
+        @Field("client_uuid") clientUuid: String,
+        @Field("gate") gate: String = "",
+        @Field("purpose") purpose: String = "",
+        @Field("party_type") partyType: String = "",
+        @Field("party_name") partyName: String = "",
+        @Field("reference_type") referenceType: String = "",
+        @Field("reference_no") referenceNo: String = "",
+        @Field("reference_date") referenceDate: String = "",
+        @Field("transport_vehicle_no") truckNo: String = "",
+        @Field("driver_name") driverName: String = "",
+        @Field("driver_phone") driverPhone: String = "",
+        @Field("vehicle") vehicle: String = "",
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.update_header")
+    suspend fun updateMovementHeader(
+        @Field("movement") movement: String,
+        @Field("updates") updates: String,
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.save_item")
+    suspend fun saveMovementItem(
+        @Field("movement") movement: String,
+        @Field("row_uuid") rowUuid: String,
+        @Field("item") item: String,
+        @Field("qty") qty: Double,
+        @Field("uom") uom: String = "",
+        @Field("condition") condition: String = "OK",
+        @Field("qr_code") qrCode: String = "",
+        @Field("qr_source") qrSource: String = "",
+        @Field("batch_no") batchNo: String = "",
+        @Field("no_photo_reason") noPhotoReason: String = "",
+        @Field("remarks") remarks: String = "",
+        @Field("is_new_item") isNewItem: Int = 0,
+    ): FrappeWrap<Envelope<SaveItemResult>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.delete_item")
+    suspend fun deleteMovementItem(
+        @Field("movement") movement: String,
+        @Field("row_uuid") rowUuid: String,
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.attach_photo")
+    suspend fun attachMovementPhoto(
+        @Field("movement") movement: String,
+        @Field("file_url") fileUrl: String,
+        @Field("kind") kind: String = "Item",
+        @Field("item_row") itemRow: String = "",
+        @Field("caption") caption: String = "",
+        @Field("client_uuid") clientUuid: String = "",
+        @Field("captured_at") capturedAt: String = "",
+        @Field("latitude") latitude: Double? = null,
+        @Field("longitude") longitude: Double? = null,
+        @Field("accuracy_m") accuracyM: Double? = null,
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.delete_photo")
+    suspend fun deleteMovementPhoto(
+        @Field("movement") movement: String,
+        @Field("client_uuid") clientUuid: String,
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.submit_movement")
+    suspend fun submitMovement(
+        @Field("movement") movement: String,
+        @Field("remarks") remarks: String = "",
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.verify_movement")
+    suspend fun verifyMovement(
+        @Field("movement") movement: String,
+        @Field("remarks") remarks: String = "",
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.reject_movement")
+    suspend fun rejectMovement(
+        @Field("movement") movement: String,
+        @Field("reason") reason: String,
+    ): FrappeWrap<Envelope<Movement>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.material.cancel_movement")
+    suspend fun cancelMovement(
+        @Field("movement") movement: String,
+        @Field("reason") reason: String,
+    ): FrappeWrap<Envelope<Movement>>
+
+    @GET("api/method/vehicle_maintenance.api.material.get_movement")
+    suspend fun getMovement(@Query("name") name: String): FrappeWrap<Envelope<Movement>>
+
+    @GET("api/method/vehicle_maintenance.api.material.my_movements")
+    suspend fun myMovements(
+        @Query("scope") scope: String = "open",
+        @Query("location") location: String = "",
+        @Query("limit") limit: Int = 25,
+        @Query("offset") offset: Int = 0,
+    ): FrappeWrap<Envelope<MovementPage>>
+
+    @GET("api/method/vehicle_maintenance.api.material.where_used")
+    suspend fun serialTrace(@Query("qr_code") qrCode: String): FrappeWrap<Envelope<SerialTrace>>
+
+
+    // ── Link-step pick lists (any process, not just the material gate) ──
+
+    @GET("api/method/vehicle_maintenance.api.process.link_options")
+    suspend fun linkOptions(
+        @Query("doctype") doctype: String,
+        @Query("txt") txt: String = "",
+        @Query("limit") limit: Int = 30,
+    ): FrappeWrap<Envelope<List<LinkOption>>>
+
+    @FormUrlEncoded
+    @POST("api/method/vehicle_maintenance.api.process.create_link_option")
+    suspend fun createLinkOption(
+        @Field("doctype") doctype: String,
+        @Field("label") label: String,
+    ): FrappeWrap<Envelope<LinkOption>>
+
 }

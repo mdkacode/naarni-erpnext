@@ -9,6 +9,12 @@ app_license = "MIT"
 # unregistered here to avoid double-firing. User validate enforces phone-based
 # auth: mandatory mobile_no, synthetic email fallback from the phone.
 doc_events: dict = {
+	# A finished Material Gate run becomes a line in the gate register. Lives as a
+	# listener rather than an edit to the engine, so nothing about one particular
+	# process leaks into `api.process` — the same rule Battery QC is held to.
+	"Process Run": {
+		"on_update": "vehicle_maintenance.material_movement.gate_process.on_run_update",
+	},
 	"User": {
 		"validate": "vehicle_maintenance.overrides.user.validate_user",
 	},
@@ -44,16 +50,30 @@ has_permission = {
 permission_query_conditions = {
 	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.get_permission_query_conditions",
 	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.get_permission_query_conditions",
+	# A daily status is readable by its author and by a supervisor, nobody else —
+	# the whole point of the DocType is who can see it.
+	"VM Daily Status": "vehicle_maintenance.fleet_service.doctype.vm_daily_status.vm_daily_status.get_permission_query_conditions",
+	# An inspection belongs to the person who performed it. Supervisors see all; an
+	# operator sees only their own — enforced here so every endpoint touching
+	# Process Run inherits it, rather than each one remembering to filter.
+	"Process Run": "vehicle_maintenance.process_engine.doctype.process_run.process_run.get_permission_query_conditions",
+	# Same split at the material gate: a supervisor sees the plant's movements, an
+	# operator sees the ones they recorded.
+	"Material Movement": "vehicle_maintenance.material_movement.doctype.material_movement.material_movement.get_permission_query_conditions",
 }
 
 has_permission = {
 	"VM Chat Room": "vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room.has_permission",
 	"VM Chat Message": "vehicle_maintenance.fleet_service.doctype.vm_chat_message.vm_chat_message.has_permission",
+	"VM Daily Status": "vehicle_maintenance.fleet_service.doctype.vm_daily_status.vm_daily_status.has_permission",
+	"Process Run": "vehicle_maintenance.process_engine.doctype.process_run.process_run.has_permission",
+	"Material Movement": "vehicle_maintenance.material_movement.doctype.material_movement.material_movement.has_permission",
 }
 
 # Idempotent seeders run after every migrate. Each function checks existence
 # before inserting, so this is safe to invoke repeatedly.
 after_migrate = [
+	"vehicle_maintenance.patches.v2_6.grant_operator_to_everyone.execute",
 	"vehicle_maintenance.patches.v0_4.seed_crm_masters.execute",
 	"vehicle_maintenance.patches.v0_6.seed_telemetry_parameters.execute",
 	"vehicle_maintenance.patches.v0_5.seed_alert_types.execute",
@@ -73,6 +93,35 @@ after_migrate = [
 	"vehicle_maintenance.patches.v1_7.seed_battery_qc_process.execute",
 	"vehicle_maintenance.patches.v1_9.seed_battery_qc_v2.execute",
 	"vehicle_maintenance.patches.v1_8.seed_roster.execute",
+	"vehicle_maintenance.patches.v2_0.seed_daily_status.execute",
+	"vehicle_maintenance.patches.v2_1.publish_battery_qc.execute",
+	# One-time: moves duty check-in from an advisory geofence to an enforced
+	# 100 m one. Self-guarded, so it applies once and then leaves the policy alone.
+	"vehicle_maintenance.patches.v2_2.enforce_depot_geofence.execute",
+	# Designation picklist, plus an Accepted invite for everyone who already had
+	# access — without that back-fill, switching on invite-only would leave the
+	# existing depot with no record of who was let in and no way to re-provision.
+	"vehicle_maintenance.patches.v2_3.seed_onboarding.execute",
+	# The pack number is digits; raise the digits keypad for it. Fills a blank
+	# only, so an admin's own choice in Desk survives the next migrate.
+	"vehicle_maintenance.patches.v2_4.battery_qc_number_pad.execute",
+	# One-time: removes the three inspections opened against packs that do not
+	# exist, plus the rows a device test left on one real pack. Named runs only,
+	# guarded, logged, and marker-tracked so it can never fire twice.
+	"vehicle_maintenance.patches.v2_5.remove_test_inspections.execute",
+	# Material gate: the two plants, the 11 catalogue groups and the 151 items
+	# transcribed from the GENE 13.5M weight sheet. Back-fills blank fields on
+	# items that already exist and overwrites nothing an admin has edited.
+	"vehicle_maintenance.patches.v2_6.seed_material_movement.execute",
+	# The gate as a Process Definition: the direction/item/serial/source/photo/
+	# weight run, its outcome set and scannable entity, the seed source list, and
+	# the first operators. Seeds the process only when the family has no version,
+	# so a plant edit is never overwritten.
+	"vehicle_maintenance.patches.v2_7.seed_material_gate_process.execute",
+	# Creating a chat group is now its own permission. One-time: the seniormost
+	# roles keep it so nobody loses the ability at the moment of deploy; everyone
+	# else is granted it deliberately, which is the point of the change.
+	"vehicle_maintenance.patches.v2_8.seed_group_admin.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
@@ -99,6 +148,17 @@ APP_ROLES = [
 	# Owns the Battery Assembly QC process specifically: holds Process Author but
 	# is listed in that process's author_roles, so it cannot edit Vehicle PDI.
 	"Battery QA Admin",
+	# Material gate (inward/outward). Operator records, supervisor verifies —
+	# separate roles because a movement is verified by somebody other than the
+	# person who recorded it.
+	"Material Gate Operator",
+	"Material Supervisor",
+	"Material Viewer",
+	# Who may open a chat group. Separate from every operational role on this
+	# list because creating a room is not part of any job here — it is a
+	# permission about the workspace, and previously anybody senior enough to
+	# run a depot had it by side effect.
+	"Group Admin",
 ]
 
 # DocTypes whose Custom Fields / Property Setters we want version-controlled.
@@ -222,6 +282,27 @@ scheduler_events = {
 		# the target month from the IST date and is idempotent per (customer, month).
 		"0 10 1 * *": [
 			"vehicle_maintenance.fleet_service.tasks.send_monthly_km_reports",
+		],
+		# Daily status. Same site-timezone caveat as the KM report above — these
+		# times are written for Asia/Kolkata. All three are no-ops until Daily
+		# Status Settings is enabled.
+		#
+		# 18:45 — remind anyone on duty who has not said anything yet, in their own
+		# status room, while they are still at the depot.
+		"45 18 * * *": [
+			"vehicle_maintenance.fleet_service.daily_status.nudge_missing",
+		],
+		# 20:00 — organise the day into VM Daily Status rows, one background job
+		# per person so one bad room cannot cost everyone else their record.
+		"0 20 * * *": [
+			"vehicle_maintenance.fleet_service.daily_status.generate_all",
+		],
+		# 20:20 — email one rollup per depot, and file the day in ONYX search when
+		# that is switched on. Deliberately 20 minutes after generation rather than
+		# chained to it: a slow summary must delay the email, not cancel it.
+		"20 20 * * *": [
+			"vehicle_maintenance.fleet_service.daily_status_digest.send_digests",
+			"vehicle_maintenance.fleet_service.daily_status_digest.index_day",
 		],
 	},
 	# Feedback requests trickle out hourly — a 5-minute cadence is overkill

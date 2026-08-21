@@ -74,6 +74,15 @@ data class ChatMessageDto(
     val lat: Double? = null,
     val lon: Double? = null,
     val deleted: Boolean = false,
+    /**
+     * Position in the room's *tombstone* stream — a second counter, unrelated to
+     * [seq]. Non-zero only once the message has been withdrawn. This is what the
+     * delta sync pages on, so a device that was offline when somebody deleted a
+     * message still hears about it.
+     */
+    val delete_seq: Long = 0,
+    val deleted_by: String? = null,
+    val deleted_by_name: String? = null,
     val created_at: String = "",
 )
 
@@ -123,9 +132,24 @@ data class MessagesPayload(
 data class RoomDelta(
     val messages: List<ChatMessageDto> = emptyList(),
     val last_seq: Long = 0,
-    /** True when the server capped the page and more remains above `last_seq`. */
+    /** High-water mark of the room's tombstone stream — see [SyncCursor]. */
+    val last_delete_seq: Long = 0,
+    /** True when the server capped the page and more remains above either mark. */
     val more: Boolean = false,
 )
+
+/**
+ * What this device already holds for one room, as two independent marks.
+ *
+ * Two, because a deletion mutates a message the client was handed long ago:
+ * `sync` returns rows *above* the seq cursor, and a message withdrawn an hour
+ * after it was sent sits below it, so on one cursor the deletion would simply
+ * never be mentioned again. `del` is the second stream, and it is deliberately
+ * not part of `seq` — unread is `last_seq` minus the read cursor, and a
+ * tombstone drawn from that counter would light a badge nothing could clear.
+ */
+@Serializable
+data class SyncCursor(val seq: Long, val del: Long)
 
 @Serializable
 data class SyncPayload(

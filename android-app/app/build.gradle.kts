@@ -26,8 +26,8 @@ android {
         applicationId = "com.naarni.service"
         minSdk = 24            // Android 7.0 — covers ~99% of field devices (plan §0)
         targetSdk = 35         // Android 15 — Play requires API 35 for new apps
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = 21
+        versionName = "0.12.0"
 
         // Backend base URL — overridable per build type.
         buildConfigField("String", "BASE_URL", "\"https://service.naarni.com/\"")
@@ -156,6 +156,9 @@ dependencies {
     // Bundled rather than the Play-Services variant: a plant floor is exactly
     // where you cannot assume Play Services are present or the network is up.
     implementation(libs.mlkit.barcode)
+    // On-device OCR for the weight step. Bundled like the barcode model: a plant
+    // floor is exactly where you cannot assume Play Services or a network.
+    implementation(libs.mlkit.text.recognition)
     implementation(libs.play.location)
 
     // Secure session storage

@@ -1,0 +1,2 @@
+var r=(c,e,a)=>new Promise((l,s)=>{var P=n=>{try{i(a.next(n))}catch(t){s(t)}},o=n=>{try{i(a.throw(n))}catch(t){s(t)}},i=n=>n.done?l(n.value):Promise.resolve(n.value).then(P,o);i((a=a.apply(c,e)).next())});import{G as u}from"./main-0N5LZRC-.js";const f="vehicle_maintenance.api";function m(a){return r(this,arguments,function*(c,e={}){const l=c.includes("vehicle_maintenance")?c:`${f}.${c}`;return u(l,e)})}export{m as c};
+//# sourceMappingURL=api-C8-IsSt_.js.map

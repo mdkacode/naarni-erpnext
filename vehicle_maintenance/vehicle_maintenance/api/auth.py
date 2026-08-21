@@ -3,6 +3,11 @@ import frappe.sessions
 from frappe import _
 from frappe.auth import LoginManager
 
+from vehicle_maintenance.fleet_service.doctype.vm_app_preference import vm_app_preference as app_preference
+from vehicle_maintenance.fleet_service.doctype.vm_user_invite.vm_user_invite import (
+	invites_are_enforced,
+	pending_invite_for,
+)
 from vehicle_maintenance.integrations import naarni_client
 from vehicle_maintenance.overrides.user import normalize_phone
 
@@ -355,19 +360,61 @@ def _provision_naarni_user(phone: str, naarni_uuid: str | None, authorities: lis
 			frappe.db.set_value("User", user, "naarni_user_uuid", naarni_uuid, update_modified=False)
 		return user
 
+	# No account yet. This is the gate: passing an OTP proves somebody holds a
+	# SIM, not that they should be in the fleet system. An invite is somebody who
+	# knows them saying so first.
+	#
+	# Deliberately below the "existing user" branch above — every account already
+	# in use keeps working, invite or no invite. Putting this check any earlier
+	# would lock out the entire depot the day it shipped.
+	invite = None
+	if invites_are_enforced():
+		invite = pending_invite_for(phone)
+		if not invite:
+			frappe.throw(
+				_(
+					"This number has not been added yet. Ask your supervisor to register it, "
+					"then sign in again."
+				),
+				frappe.AuthenticationError,
+			)
+
 	# Auto-provision. Phone-only identity: synthesise a stable, non-routable email
 	# (Frappe requires User.name to be an email) and grant the default app role.
 	default_role = (frappe.conf or {}).get("naarni_default_role") or DEFAULT_NAARNI_ROLE
 	email = f"{phone}@naarni.phone"
 	doc = frappe.new_doc("User")
 	doc.email = email
-	doc.first_name = phone
+	# The invited name, so the first thing a colleague sees is a person rather
+	# than a phone number. They can correct it on the onboarding screen.
+	doc.first_name = (invite.full_name if invite else "") or phone
 	doc.mobile_no = phone
 	doc.user_type = "System User"
 	doc.send_welcome_email = 0
 	if naarni_uuid:
 		doc.naarni_user_uuid = naarni_uuid
-	doc.append("roles", {"role": default_role})
+	doc.append("roles", {"role": (invite.role if invite else None) or default_role})
 	doc.flags.ignore_permissions = True
 	doc.insert(ignore_permissions=True)
+
+	if invite:
+		invite.mark_accepted(doc.name)
+		_seed_preferences(doc.name, invite)
+
 	return doc.name
+
+
+def _seed_preferences(user: str, invite) -> None:
+	"""Carry what the inviter already knew across to the new account.
+
+	Best-effort: a preference row that failed to seed costs the joiner one
+	dropdown, while an exception here would cost them the login.
+	"""
+	try:
+		if not invite.designation:
+			return
+		pref = app_preference.for_user(user)
+		pref.designation = invite.designation
+		pref.save(ignore_permissions=True)
+	except Exception:
+		frappe.log_error(title=f"Invite preference seed failed ({user})", message=frappe.get_traceback())

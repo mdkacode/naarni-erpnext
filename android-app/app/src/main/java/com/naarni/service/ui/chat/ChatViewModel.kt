@@ -142,6 +142,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             return@collect
                         }
 
+                        // A deletion mutates a message already held, so it
+                        // carries no new seq and the gap check below would read
+                        // it as a duplicate and drop it.
+                        if (event.name == EVENT_DELETED) {
+                            repo.onRealtimeDeleted(event.payload)
+                            return@collect
+                        }
+
                         repo.onRealtimeMessage(event.name, event.payload)
                         val author = event.payload["author"]?.toString()?.trim('"')
                         if (room != null && room == openRoom && author != me) {
@@ -223,6 +231,34 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (serverName.isNullOrBlank()) return
         viewModelScope.launch { runCatching { repo.toggleReaction(serverName, code) } }
     }
+
+    /**
+     * Withdraw a message from the conversation for everyone in it.
+     *
+     * The bubble goes at once and the request is handed to WorkManager, so this
+     * works with no signal. [onResult] carries a message to show only when
+     * something is worth saying — a normal delete says nothing, because the
+     * message disappearing is the confirmation.
+     */
+    fun deleteMessage(message: ChatMessageEntity, onResult: (String?) -> Unit = {}) {
+        viewModelScope.launch {
+            val needsServer = runCatching { repo.deleteMessage(message.clientId) }
+                .getOrElse { onResult("Couldn't delete that message."); return@launch }
+            if (needsServer) {
+                ChatWork.enqueueDelete(getApplication(), message.clientId)
+            } else {
+                // Never reached the server, so the row is simply gone — and its
+                // queued send has to go with it, or WorkManager posts the
+                // message the moment there is a signal, minutes after somebody
+                // watched it disappear.
+                ChatWork.cancel(getApplication(), message.clientId)
+            }
+            onResult(null)
+        }
+    }
+
+    /** May this message still be taken back? See [canDeleteMessage]. */
+    fun canDelete(m: ChatMessageEntity): Boolean = canDeleteMessage(m, me)
 
     /** Mark everything up to [seq] read. Forward-only, server-side and locally. */
     fun markRead(room: String, seq: Long) {
@@ -526,6 +562,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Realtime event carrying a message's reaction chips. */
         const val EVENT_REACTION = "vm_chat_reaction"
+
+        /** Realtime event withdrawing a message. Matches api/chat.delete_message. */
+        const val EVENT_DELETED = "vm_chat_deleted"
 
         /** Used only if the server omits its own TTL. */
         const val DEFAULT_TYPING_TTL = 8

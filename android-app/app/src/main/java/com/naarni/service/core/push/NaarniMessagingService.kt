@@ -110,7 +110,10 @@ class NaarniMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(this, App.CHANNEL_JOB_CARDS)
+        val notification = NotificationCompat.Builder(
+            this,
+            NotificationTones.channelId(this, NotificationTones.KIND_ALERT),
+        )
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setContentTitle(title)
             .setContentText(body)

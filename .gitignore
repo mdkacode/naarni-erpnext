@@ -27,3 +27,16 @@ deploy/*.log
 naarni-care-firebase-adminsdk-*.json
 *firebase-adminsdk*.json
 **/google-services.json
+
+# Live credentials pasted for local wiring — never commit these.
+token.json
+git.json
+
+# Kotlin compiler crash dumps — build junk, regenerated on every failure.
+android-app/.kotlin/
+
+# Unfixed vulnerabilities in the live estate. This repository is PUBLIC.
+SECURITY_TODO.md
+
+# A named customer's real registrations and monthly KM. This repository is PUBLIC.
+zingbus-preview/

@@ -89,17 +89,25 @@ interface ChatDao {
     suspend fun touchRoom(room: String, seq: Long, preview: String)
 
     /**
-     * Cursors for the delta sync: the highest seq we actually **hold**.
+     * Cursors for the delta sync: the highest seq and the highest tombstone
+     * number we actually **hold**.
      *
      * Deliberately derived from chat_message, not from `chat_room.lastSeq`.
      * `lastSeq` is the server's high-water mark, copied in by refreshRooms() —
      * using it as the cursor tells the server "I already have everything up to
      * N" when the message table is empty, so sync correctly returns nothing and
      * every thread renders blank while the room list looks fully populated.
+     *
+     * `lastDeleteSeq` is the same argument applied to deletions: without it the
+     * server has no way to tell a device that already dropped a message from one
+     * that has never been told, so every sync would re-send every tombstone in
+     * the room forever.
      */
     @Query(
         """
-        SELECT r.name AS name, COALESCE(MAX(m.seq), 0) AS lastSeq
+        SELECT r.name AS name,
+               COALESCE(MAX(m.seq), 0) AS lastSeq,
+               COALESCE(MAX(m.deleteSeq), 0) AS lastDeleteSeq
           FROM chat_room r
           LEFT JOIN chat_message m ON m.room = r.name
          GROUP BY r.name
@@ -135,6 +143,7 @@ interface ChatDao {
         """
         SELECT * FROM chat_message
          WHERE room = :room
+           AND deleted = 0
            AND (
                 (kind IN ('image', 'video', 'audio', 'file')
                  AND (fileUrl IS NOT NULL OR localPath IS NOT NULL))
@@ -148,6 +157,69 @@ interface ChatDao {
 
     @Query("SELECT MAX(seq) FROM chat_message WHERE room = :room")
     suspend fun highestSeq(room: String): Long?
+
+    @Query("SELECT MAX(deleteSeq) FROM chat_message WHERE room = :room")
+    suspend fun highestDeleteSeq(room: String): Long?
+
+    /** The newest message held for a room, for recomputing the list-row preview. */
+    @Query("SELECT * FROM chat_message WHERE room = :room ORDER BY sortSeq DESC LIMIT 1")
+    suspend fun newestMessage(room: String): ChatMessageEntity?
+
+    /**
+     * Turn a message into a tombstone.
+     *
+     * Everything it carried goes in the same statement — body, attachment,
+     * caption, reactions, mentions, coordinates — rather than being left for the
+     * renderer to hide. A row that still holds the text is a row that shows it
+     * the first time somebody writes a new bubble variant and forgets the flag,
+     * and the local copy of a photo would otherwise sit in app storage after the
+     * person who sent it asked for it to be gone.
+     *
+     * `localPath` is nulled but the file itself is removed by the repository,
+     * which is the only layer that may touch the filesystem.
+     */
+    @Query(
+        """
+        UPDATE chat_message
+           SET deleted = 1,
+               deleteSeq = MAX(deleteSeq, :deleteSeq),
+               deletedBy = COALESCE(:deletedBy, deletedBy),
+               body = '',
+               fileUrl = NULL,
+               localPath = NULL,
+               fileName = NULL,
+               fileSize = NULL,
+               durationMs = NULL,
+               transcript = NULL,
+               reactions = NULL,
+               mentions = NULL,
+               mentionsMe = 0,
+               geotagged = 0,
+               lat = NULL,
+               lon = NULL
+         WHERE clientId = :clientId
+        """
+    )
+    suspend fun markDeleted(clientId: String, deleteSeq: Long, deletedBy: String?)
+
+    @Query("SELECT * FROM chat_message WHERE serverName = :serverName LIMIT 1")
+    suspend fun messageByServerName(serverName: String): ChatMessageEntity?
+
+    /**
+     * Hide a message the moment its sender asks, before the server has agreed.
+     *
+     * The flag only — nothing is wiped. That is the whole point of it being a
+     * separate statement from [markDeleted]: a phone in a basement gets the
+     * instant feedback it needs, and if the request ultimately turns out to be
+     * refused the row is still intact and the bubble can come back. Content is
+     * destroyed only once the deletion is real.
+     */
+    @Query("UPDATE chat_message SET deleted = 1 WHERE clientId = :clientId")
+    suspend fun hideLocally(clientId: String)
+
+    /** Put a message back after a delete the server permanently refused. */
+    @Query("UPDATE chat_message SET deleted = 0 WHERE clientId = :clientId AND deleteSeq = 0")
+    suspend fun unhideLocally(clientId: String)
 
     /**
      * Every message in this room that some other message is a reply to.
@@ -273,13 +345,30 @@ interface ChatDao {
     @Transaction
     suspend fun applyDelta(room: String, messages: List<ChatMessageEntity>, lastSeq: Long) {
         if (messages.isNotEmpty()) upsertMessages(messages)
-        val preview = messages.lastOrNull()?.let { previewOf(it) }.orEmpty()
+        // Deliberately not `messages.last()`. A delta now carries two streams —
+        // new messages ordered by seq, then tombstones ordered by their own
+        // counter — so the final element is routinely an old message somebody
+        // just withdrew, and taking its preview would blank the room's list row
+        // and claim the conversation ended there.
+        val preview = newestMessage(room)?.let { previewOf(it) }.orEmpty()
         touchRoom(room, lastSeq, preview)
+    }
+
+    /**
+     * Redraw the room's list row from whatever is now newest.
+     *
+     * Called after a deletion, because the line may be quoting the words that
+     * were just withdrawn.
+     */
+    @Transaction
+    suspend fun refreshPreview(room: String) {
+        val newest = newestMessage(room) ?: return
+        touchRoom(room, newest.seq ?: 0, previewOf(newest))
     }
 }
 
 /** Projection for [ChatDao.syncCursors]. */
-data class RoomCursor(val name: String, val lastSeq: Long)
+data class RoomCursor(val name: String, val lastSeq: Long, val lastDeleteSeq: Long = 0)
 
 /** Projection for [ChatDao.roomWatermarks] — everything that may only go up. */
 data class RoomWatermarks(
@@ -289,10 +378,14 @@ data class RoomWatermarks(
     val readUpto: Long,
 )
 
+/** What a withdrawn message reads as, wherever one has to be named. */
+const val DELETED_LABEL = "This message was deleted"
+
 /** One-line summary used for room list rows. Mirrors the server's preview_for(). */
-fun previewOf(m: ChatMessageEntity): String = when (m.kind) {
-    "image" -> if (m.body.isBlank()) "📷 Photo" else "📷 Photo · ${m.body}"
-    "video" -> if (m.body.isBlank()) "🎥 Video" else "🎥 Video · ${m.body}"
-    "audio" -> "🎤 Voice note"
+fun previewOf(m: ChatMessageEntity): String = when {
+    m.deleted -> DELETED_LABEL
+    m.kind == "image" -> if (m.body.isBlank()) "📷 Photo" else "📷 Photo · ${m.body}"
+    m.kind == "video" -> if (m.body.isBlank()) "🎥 Video" else "🎥 Video · ${m.body}"
+    m.kind == "audio" -> "🎤 Voice note"
     else -> m.body
 }.take(140)

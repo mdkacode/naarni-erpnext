@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.DirectionsBus
@@ -48,16 +49,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.naarni.service.core.audio.VoicePlayer
 import com.naarni.service.data.chat.ChatMessageEntity
+import com.naarni.service.data.chat.DELETED_LABEL
 import com.naarni.service.data.chat.SendStatus
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.naarni.service.ui.theme.Radii
+import com.naarni.service.ui.theme.Semantic
+import com.naarni.service.ui.theme.AuthorPalette
+import androidx.compose.runtime.ReadOnlyComposable
 
 private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
@@ -185,6 +192,15 @@ fun MessageBubble(
 
                 replyPreview?.let { ReplyQuote(it, textColor) { onOpenQuote(it) } }
 
+                if (message.deleted) {
+                    // A bubble, not a gap. Leaving nothing behind would make a
+                    // conversation read as though it never happened, and the one
+                    // thing everybody in the room needs to be able to see is that
+                    // something was here and has been taken back.
+                    DeletedNotice(message, textColor)
+                    return@Column
+                }
+
                 when (message.kind) {
                     "image" -> MediaContent(message, isVideo = false, overlayMeta = bare, onOpen = onOpenMedia) {
                         MetaRow(message, isMine, Color.White, onRetry, receipts = receipts)
@@ -255,6 +271,43 @@ fun MessageBubble(
                 )
             }
         }
+    }
+}
+
+/**
+ * What is left of a message once it has been withdrawn.
+ *
+ * A slashed circle and one italic line, in the muted tone the timestamp already
+ * uses, so it reads as a note about the conversation rather than as something
+ * somebody said. No ticks: whether a deleted message reached everybody is not a
+ * question anyone is asking, and a blue tick under "this message was deleted"
+ * would be claiming the wrong thing was read.
+ */
+@Composable
+private fun DeletedNotice(message: ChatMessageEntity, textColor: Color) {
+    val muted = mutedOn(textColor)
+    val stamp = remember(message.createdAt) { timeFmt.format(Date(message.createdAt)) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Rounded.Block,
+            contentDescription = null,
+            tint = muted,
+            modifier = Modifier.size(15.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            // Said the same way whoever removed it — the sender or a supervisor
+            // clearing a wrong-room photo. Naming the remover would turn a quiet
+            // correction into an accusation in front of the whole depot.
+            DELETED_LABEL,
+            style = MaterialTheme.typography.bodyMedium,
+            fontStyle = FontStyle.Italic,
+            color = muted,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(stamp, style = MaterialTheme.typography.labelSmall, color = muted)
     }
 }
 
@@ -393,20 +446,24 @@ private fun DeliveryTick(
 @Composable
 private fun ReplyQuote(source: ChatMessageEntity, onBubble: Color, onOpen: () -> Unit) {
     val accent = authorColor(source.author)
-    val (icon, fallback) = when (source.kind) {
-        "image" -> Icons.Rounded.Image to "Photo"
-        "video" -> Icons.Rounded.Videocam to "Video"
-        "audio" -> Icons.Rounded.Mic to "Voice note"
-        "file" -> Icons.Rounded.InsertDriveFile to (source.fileName ?: "Document")
-        "ticket" -> Icons.Rounded.ConfirmationNumber to (source.ticket ?: "Service ticket")
+    // A quote outlives what it quotes, so this has to hold when the parent has
+    // been withdrawn — otherwise the one place a deleted message survives on
+    // screen is inside somebody's reply to it.
+    val (icon, fallback) = when {
+        source.deleted -> Icons.Rounded.Block to DELETED_LABEL
+        source.kind == "image" -> Icons.Rounded.Image to "Photo"
+        source.kind == "video" -> Icons.Rounded.Videocam to "Video"
+        source.kind == "audio" -> Icons.Rounded.Mic to "Voice note"
+        source.kind == "file" -> Icons.Rounded.InsertDriveFile to (source.fileName ?: "Document")
+        source.kind == "ticket" -> Icons.Rounded.ConfirmationNumber to (source.ticket ?: "Service ticket")
         else -> null to ""
     }
-    val summary = source.body.ifBlank { fallback }
+    val summary = if (source.deleted) fallback else source.body.ifBlank { fallback }
 
     Row(
         Modifier
             .padding(bottom = 4.dp)
-            .clip(RoundedCornerShape(9.dp))
+            .clip(Radii.md)
             .background(onBubble.copy(alpha = 0.07f))
             .clickable(onClick = onOpen)
             .heightIn(min = 34.dp),
@@ -459,7 +516,7 @@ private fun MediaContent(
     Box(
         Modifier
             .width(ChatTokens.mediaWidth)
-            .clip(RoundedCornerShape(13.dp))
+            .clip(Radii.lg)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onOpen),
     ) {
@@ -479,7 +536,7 @@ private fun MediaContent(
                 Modifier
                     .align(Alignment.Center)
                     .size(44.dp)
-                    .clip(RoundedCornerShape(50))
+                    .clip(Radii.pill)
                     .background(Color.Black.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -533,7 +590,7 @@ private fun FileCard(
     Row(
         Modifier
             .widthIn(max = bubbleMaxWidth)
-            .clip(RoundedCornerShape(11.dp))
+            .clip(Radii.md)
             .background(textColor.copy(alpha = 0.06f))
             .clickable(onClick = onOpen)
             .padding(horizontal = 10.dp, vertical = 9.dp),
@@ -542,7 +599,7 @@ private fun FileCard(
         Box(
             Modifier
                 .size(36.dp)
-                .clip(RoundedCornerShape(9.dp))
+                .clip(Radii.md)
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) {
@@ -597,7 +654,7 @@ private fun TicketCard(message: ChatMessageEntity, textColor: Color, onAssign: (
     Column(
         Modifier
             .widthIn(max = bubbleMaxWidth)
-            .clip(RoundedCornerShape(11.dp))
+            .clip(Radii.md)
             .background(textColor.copy(alpha = 0.06f))
             .padding(9.dp),
     ) {
@@ -637,7 +694,7 @@ private fun TicketCard(message: ChatMessageEntity, textColor: Color, onAssign: (
         Spacer(Modifier.height(7.dp))
         Surface(
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(7.dp),
+            shape = Radii.sm,
             modifier = Modifier.clickable { onAssign(ticket) },
         ) {
             Text(
@@ -661,9 +718,9 @@ private fun AlertCard(message: ChatMessageEntity) {
     val lines = message.body.split("\n").filter { it.isNotBlank() }
     val head = lines.firstOrNull().orEmpty()
     val critical = head.startsWith("CRITICAL")
-    val accent = if (critical) MaterialTheme.colorScheme.error else Color(0xFFF59E0B)
+    val accent = if (critical) Semantic.critical else Semantic.caution
 
-    Row(Modifier.widthIn(max = bubbleMaxWidth).clip(RoundedCornerShape(11.dp))) {
+    Row(Modifier.widthIn(max = bubbleMaxWidth).clip(Radii.md)) {
         Box(Modifier.width(4.dp).heightIn(min = 48.dp).background(accent))
         Column(
             Modifier
@@ -709,7 +766,7 @@ private fun SystemNotice(body: String) {
         Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(color = ChatTokens.chip, shape = RoundedCornerShape(9.dp)) {
+        Surface(color = ChatTokens.chip, shape = Radii.md) {
             Text(
                 body,
                 style = MaterialTheme.typography.labelMedium,
@@ -788,7 +845,7 @@ private fun AudioContent(message: ChatMessageEntity, textColor: Color) {
                     Spacer(Modifier.width(8.dp))
                     Surface(
                         color = textColor.copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(7.dp),
+                        shape = Radii.sm,
                         modifier = Modifier.clickable { VoicePlayer.cycleSpeed() },
                     ) {
                         Text(
@@ -890,7 +947,7 @@ private fun androidx.compose.foundation.layout.BoxScope.UploadScrim(pct: Int) {
 private fun TagChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
-        shape = RoundedCornerShape(7.dp),
+        shape = Radii.sm,
     ) {
         Row(
             Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
@@ -916,7 +973,7 @@ private fun TagChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label
 @Composable
 fun DayDivider(label: String) {
     Box(Modifier.fillMaxWidth().padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-        Surface(color = ChatTokens.chip, shape = RoundedCornerShape(10.dp)) {
+        Surface(color = ChatTokens.chip, shape = Radii.md) {
             Text(
                 label.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
@@ -946,15 +1003,15 @@ fun UnreadDivider(count: Int) {
     }
 }
 
-// A stable per-author colour so a busy depot thread stays scannable. Drawn from
-// the brand family rather than random hues, so it still looks like Naarni.
-private val authorPalette = listOf(
-    Color(0xFF6D5AE6), Color(0xFF0EA5E9), Color(0xFF10B981),
-    Color(0xFFF59E0B), Color(0xFFEC4899), Color(0xFF8B5CF6),
-)
-
-fun authorColor(user: String): Color =
-    authorPalette[(user.hashCode().and(Int.MAX_VALUE)) % authorPalette.size]
+/**
+ * A stable per-author colour, so a busy depot thread stays scannable.
+ *
+ * Delegates to [AuthorPalette], which is the product's single categorical scale
+ * and the one documented exception to the five-semantic rule.
+ */
+@Composable
+@ReadOnlyComposable
+fun authorColor(user: String): Color = AuthorPalette.of(user)
 
 fun formatDuration(ms: Long?): String {
     val total = (ms ?: 0) / 1000
@@ -997,7 +1054,7 @@ fun ReactionChips(
         chips.forEach { chip ->
             val mine = me.isNotEmpty() && me in chip.users
             Surface(
-                shape = RoundedCornerShape(999.dp),
+                shape = Radii.pill,
                 color = if (mine) {
                     MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
                 } else {

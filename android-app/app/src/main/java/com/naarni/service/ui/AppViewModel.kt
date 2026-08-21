@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.work.WorkManager
 import com.naarni.service.App
 import com.naarni.service.core.chat.ChatWork
+import com.naarni.service.core.inspection.InspectionWork
 import com.naarni.service.core.network.SESSION_EXPIRED_MESSAGE
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -38,8 +39,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Process engine — one repository serving every configured process. */
     val processes = container.processRepo
 
+    /**
+     * The same engine, offline-first.
+     *
+     * Every write the runner makes goes here rather than to [processes]: it
+     * lands in Room before the network is consulted, and a background worker
+     * pushes it when there is one. [processes] remains for the read-only
+     * screens — history, the report — which are a record of finished work and
+     * have no queue to protect.
+     */
+    val inspections = container.inspectionRepo
+
+    /** Whether the handset has a usable network right now, for the offline strip. */
+    val online = container.connectivity.online
+
     /** Duty roster & check-in / check-out. */
     val roster = container.rosterRepo
+
+    /** The material gate — inward and outward movements at Hubli and Narsapura. */
+    val material = container.materialRepo
 
     var ui by mutableStateOf(AppUiState(loggedIn = session.isLoggedIn))
         private set
@@ -143,6 +161,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Cancel queued sends before the rows go, so a worker cannot wake up
         // mid-wipe and re-insert what it was holding.
         runCatching { WorkManager.getInstance(getApplication()).cancelAllWorkByTag(ChatWork.TAG) }
+        // Inspection jobs go too, or a queued sync belonging to this engineer
+        // fires under the next person's session on a shared depot handset. The
+        // queued *work* deliberately survives — see below.
+        runCatching { InspectionWork.cancelAll(getApplication()) }
         auth.logout()
         ui = AppUiState(loggedIn = false, error = reason)
 
@@ -150,6 +172,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // on the login screen and must never wait on a disk wipe to get there.
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { container.chatDao.wipeEverything() } }
+            // Only the process catalogue, which is per-role. An inspection that
+            // has not synced yet is *not* dropped: it may exist nowhere else,
+            // and signing out of a shared handset must not destroy the work of
+            // whoever used it before. It goes up when that account signs back in.
+            runCatching {
+                withContext(Dispatchers.IO) { container.inspectionDao.clearCatalogue() }
+            }
         }
     }
 

@@ -14,8 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +42,8 @@ import com.naarni.service.ui.AppViewModel
 import com.naarni.service.ui.components.EmptyState
 import com.naarni.service.ui.components.Refreshable
 import kotlinx.coroutines.launch
+import com.naarni.service.ui.theme.Stroke
+import com.naarni.service.ui.theme.Elevation
 
 /**
  * The notification inbox: the user's Notification Log, newest first, with unread
@@ -67,7 +69,7 @@ fun NotificationsScreen(vm: AppViewModel, onBack: () -> Unit, onOpenJobCard: (St
                 title = { Text("Notifications") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -93,7 +95,7 @@ fun NotificationsScreen(vm: AppViewModel, onBack: () -> Unit, onOpenJobCard: (St
                     loading -> item { Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items.isEmpty() -> item {
                         Box(Modifier.fillMaxWidth().padding(top = 72.dp), contentAlignment = Alignment.Center) {
-                            EmptyState(Icons.Filled.NotificationsNone, "No notifications", "You're all caught up.")
+                            EmptyState(Icons.Rounded.NotificationsNone, "No notifications", "You're all caught up.")
                         }
                     }
                     else -> items(items, key = { it.name }) { n ->
@@ -114,10 +116,9 @@ fun NotificationsScreen(vm: AppViewModel, onBack: () -> Unit, onOpenJobCard: (St
 @Composable
 private fun NotificationRow(n: NotificationItem, onClick: () -> Unit) {
     val bg = if (n.read) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-    Surface(
-        shape = MaterialTheme.shapes.medium,
+    Surface(border = Stroke.card, shape = MaterialTheme.shapes.medium,
         color = bg,
-        tonalElevation = 1.dp,
+        tonalElevation = Elevation.e0,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

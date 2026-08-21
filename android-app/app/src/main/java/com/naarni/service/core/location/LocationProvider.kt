@@ -23,4 +23,19 @@ class LocationProvider(context: Context) {
             client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
         }.getOrNull() ?: runCatching { client.lastLocation.await() }.getOrNull()
     }
+
+    /**
+     * The last fix the phone already has, or null. Returns in milliseconds.
+     *
+     * Not as good as [current] and not meant to be: it is what makes a photograph
+     * stampable *now*. Waiting for a high-accuracy fix inside a shed is waiting
+     * for the one thing that will not arrive, and a stamp reading a hundred metres
+     * out is worth immeasurably more than an operator standing still for six
+     * seconds per photo — or than "Location unavailable", which is what the wait
+     * usually produced anyway.
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun lastKnown(timeoutMs: Long = 1200): Location? = withTimeoutOrNull(timeoutMs) {
+        runCatching { client.lastLocation.await() }.getOrNull()
+    }
 }

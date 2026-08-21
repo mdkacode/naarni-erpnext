@@ -1,130 +1,155 @@
+<!--
+  Depot dashboard.
+
+  Four figures, two breakdowns, and the live list. The stats are plain cards with
+  the number carrying the weight — the version this replaces coloured each figure
+  by category (brand / green / red / amber), which meant the SLA breach count and
+  the closed count competed for attention even when there were zero breaches.
+  Now only the breach figure takes colour, and only when it is above zero.
+-->
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    <h1 class="text-2xl font-bold text-gray-900 mb-6">Depot Manager Dashboard</h1>
+	<div>
+		<NPageHeader title="Depot" subtitle="Job cards raised at your depot">
+			<template #actions>
+				<NIconButton icon="refresh-cw" label="Refresh" :loading="loading" @click="load" />
+			</template>
+		</NPageHeader>
 
-    <div v-if="loading" class="text-center py-16 text-gray-400">Loading...</div>
-    <template v-else-if="data">
-      <!-- Stats Row -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div class="bg-white rounded-xl border p-5 text-center">
-          <div class="text-3xl font-extrabold text-brand-600">{{ data.total_open }}</div>
-          <div class="text-xs text-gray-500 mt-1 uppercase tracking-wider">Open Cards</div>
-        </div>
-        <div class="bg-white rounded-xl border p-5 text-center">
-          <div class="text-3xl font-extrabold text-green-600">{{ data.total_closed }}</div>
-          <div class="text-xs text-gray-500 mt-1 uppercase tracking-wider">Closed</div>
-        </div>
-        <div class="bg-white rounded-xl border p-5 text-center" :class="data.sla_breached > 0 ? 'border-red-300 bg-red-50' : ''">
-          <div class="text-3xl font-extrabold" :class="data.sla_breached > 0 ? 'text-red-600' : 'text-gray-400'">{{ data.sla_breached }}</div>
-          <div class="text-xs text-gray-500 mt-1 uppercase tracking-wider">SLA Breaches</div>
-        </div>
-        <div class="bg-white rounded-xl border p-5 text-center">
-          <div class="text-3xl font-extrabold text-amber-600">{{ urgentCount }}</div>
-          <div class="text-xs text-gray-500 mt-1 uppercase tracking-wider">Urgent/High</div>
-        </div>
-      </div>
+		<div class="space-y-6 p-5">
+			<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+				<template v-if="loading">
+					<NSkeleton v-for="i in 4" :key="i" variant="block" height="h-[92px]" :delay="0" />
+				</template>
+				<template v-else>
+					<NStat label="Open cards" :value="fmt.number(data?.total_open)" icon="clipboard-list" />
+					<NStat label="Closed" :value="fmt.number(data?.total_closed)" icon="circle-check" />
+					<NStat
+						label="SLA breaches"
+						:value="fmt.number(data?.sla_breached)"
+						icon="shield-alert"
+						:semantic="data?.sla_breached > 0 ? 'critical' : ''"
+						:hint="data?.sla_breached > 0 ? 'Needs attention today' : 'All within target'"
+					/>
+					<NStat label="Urgent or high" :value="fmt.number(urgentCount)" icon="alert-triangle" />
+				</template>
+			</div>
 
-      <!-- Status Breakdown -->
-      <div class="grid md:grid-cols-2 gap-6 mb-8">
-        <div class="bg-white rounded-xl border p-5">
-          <h2 class="text-sm font-semibold text-gray-500 uppercase mb-4">Cards by Status</h2>
-          <div class="space-y-2">
-            <div v-for="s in data.states" :key="s.workflow_state" class="flex items-center justify-between">
-              <StatusBadge :state="s.workflow_state" />
-              <span class="text-lg font-bold text-gray-900">{{ s.count }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="bg-white rounded-xl border p-5">
-          <h2 class="text-sm font-semibold text-gray-500 uppercase mb-4">Priority Breakdown</h2>
-          <div class="space-y-3">
-            <div v-for="p in data.priorities" :key="p.priority" class="flex items-center gap-3">
-              <div class="w-24 text-sm font-medium" :class="p.priority === 'Urgent' ? 'text-red-600' : p.priority === 'High' ? 'text-orange-600' : 'text-gray-700'">{{ p.priority }}</div>
-              <div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-                <div class="h-full rounded-full" :class="priorityBarColor(p.priority)" :style="{ width: barWidth(p.count) }" />
-              </div>
-              <span class="text-sm font-bold w-8 text-right">{{ p.count }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+			<div class="grid gap-4 lg:grid-cols-2">
+				<NCard title="Cards by status">
+					<NSkeleton v-if="loading" :count="5" :widths="['70%', '55%', '80%', '45%', '65%']" />
+					<ul v-else class="divide-y divide-hairline">
+						<li
+							v-for="s in data?.states || []"
+							:key="s.workflow_state"
+							class="flex items-center justify-between py-2"
+						>
+							<NStatus :state="s.workflow_state" />
+							<span class="tabular text-title-sm text-ink">{{ fmt.number(s.count) }}</span>
+						</li>
+					</ul>
+				</NCard>
 
-      <!-- Recent Cards -->
-      <div class="bg-white rounded-xl border">
-        <div class="px-5 py-4 border-b flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-gray-500 uppercase">Active Job Cards</h2>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead class="bg-gray-50">
-              <tr>
-                <th class="px-4 py-3 text-left text-gray-600">Job Card</th>
-                <th class="px-4 py-3 text-left text-gray-600">Vehicle</th>
-                <th class="px-4 py-3 text-left text-gray-600">Type</th>
-                <th class="px-4 py-3 text-left text-gray-600">Customer</th>
-                <th class="px-4 py-3 text-left text-gray-600">Priority</th>
-                <th class="px-4 py-3 text-left text-gray-600">Status</th>
-                <th class="px-4 py-3 text-center text-gray-600">SLA</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y">
-              <tr v-for="card in data.recent_cards" :key="card.name" class="hover:bg-gray-50 cursor-pointer" @click="openCard(card.name)">
-                <td class="px-4 py-3 font-mono text-brand-600">{{ card.name }}</td>
-                <td class="px-4 py-3 font-semibold">{{ formatVehicle(card.vehicle_number) }}</td>
-                <td class="px-4 py-3">{{ card.job_card_type }}</td>
-                <td class="px-4 py-3 text-gray-600">{{ card.customer_name }}</td>
-                <td class="px-4 py-3">
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full" :class="priorityBadge(card.priority)">{{ card.priority }}</span>
-                </td>
-                <td class="px-4 py-3"><StatusBadge :state="card.workflow_state" /></td>
-                <td class="px-4 py-3 text-center">
-                  <span v-if="card.sla_breached" class="text-red-600 font-bold text-xs">BREACH</span>
-                  <span v-else class="text-green-500 text-xs">OK</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </template>
-  </div>
+				<NCard title="Priority">
+					<NSkeleton v-if="loading" :count="4" :widths="['80%', '60%', '70%', '40%']" />
+					<ul v-else class="space-y-2.5">
+						<li
+							v-for="p in data?.priorities || []"
+							:key="p.priority"
+							class="flex items-center gap-3"
+						>
+							<span class="w-20 shrink-0 text-body-sm text-muted">{{ p.priority }}</span>
+							<NMeter
+								class="flex-1"
+								:value="p.count"
+								:max="maxPriorityCount"
+								:semantic="prioritySemantic(p.priority)"
+								mode="count"
+								:label="`${p.priority} priority`"
+							/>
+						</li>
+					</ul>
+				</NCard>
+			</div>
+
+			<NSection title="Active job cards">
+				<NTable
+					:columns="columns"
+					:rows="data?.recent_cards || []"
+					:loading="loading"
+					:row-to="(row) => `/service-portal/job-card/${row.name}`"
+					empty-icon="clipboard-list"
+					empty-title="No active job cards"
+					empty-body="Everything raised at this depot has been closed."
+				>
+					<template #cell:vehicle_number="{ row }"
+						><NVehicle :value="row.vehicle_number"
+					/></template>
+					<template #cell:priority="{ row }"><NPriority :value="row.priority" /></template>
+					<template #cell:workflow_state="{ row }"
+						><NStatus :state="row.workflow_state"
+					/></template>
+					<template #cell:sla_breached="{ row }">
+						<NBadge
+							:semantic="slaSemantic(row.sla_breached)"
+							:label="row.sla_breached ? 'Breached' : 'On track'"
+						/>
+					</template>
+				</NTable>
+			</NSection>
+		</div>
+	</div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { callAPI } from "../utils/api.js";
-import StatusBadge from "../components/StatusBadge.vue";
+import {
+	NPageHeader,
+	NIconButton,
+	NStat,
+	NCard,
+	NSection,
+	NTable,
+	NStatus,
+	NPriority,
+	NBadge,
+	NVehicle,
+	NMeter,
+	NSkeleton,
+	fmt,
+	prioritySemantic,
+	slaSemantic,
+} from "../ui/index.js";
+
+const columns = [
+	{ key: "name", label: "Job card", mono: true, width: "150px", link: true },
+	{ key: "vehicle_number", label: "Vehicle", width: "140px" },
+	{ key: "job_card_type", label: "Type", width: "150px" },
+	{ key: "customer_name", label: "Customer" },
+	{ key: "priority", label: "Priority", width: "110px" },
+	{ key: "workflow_state", label: "Status", width: "180px" },
+	{ key: "sla_breached", label: "SLA", width: "120px" },
+];
 
 const data = ref(null);
 const loading = ref(true);
 
-onMounted(async () => {
-  try {
-    const res = await callAPI("dashboard.get_depot_manager_dashboard");
-    data.value = res.data;
-  } finally { loading.value = false; }
-});
+async function load() {
+	loading.value = true;
+	try {
+		const res = await callAPI("dashboard.get_depot_manager_dashboard");
+		data.value = res.data;
+	} finally {
+		loading.value = false;
+	}
+}
+onMounted(load);
 
-const urgentCount = computed(() => {
-  if (!data.value?.priorities) return 0;
-  return data.value.priorities
-    .filter(p => p.priority === "Urgent" || p.priority === "High")
-    .reduce((sum, p) => sum + p.count, 0);
-});
+const urgentCount = computed(() =>
+	(data.value?.priorities || [])
+		.filter((p) => p.priority === "Urgent" || p.priority === "High")
+		.reduce((sum, p) => sum + p.count, 0)
+);
 
-const maxCount = computed(() => Math.max(...(data.value?.priorities || []).map(p => p.count), 1));
-function barWidth(count) { return `${(count / maxCount.value) * 100}%`; }
-function priorityBarColor(p) {
-  return { Urgent: "bg-red-500", High: "bg-orange-400", Medium: "bg-amber-400", Low: "bg-green-400" }[p] || "bg-gray-300";
-}
-function priorityBadge(p) {
-  return { Urgent: "bg-red-100 text-red-700", High: "bg-orange-100 text-orange-700", Medium: "bg-amber-100 text-amber-700", Low: "bg-green-100 text-green-700" }[p];
-}
-function formatVehicle(num) {
-  if (!num) return "";
-  let c = num.replace(/[-\s]/g, "").toUpperCase();
-  let m = c.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
-  return m ? `${m[1]} ${m[2].padStart(2,"0")} ${m[3]} ${m[4]}` : num;
-}
-function openCard(name) { window.open(`/app/job-card/${name}`, "_blank"); }
+const maxPriorityCount = computed(() => Math.max(...(data.value?.priorities || []).map((p) => p.count), 1));
 </script>

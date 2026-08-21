@@ -1,0 +1,2 @@
+import{_ as t}from"./NBadge-LqnPgoWy.js";import{o as a,j as o,u as r,p as l,b as n}from"./main-0N5LZRC-.js";const s={__name:"NPriority",props:{value:{type:String,default:""},dot:{type:Boolean,default:!0}},setup(e){return(u,c)=>e.value?(a(),o(t,{key:0,semantic:r(l)(e.value),label:e.value,dot:e.dot},null,8,["semantic","label","dot"])):n("",!0)}};export{s as _};
+//# sourceMappingURL=NPriority-CLYKCODx.js.map

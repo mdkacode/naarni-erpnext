@@ -1,16 +1,21 @@
+<!--
+  App — chrome or no chrome, and the one place the toaster is mounted.
+
+  Sign-in has no sidebar: there is nothing to navigate to yet, and a nav rail
+  next to a login form is a promise the page cannot keep.
+-->
 <template>
-  <div class="min-h-screen flex flex-col">
-    <NavBar v-if="isLoggedIn" />
-    <main class="flex-1">
-      <router-view />
-    </main>
-  </div>
+	<AppShell v-if="isLoggedIn">
+		<router-view />
+	</AppShell>
+	<router-view v-else />
+	<NToaster />
 </template>
 
 <script setup>
-import { computed } from "vue";
+import AppShell from "./components/AppShell.vue";
+import { NToaster } from "./ui/index.js";
 import { useSession } from "./composables/useSession.js";
-import NavBar from "./components/NavBar.vue";
 
 const { isLoggedIn } = useSession();
 </script>

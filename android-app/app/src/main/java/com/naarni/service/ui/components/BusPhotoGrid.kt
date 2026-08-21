@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.rounded.AddAPhoto
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +44,7 @@ import com.naarni.service.BuildConfig
 import com.naarni.service.data.dto.BusImage
 import com.naarni.service.ui.AppViewModel
 import kotlinx.coroutines.launch
+import com.naarni.service.ui.theme.Radii
 
 private fun fullUrl(fileUrl: String?): String? =
     fileUrl?.takeIf { it.isNotBlank() }?.let {
@@ -114,7 +115,7 @@ fun BusPhotoGrid(
                 StampingCamera(
                     label = angle,
                     onClose = { activeAngle = null },
-                    onCaptured = { file ->
+                    onCaptured = { file, _ ->
                         activeAngle = null
                         scope.launch {
                             busy = true
@@ -133,20 +134,20 @@ fun BusPhotoGrid(
     viewer?.let { img ->
         androidx.compose.ui.window.Dialog(onDismissRequest = { viewer = null }) {
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp),
+                Modifier.fillMaxWidth().clip(Radii.xl).background(MaterialTheme.colorScheme.surface).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Box(Modifier.fillMaxWidth()) {
                     Text(img.angle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     IconButton(onClick = { viewer = null }, modifier = Modifier.align(Alignment.CenterEnd).size(24.dp)) {
-                        Icon(Icons.Default.Close, "Close")
+                        Icon(Icons.Rounded.Close, "Close")
                     }
                 }
                 AsyncImage(
                     model = fullUrl(img.image),
                     contentDescription = img.angle,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(Radii.lg),
                 )
                 img.captured_at?.let {
                     Text("Captured ${it.take(16).replace("T", " ")}${img.captured_by?.let { u -> " · $u" } ?: ""}",
@@ -154,7 +155,7 @@ fun BusPhotoGrid(
                 }
                 Box(Modifier.fillMaxWidth()) {
                     TextButton(onClick = { val a = img.angle; viewer = null; activeAngle = a }, modifier = Modifier.align(Alignment.CenterStart)) {
-                        Icon(Icons.Default.AddAPhoto, null); Text("  Replace")
+                        Icon(Icons.Rounded.AddAPhoto, null); Text("  Replace")
                     }
                     TextButton(
                         onClick = {
@@ -168,7 +169,7 @@ fun BusPhotoGrid(
                         },
                         modifier = Modifier.align(Alignment.CenterEnd),
                     ) {
-                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error)
                         Text("  Delete", color = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -182,11 +183,11 @@ private fun AngleSlot(angle: String, image: BusImage?, enabled: Boolean, onTap: 
     val hasImage = image?.image != null
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
-            Modifier.width(96.dp).aspectRatio(1f).clip(RoundedCornerShape(12.dp))
+            Modifier.width(96.dp).aspectRatio(1f).clip(Radii.lg)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .then(
                     if (image?.is_primary == 1)
-                        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, Radii.lg)
                     else Modifier,
                 )
                 .clickable(enabled = enabled, onClick = onTap),
@@ -214,13 +215,13 @@ private fun AngleSlot(angle: String, image: BusImage?, enabled: Boolean, onTap: 
                 }
                 if (image.is_primary == 1) {
                     Icon(
-                        Icons.Default.Star, "Primary",
+                        Icons.Rounded.Star, "Primary",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(18.dp),
                     )
                 }
             } else {
-                Icon(Icons.Default.AddAPhoto, "Add $angle photo", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Rounded.AddAPhoto, "Add $angle photo", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Text(

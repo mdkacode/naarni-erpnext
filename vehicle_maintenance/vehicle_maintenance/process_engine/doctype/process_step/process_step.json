@@ -47,7 +47,6 @@
       "label": "Section (Alt Language)",
       "fieldtype": "Data"
     },
-
     {
       "fieldname": "sb_content",
       "label": "Content",
@@ -103,7 +102,6 @@
       "fieldtype": "Small Text",
       "description": "What to do when this step fails. Carrying it on the step is what puts the control plan at the point of use (IATF 16949)."
     },
-
     {
       "fieldname": "sb_input",
       "label": "Input",
@@ -113,7 +111,7 @@
       "fieldname": "response_type",
       "label": "Response Type",
       "fieldtype": "Select",
-      "options": "Choice\nChoice Multi\nNumber\nNumber in Range\nNumber with Tolerance\nComputed\nText Short\nText Long\nYes No\nDate\nDatetime\nPhoto Only\nScan\nSignature\nLink\nSection Note",
+      "options": "Choice\nChoice Multi\nNumber\nNumber in Range\nNumber with Tolerance\nComputed\nText Short\nText Long\nYes No\nDate\nDatetime\nPhoto Only\nScan\nSignature\nLink\nSection Note\nWeight from Photo",
       "default": "Choice",
       "reqd": 1,
       "in_list_view": 1
@@ -132,7 +130,15 @@
       "label": "Link DocType",
       "fieldtype": "Link",
       "options": "DocType",
-      "depends_on": "eval:doc.response_type=='Link'"
+      "depends_on": "eval:doc.response_type=='Link'",
+      "description": "The doctype a Link step picks from. The runner shows a searchable picker over it rather than a bare text box."
+    },
+    {
+      "fieldname": "allow_inline_create",
+      "label": "Allow Creating a New Option",
+      "fieldtype": "Check",
+      "depends_on": "eval:doc.response_type=='Link'",
+      "description": "Lets the operator add a missing option from the runner instead of stopping to phone an administrator. Only doctypes on the server's allowlist can be created this way, and what is created is flagged for review."
     },
     {
       "fieldname": "computed_expression",
@@ -193,7 +199,6 @@
       "label": "Default Value",
       "fieldtype": "Data"
     },
-
     {
       "fieldname": "sb_evidence",
       "label": "Evidence",
@@ -265,7 +270,6 @@
       "label": "Requires Signature",
       "fieldtype": "Check"
     },
-
     {
       "fieldname": "sb_governance",
       "label": "Governance & Scoring",
@@ -322,7 +326,6 @@
       "default": "1",
       "description": "Retire a step without deleting the history that refers to it."
     },
-
     {
       "fieldname": "action_set",
       "label": "Action Set",

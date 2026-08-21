@@ -1,0 +1,138 @@
+{
+ "name": "VM User Invite",
+ "module": "Fleet Service",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "format:INV-{YYYY}-{#####}",
+ "description": "One person, invited by phone number. This is the gate: without a Pending invite, a phone number that passes an OTP gets no account. Access is granted deliberately by somebody who knows who is joining, rather than by anybody who can receive an SMS.",
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "phone",
+   "label": "Phone Number",
+   "fieldtype": "Data",
+   "options": "Phone",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Stored in the same normalised form the login path uses, so the gate cannot be missed by a stray +91 or a space."
+  },
+  {
+   "fieldname": "full_name",
+   "label": "Full Name",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Seeds the new account, and is what the joiner sees pre-filled on their first screen. They can correct it."
+  },
+  {
+   "fieldname": "email",
+   "label": "Email",
+   "fieldtype": "Data",
+   "options": "Email",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Where the welcome goes. Optional: not every driver has one, and the invite still works without it — they are simply told by their supervisor instead."
+  },
+  {
+   "fieldname": "designation",
+   "label": "Designation",
+   "fieldtype": "Link",
+   "options": "VM Designation",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "depot",
+   "label": "Depot",
+   "fieldtype": "Link",
+   "options": "Depot"
+  },
+  {
+   "fieldname": "role",
+   "label": "Role",
+   "fieldtype": "Link",
+   "options": "Role",
+   "description": "What the account is created with. Left blank, the invite grants the app's default role."
+  },
+  {
+   "fieldname": "status",
+   "label": "Status",
+   "fieldtype": "Select",
+   "options": "Pending\nAccepted\nRevoked",
+   "default": "Pending",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Only Pending opens the gate. Accepted is stamped by the first successful login; Revoked closes it again without deleting the record of who was invited."
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break",
+   "label": "Trail"
+  },
+  {
+   "fieldname": "user",
+   "label": "User",
+   "fieldtype": "Link",
+   "options": "User",
+   "read_only": 1,
+   "description": "Filled in when the invite is accepted, so the invite and the account it produced can always be walked between."
+  },
+  {
+   "fieldname": "accepted_at",
+   "label": "Accepted At",
+   "fieldtype": "Datetime",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "email_sent_at",
+   "label": "Welcome Sent At",
+   "fieldtype": "Datetime",
+   "read_only": 1,
+   "description": "Blank with an email address present means the send failed — the invite still works, nobody was told."
+  },
+  {
+   "fieldname": "notes",
+   "label": "Notes",
+   "fieldtype": "Small Text"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1
+  },
+  {
+   "role": "Ops Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Depot Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

@@ -1,0 +1,45 @@
+{
+  "name": "VM Daily Status Item",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "istable": 1,
+  "engine": "InnoDB",
+  "description": "One line of a day's status — what was finished, what is still running, or what is stuck. Written by the summariser, editable by a manager.",
+  "fields": [
+    {
+      "fieldname": "bucket",
+      "label": "Bucket",
+      "fieldtype": "Select",
+      "options": "Completed\nIn Progress\nBlocker\nNeeds Attention",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 2
+    },
+    {
+      "fieldname": "text",
+      "label": "Item",
+      "fieldtype": "Small Text",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 6
+    },
+    {
+      "fieldname": "ticket",
+      "label": "Ticket",
+      "fieldtype": "Link",
+      "options": "Service Ticket",
+      "in_list_view": 1,
+      "columns": 2,
+      "description": "Only ever set from a ticket the person actually referenced that day."
+    },
+    {
+      "fieldname": "vehicle",
+      "label": "Vehicle",
+      "fieldtype": "Link",
+      "options": "Vehicle",
+      "in_list_view": 1,
+      "columns": 2
+    }
+  ],
+  "permissions": []
+}

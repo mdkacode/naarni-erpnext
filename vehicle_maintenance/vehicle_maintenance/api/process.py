@@ -1219,6 +1219,15 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 				_("Stage '{0}' is blocked pending review of an earlier failure.").format(stage_def.label)
 			)
 
+		if doc.status == C.STATUS_IN_REWORK:
+			# The reason belongs to the attempt that was rejected, and this is the
+			# moment it stops applying. Left in place it outlives its pack:
+			# `_finalise` treats any lingering reason as a quarantine regardless of
+			# score, so a pack that was sent back, put right and then approved came
+			# out Quarantined anyway.
+			doc.quarantine_reason = None
+			doc.status = C.STATUS_IN_PROGRESS
+
 		answers = _answer_map(doc)
 
 		missing = []
@@ -1428,35 +1437,44 @@ def _plant_name(plant: str | None) -> str:
 
 
 def _awaiting_stage_map(runs: list[str]) -> dict[str, str]:
-	"""The stage each run is actually waiting on — the last one an operator signed.
+	"""The stage each run is actually waiting on.
 
 	Read from the signoffs rather than from `current_stage`, because
 	`current_stage` stops moving once a run goes to Awaiting Verification and a
 	multi-stage process would otherwise report the wrong one.
+
+	Compared by *time*, not by existence. A stage that was sent back and then
+	redone carries both the verifier's rejection and a fresh operator sign-off;
+	treating any verifier row as "already dealt with" made the redone pack vanish
+	from the queue for ever — it had been verified once, so it was never offered
+	again. The rule is the obvious one once written down: a stage needs a
+	signature when the operator has signed it more recently than a verifier has.
 	"""
 	if not runs:
 		return {}
 	rows = frappe.get_all(
 		"Process Run Signoff",
-		filters={"parent": ["in", runs], "level": "Operator"},
-		fields=["parent", "stage", "signed_at"],
+		filters={"parent": ["in", runs]},
+		fields=["parent", "stage", "level", "signed_at"],
 		order_by="parent asc, signed_at asc",
 		limit_page_length=0,
 	)
-	signed_by_verifier = {
-		(r.parent, r.stage)
-		for r in frappe.get_all(
-			"Process Run Signoff",
-			filters={"parent": ["in", runs], "level": ["!=", "Operator"]},
-			fields=["parent", "stage"],
-			limit_page_length=0,
-		)
-	}
-	out: dict[str, str] = {}
+
+	latest: dict[tuple, dict] = {}
 	for row in rows:
-		if (row.parent, row.stage) in signed_by_verifier:
+		key = (row.parent, row.stage)
+		side = "operator" if row.level == "Operator" else "verifier"
+		latest.setdefault(key, {})[side] = row.signed_at
+
+	out: dict[str, str] = {}
+	for (parent, stage), when in latest.items():
+		operator = when.get("operator")
+		if not operator:
 			continue
-		out.setdefault(row.parent, row.stage)
+		verifier = when.get("verifier")
+		if verifier and verifier >= operator:
+			continue
+		out.setdefault(parent, stage)
 	return out
 
 
@@ -1559,8 +1577,26 @@ def verify_stage(
 		)
 
 		if decision == "Rejected":
-			doc.status = C.STATUS_QUARANTINED
-			doc.quarantine_reason = remarks or _("Rejected at verification.")
+			# Back to the operator, not into a dead end.
+			#
+			# This used to quarantine, and nothing anywhere moves a run out of
+			# quarantine — the status exists, `In Rework` exists, and no code path
+			# had ever set it. A pack rejected by a verifier was therefore held for
+			# ever with no way to record that it had been put right, which makes
+			# "send it back" a button that cannot mean what it says.
+			doc.status = C.STATUS_IN_REWORK
+			doc.current_stage = stage
+			doc.quarantine_reason = remarks or _("Sent back at verification.")
+			# The stage has to read as outstanding again or the run finalises with
+			# work nobody redid. Only the operator's sign-off for *this* stage is
+			# dropped; the verifier's rejection stays, and who answered each check
+			# is recorded on the check itself, so nothing about the first attempt
+			# is lost.
+			doc.signoffs = [
+				row for row in doc.signoffs or [] if not (row.stage == stage and row.level == "Operator")
+			]
+			for idx, row in enumerate(doc.signoffs, start=1):
+				row.idx = idx
 		else:
 			ordered = sorted(definition.stages or [], key=lambda x: cint(x.sequence))
 			idx = next((i for i, s in enumerate(ordered) if s.stage_code == stage), 0)

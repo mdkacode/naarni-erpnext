@@ -215,6 +215,74 @@ class TestSigningOff(VerificationTestCase):
 		frappe.db.commit()  # nosemgrep — as above
 		self.assertNotIn(run, {r["name"] for r in self._queue(ENGINEER)["runs"]})
 
+	def test_sending_back_returns_the_pack_to_the_operator(self):
+		"""Not quarantine. Nothing in this codebase moves a run out of quarantine,
+		so rejecting used to hold a pack for ever with no way to record that it
+		had been put right."""
+		run = self._awaiting_run()
+		frappe.set_user(ENGINEER)
+		api.verify_stage(run=run, stage=STAGE, decision="Rejected", remarks="Torque mark missing")
+
+		doc = frappe.get_doc("Process Run", run)
+		self.assertEqual(doc.status, C.STATUS_IN_REWORK)
+		self.assertEqual(doc.current_stage, STAGE)
+		self.assertIn("Torque", doc.quarantine_reason or "")
+
+	def test_a_sent_back_stage_can_be_done_again_and_resubmitted(self):
+		"""The loop the button's label promises."""
+		run = self._awaiting_run()
+		frappe.set_user(ENGINEER)
+		api.verify_stage(run=run, stage=STAGE, decision="Rejected", remarks="Torque mark missing")
+
+		frappe.set_user(OPERATOR)
+		api.save_step_result(run=run, step_code="Q1", response="fixed")
+		self.assertTrue(api.submit_stage(run=run, stage=STAGE)["success"])
+		self.assertEqual(frappe.db.get_value("Process Run", run, "status"), C.STATUS_AWAITING_VERIFICATION)
+
+		# And it is offered again. The status alone is not the property that
+		# matters: the pack carries the old rejection as well as the new
+		# submission, and treating any verifier row as "already dealt with" made
+		# a redone pack disappear from the queue permanently.
+		frappe.db.commit()  # nosemgrep — the queue reads committed rows
+		self.assertIn(run, {r["name"] for r in self._queue(ENGINEER)["runs"]})
+
+	def test_a_pack_sent_back_then_put_right_then_approved_passes(self):
+		"""The whole loop, end to end.
+
+		It used to end Quarantined: the send-back reason was never cleared, and
+		finalisation treats any lingering reason as a quarantine whatever the
+		score — so a pack that was fixed and approved was still held.
+		"""
+		run = self._awaiting_run()
+		frappe.set_user(ENGINEER)
+		api.verify_stage(run=run, stage=STAGE, decision="Rejected", remarks="Torque mark missing")
+
+		frappe.set_user(OPERATOR)
+		api.save_step_result(run=run, step_code="Q1", response="fixed")
+		api.submit_stage(run=run, stage=STAGE)
+
+		frappe.set_user(ENGINEER)
+		api.verify_stage(run=run, stage=STAGE, decision="Approved")
+
+		doc = frappe.get_doc("Process Run", run)
+		self.assertEqual(doc.status, C.STATUS_PASSED)
+		self.assertFalse((doc.quarantine_reason or "").strip())
+		# Both rounds are still on the record.
+		self.assertEqual(
+			[s.decision for s in doc.signoffs if s.level != "Operator"], ["Rejected", "Approved"]
+		)
+
+	def test_the_rejection_survives_the_pack_being_redone(self):
+		"""Who rejected it and why is the record; only the redone work is cleared."""
+		run = self._awaiting_run()
+		frappe.set_user(ENGINEER)
+		api.verify_stage(run=run, stage=STAGE, decision="Rejected", remarks="Torque mark missing")
+
+		doc = frappe.get_doc("Process Run", run)
+		levels = [(s.level, s.decision) for s in doc.signoffs]
+		self.assertIn(("Verifier L1", "Rejected"), levels)
+		self.assertNotIn("Operator", [level for level, _ in levels])
+
 	def test_sending_back_records_the_reason(self):
 		run = self._awaiting_run()
 		frappe.set_user(ENGINEER)

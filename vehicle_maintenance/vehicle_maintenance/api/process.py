@@ -1116,6 +1116,7 @@ def attach_photo(
 				"exif_written": cint(exif_written),
 			},
 		)
+		_rejudge_after_photo(doc, step_code)
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
 		return _ok(
@@ -1123,6 +1124,51 @@ def attach_photo(
 		)
 
 	return with_deadlock_retry(_apply)
+
+
+def _rejudge_after_photo(doc, step_code: str) -> None:
+	"""Re-judge the step a photo just landed on.
+
+	On a `Photo Only` step the photograph *is* the answer, and nothing else ever
+	writes a result row for one — so without this a mandatory photo step could
+	not be satisfied at all: the operator took the picture, saw it on screen, and
+	the submit gate still reported the step unanswered. It could only be reached
+	by making such a step mandatory, which the material gate is the first process
+	to do.
+
+	Every other type keeps whatever it was answered with; the re-judge only
+	refreshes the stored `photo_count`, and `_same_answer` keeps that from
+	re-firing the step's actions.
+	"""
+	definition = frappe.get_cached_doc("Process Definition", doc.process_definition)
+	step = definition.expanded_step(step_code)
+	if not step:
+		return
+
+	existing = next((r for r in doc.results or [] if r.step_code == step_code), None)
+	is_photo_step = step.get("response_type") == C.PHOTO_ONLY
+	if not existing and not is_photo_step:
+		# Nothing answered yet and the photo is not the answer — leave the step
+		# untouched rather than inventing an empty result row for it.
+		return
+
+	response = existing.response if existing else None
+	value = existing.value_numeric if existing and step["response_type"] in C.NUMERIC_TYPES else None
+	# A photograph arriving on a skipped photo step un-skips it: the operator has
+	# just done the thing they said they could not do.
+	skipped = 0 if is_photo_step else cint(existing.is_skipped if existing else 0)
+
+	apply_answer(
+		doc,
+		definition,
+		step_code,
+		response=response,
+		value=value,
+		remark=existing.remark if existing else None,
+		skipped=skipped,
+		skip_reason=None if is_photo_step else (existing.skip_reason if existing else None),
+		seconds_spent=cint(existing.seconds_spent) if existing else 0,
+	)
 
 
 # --------------------------------------------------------------- stage sign-off

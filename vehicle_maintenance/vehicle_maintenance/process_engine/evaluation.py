@@ -209,15 +209,25 @@ def evaluate(
 
 	elif rtype == C.SCAN:
 		expected = max(1, cint(step.get("scan_count")) or 1)
-		out["is_answered"] = scan_count > 0
+		# Typed counts. Every scan step in this app offers a box to type into —
+		# labels come off crates greasy, torn or printed too small for any camera,
+		# and the step's own help text tells the operator to type it. Judging only
+		# the camera meant a chassis number keyed in by hand read as *unanswered*:
+		# the submit gate asked for a step that was filled in on screen.
+		typed = out["response"] or (str(value).strip() if value not in (None, "") else "")
+		if not out["response"] and typed:
+			out["response"] = typed
+		if typed:
+			out["value_text"] = typed
+		out["is_answered"] = scan_count > 0 or bool(typed)
 		# A scan is never mandatory, so a partial capture still passes the step —
 		# shortfall shows up as traceability completeness on the run, not a fail.
-		out["is_pass"] = scan_count > 0
+		out["is_pass"] = out["is_answered"]
 		out["value_numeric"] = scan_count
 		out["spec_summary"] = f"{scan_count} of {expected} captured"
 
 	# ---------------------------------------------------------- free-form types
-	else:  # TEXT_SHORT, TEXT_LONG, DATE, DATETIME, SIGNATURE, LINK
+	else:  # TEXT_SHORT, TEXT_LONG, DATE, DATETIME, SIGNATURE, LINK, REVIEW
 		# Either field. The app has two renderers for a text step and they do not
 		# agree about which one a typed answer belongs in: the list card posts it
 		# as `response`, the full-screen runner as `value`. Reading only `response`

@@ -10,7 +10,7 @@
   "row_uuid", "item", "item_name", "item_group",
   "column_break_qty", "qty", "uom", "expected_qty", "condition",
   "sb_identity", "has_qr", "qr_code", "qr_source", "qr_scanned_at",
-  "column_break_batch", "batch_no", "mfg_date", "is_new_item",
+  "column_break_batch", "batch_no", "mfg_date", "chassis_no", "is_new_item",
   "sb_evidence", "photo_count", "no_photo_reason", "remarks"
  ],
  "fields": [
@@ -31,6 +31,8 @@
   {"fieldname": "column_break_batch", "fieldtype": "Column Break"},
   {"fieldname": "batch_no", "label": "Batch", "fieldtype": "Data", "search_index": 1},
   {"fieldname": "mfg_date", "label": "Mfg Date", "fieldtype": "Date"},
+  {"fieldname": "chassis_no", "label": "Used For (Chassis)", "fieldtype": "Data", "search_index": 1,
+   "description": "Which bus this part is going into. Free text: a chassis at the plant often has no record yet."},
   {"fieldname": "is_new_item", "label": "Item Created at the Gate", "fieldtype": "Check", "read_only": 1},
   {"fieldname": "sb_evidence", "fieldtype": "Section Break", "label": "Evidence"},
   {"fieldname": "photo_count", "label": "Photos", "fieldtype": "Int", "read_only": 1, "in_list_view": 1, "columns": 1},

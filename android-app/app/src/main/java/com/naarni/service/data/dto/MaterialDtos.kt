@@ -101,6 +101,8 @@ data class MovementItem(
     val qr_source: String? = null,
     val batch_no: String? = null,
     val mfg_date: String? = null,
+    /** The bus this part is going into, as answered at the gate. */
+    val chassis_no: String? = null,
     val photo_count: Int = 0,
     val no_photo_reason: String? = null,
     val is_new_item: Int = 0,

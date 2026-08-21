@@ -2,6 +2,7 @@ package com.naarni.service.data.repo
 
 import com.naarni.service.core.network.FrappeApi
 import com.naarni.service.core.network.payload
+import com.naarni.service.data.dto.APP_STEP_CAPABILITY
 import com.naarni.service.data.dto.FoundRun
 import com.naarni.service.data.dto.OpenRun
 import com.naarni.service.data.dto.ProcessDefinition
@@ -235,12 +236,6 @@ class ProcessRepository(private val api: FrappeApi) {
         api.verifyProcessStage(run, stage, if (approve) "Approved" else "Rejected", remarks).payload()
 
     companion object {
-        /** Step-type capability this build renders. See the class docstring. */
-        // 2: `Weight from Photo` — a weight typed beside a photograph of the
-        //    scale, with the number read off it by on-device OCR.
-        // 3: `Review & Confirm` — the run's own answers and photographs read
-        //    back on a last screen, each line a tap back to the question.
-        const val APP_STEP_CAPABILITY = 3
     }
 }
 

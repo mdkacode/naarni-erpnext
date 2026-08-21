@@ -244,6 +244,11 @@ private fun ReadOnlyItem(row: MovementItem, photos: List<ReviewablePhoto>) {
             }
             val facts = listOfNotNull(
                 row.condition.takeIf { it != "OK" },
+                // Which bus it is for, first among the facts. It is the question
+                // the plant asks of this record more often than any other, and a
+                // line that answered it at the gate and does not show it here
+                // makes the gate step look like paperwork for its own sake.
+                row.chassis_no?.takeIf { it.isNotBlank() }?.let { "for $it" },
                 row.qr_code?.takeIf { it.isNotBlank() },
                 "${row.photo_count} ${if (row.photo_count == 1) "photo" else "photos"}",
                 row.no_photo_reason?.takeIf { it.isNotBlank() }?.let { "no photo: $it" },

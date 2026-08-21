@@ -1,5 +1,6 @@
 package com.naarni.service.data.dto
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -114,13 +115,40 @@ data class ProcessStep(
     val expected_seconds: Int = 0,
     val visibility_conditions: List<ProcessCondition> = emptyList(),
     /**
-     * False when this install is too old to render the step type. The runner
-     * shows a read-only card with an update prompt rather than crashing, so one
-     * new step type cannot break every phone on the floor at once.
+     * What the server thought when it sent this — see [supported], which is the
+     * one the app should ask.
      */
-    val supported: Boolean = true,
+    @SerialName("supported")
+    val server_supported: Boolean = true,
     val required_capability: Int = 1,
-)
+) {
+    /**
+     * Whether this build can render the step type. Read-only card and an update
+     * prompt when it cannot, so one new step type cannot break every phone on
+     * the floor at once.
+     *
+     * Judged here rather than taken from the server's answer, because the
+     * server's answer is baked into a definition that is then cached on the
+     * handset for as long as the version lives. A build that raises its
+     * capability would keep reading a verdict passed on the build before it —
+     * which is exactly what hid `Weight from Photo` behind "this check needs a
+     * newer version of the app" on a phone that could render it perfectly well.
+     */
+    val supported: Boolean
+        get() = required_capability <= APP_STEP_CAPABILITY
+}
+
+/**
+ * Step-type capability this build renders. One constant, deliberately:
+ * there were two, they disagreed, and the runner happened to hold the stale one.
+ *
+ * 1: everything the engine shipped with.
+ * 2: `Weight from Photo` — a weight typed beside a photograph of the scale,
+ *    with the number read off it by on-device OCR.
+ * 3: `Review & Confirm` — the run's own answers and photographs read back on a
+ *    last screen, each line a tap back to the question.
+ */
+const val APP_STEP_CAPABILITY = 3
 
 @Serializable
 data class ProcessEntityType(

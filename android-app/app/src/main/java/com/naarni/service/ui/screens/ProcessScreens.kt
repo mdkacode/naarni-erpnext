@@ -59,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -827,20 +828,49 @@ fun ProcessRunnerScreen(
     val photoCounts by (uuid?.let { vm.inspections.photoCountsFlow(it) } ?: flowOf(emptyMap()))
         .collectAsState(initial = emptyMap())
 
-    val answers: Map<String, StepAnswer> = remember(storedAnswers) {
-        storedAnswers.mapValues { (_, row) ->
-            StepAnswer(
-                response = row.response,
-                value = row.value,
-                remark = row.remark,
-                skipped = row.skipped,
-                skipReason = row.skipReason,
-            )
-        }
+    // The names behind Link answers, for display only.
+    //
+    // A Link answer is a document name — "EXT-013" — which is what the server
+    // stores and what every report joins on, and it is not what the operator
+    // picked. They picked "Front Windshield — Top". Showing them the code reads
+    // as a different answer, and on a review screen it reads as a mistake.
+    //
+    // Held beside the answers rather than in them because the label is not part
+    // of the record: it is re-derived, never sent, and its absence degrades to
+    // showing the code.
+    val linkLabels = remember(runName) { mutableStateMapOf<String, String>() }
+
+    // Deliberately not `remember`ed: `linkLabels` is snapshot state, and reading
+    // it here is what makes a resolved name appear without another trigger.
+    val answers: Map<String, StepAnswer> = storedAnswers.mapValues { (code, row) ->
+        StepAnswer(
+            response = row.response,
+            value = row.value,
+            remark = row.remark,
+            skipped = row.skipped,
+            skipReason = row.skipReason,
+            valueLabel = linkLabels[code],
+        )
     }
 
     val currentRun = localRun
     val def = definition
+
+    // Resumed runs, and runs a colleague started: the picker never ran on this
+    // screen, so the names have to be looked up. One call per Link step, and it
+    // falls back to the cached page offline — worst case the code stands.
+    LaunchedEffect(def, storedAnswers.keys.joinToString()) {
+        val steps = def?.steps.orEmpty().filter { it.response_type == "Link" }
+        for (step in steps) {
+            val name = storedAnswers[step.step_code]?.response?.takeIf { it.isNotBlank() } ?: continue
+            if (linkLabels.containsKey(step.step_code)) continue
+            val doctype = step.link_doctype?.takeIf { it.isNotBlank() } ?: continue
+            val match = runCatching { vm.processes.linkOptions(doctype, name) }
+                .getOrNull()
+                ?.firstOrNull { it.value == name }
+            if (match != null) linkLabels[step.step_code] = match.label
+        }
+    }
     val activeStage = stageCode ?: currentRun?.currentStage ?: def?.stages?.firstOrNull()?.stage_code
     val stage = def?.stages?.firstOrNull { it.stage_code == activeStage }
     val screens: List<ProcessScreen> =
@@ -1046,6 +1076,7 @@ fun ProcessRunnerScreen(
                 },
                 onPick = { option ->
                     val existing = answers[stepCode] ?: StepAnswer()
+                    linkLabels[stepCode] = option.label
                     // `response` is the document name — what the server stores and
                     // every report joins on. The label rides alongside for display
                     // only, so the operator sees "HVAC Unit" and not "AGG-001".

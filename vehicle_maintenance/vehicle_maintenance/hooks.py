@@ -128,6 +128,11 @@ after_migrate = [
 	# Grants the role to everyone who already held Process Verifier, so the
 	# migrate that renames who has access takes it from nobody.
 	"vehicle_maintenance.patches.v2_9.seed_battery_verification.execute",
+	# The platform owner's administrator account. Production is deploy-only —
+	# no SSH, no bench shell — so a role that has to exist there arrives the
+	# same way the code does. Keyed on a phone number, so it grants nothing on
+	# a site where that person has no account, and never removes a role.
+	"vehicle_maintenance.patches.v3_0.grant_platform_admin.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

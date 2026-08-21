@@ -433,6 +433,7 @@ def start_run(
 	station: str | None = None,
 	shift: str | None = None,
 	depot: str | None = None,
+	plant: str | None = None,
 	latitude: float | None = None,
 	longitude: float | None = None,
 	is_test_run: int = 0,
@@ -511,6 +512,11 @@ def start_run(
 			"station": station,
 			"shift": shift,
 			"depot": depot,
+			# Stamped here rather than asked for. An operator knows which plant
+			# they are standing in and should never have to say so; a verifier
+			# three buildings away cannot know it at all, and it is the only
+			# thing that keeps one site's packs out of another site's queue.
+			"plant": plant or plant_of(frappe.session.user),
 			"latitude": flt(latitude) if latitude not in (None, "") else None,
 			"longitude": flt(longitude) if longitude not in (None, "") else None,
 			"is_test_run": cint(is_test_run),
@@ -645,6 +651,21 @@ def _serialise_run(run) -> dict:
 			for s in run.signoffs or []
 		],
 	}
+
+
+#: Custom field on User holding the plant somebody works at. A custom field
+#: rather than a doctype of its own because it is one link on an existing
+#: record, and `Material Location` is already the company's plant master —
+#: Hubli and Narsapura — so a second one would be the same plant under two
+#: names.
+USER_PLANT_FIELD = "vm_plant"
+
+
+def plant_of(user: str) -> str | None:
+	"""Which plant this person works at, or None if nobody has said."""
+	if not frappe.db.has_column("User", USER_PLANT_FIELD):
+		return None
+	return frappe.db.get_value("User", user, USER_PLANT_FIELD) or None
 
 
 @frappe.whitelist()
@@ -1198,6 +1219,15 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 				_("Stage '{0}' is blocked pending review of an earlier failure.").format(stage_def.label)
 			)
 
+		if doc.status == C.STATUS_IN_REWORK:
+			# The reason belongs to the attempt that was rejected, and this is the
+			# moment it stops applying. Left in place it outlives its pack:
+			# `_finalise` treats any lingering reason as a quarantine regardless of
+			# score, so a pack that was sent back, put right and then approved came
+			# out Quarantined anyway.
+			doc.quarantine_reason = None
+			doc.status = C.STATUS_IN_PROGRESS
+
 		answers = _answer_map(doc)
 
 		missing = []
@@ -1280,6 +1310,228 @@ def submit_stage(run: str, stage: str, signature: str | None = None, remarks: st
 
 
 @frappe.whitelist()
+def verification_queue(process: str | None = None, limit: int = 50, offset: int = 0) -> dict:
+	"""Runs waiting for this person to sign them off.
+
+	Deliberately generic. The battery line is the first process to need it, but
+	nothing here knows that: a run appears when its current stage asks for a
+	second signoff, the caller holds the role that stage names, and the run was
+	carried out at the caller's plant. Any process an admin configures the same
+	way gets the same queue with no code change.
+
+	**Scoped to one plant, and fails closed.** Somebody with no plant on their
+	profile sees an empty queue and is told why, rather than being shown every
+	site's packs. Getting that backwards would mean an engineer at one plant
+	quietly signing off work they have never been near.
+
+	Returns ``{runs, plant, plant_name, has_more, stages}`` — `stages` being the
+	stage each run is waiting on, which is what the verify call needs next.
+	"""
+	roles = _user_roles()
+	plant = plant_of(frappe.session.user)
+
+	# Which stages, across every published process, name a role this person
+	# holds. One pass over the definitions rather than a query per run.
+	waiting_on: dict[str, str] = {}
+	definitions = frappe.get_all(
+		"Process Definition",
+		filters={"status": C.DEF_PUBLISHED, **({"name": process} if process else {})},
+		pluck="name",
+	)
+	for name in definitions:
+		definition = frappe.get_cached_doc("Process Definition", name)
+		for stage in definition.stages or []:
+			if not cint(stage.requires_second_signoff):
+				continue
+			required = stage.second_signoff_role or C.ROLE_VERIFIER
+			if required in roles or frappe.session.user == "Administrator":
+				waiting_on[f"{name}:{stage.stage_code}"] = stage.label or stage.stage_code
+
+	if not waiting_on or not plant:
+		return _ok(
+			{
+				"runs": [],
+				"plant": plant,
+				"plant_name": _plant_name(plant),
+				"has_more": False,
+				# Told apart on purpose: "nothing to do" and "you are not set up
+				# to do anything" look identical on a screen and are not the
+				# same problem.
+				"reason": None if waiting_on else "no_role",
+			},
+			None,
+		)
+
+	limit = min(max(cint(limit) or 50, 1), 200)
+	offset = max(cint(offset), 0)
+
+	rows = frappe.get_all(
+		"Process Run",
+		filters={
+			"status": C.STATUS_AWAITING_VERIFICATION,
+			"plant": plant,
+			"is_test_run": 0,
+			"process_definition": ["in", sorted({key.split(":")[0] for key in waiting_on})],
+		},
+		fields=[
+			"name",
+			"run_identifier",
+			"process_definition",
+			"process_name",
+			"current_stage",
+			"status",
+			"result",
+			"score_pct",
+			"pass_count",
+			"fail_count",
+			"critical_count",
+			"answered_count",
+			"started_by",
+			"started_at",
+			"completed_at",
+			"modified",
+		],
+		order_by="modified asc",
+		limit_page_length=limit,
+		limit_start=offset,
+	)
+
+	# Oldest first, deliberately: a verification queue that shows the newest pack
+	# at the top is a queue whose bottom never gets read.
+	stage_of = _awaiting_stage_map([r["name"] for r in rows])
+	full_names = _full_names({r["started_by"] for r in rows})
+	photo_counts = _photo_counts([r["name"] for r in rows])
+
+	out = []
+	for row in rows:
+		stage = stage_of.get(row["name"]) or row.get("current_stage")
+		key = f"{row['process_definition']}:{stage}"
+		if stage and key not in waiting_on:
+			# Waiting on a stage this person does not sign off. Somebody else's.
+			continue
+		out.append(
+			{
+				**row,
+				"stage": stage,
+				"stage_label": waiting_on.get(key, stage),
+				"started_by_name": full_names.get(row["started_by"]) or row["started_by"],
+				"photo_count": photo_counts.get(row["name"], 0),
+			}
+		)
+
+	return _ok(
+		{
+			"runs": out,
+			"plant": plant,
+			"plant_name": _plant_name(plant),
+			"has_more": len(rows) == limit,
+			"reason": None,
+		}
+	)
+
+
+def _plant_name(plant: str | None) -> str:
+	if not plant:
+		return ""
+	return frappe.db.get_value("Material Location", plant, "location_name") or plant
+
+
+def _awaiting_stage_map(runs: list[str]) -> dict[str, str]:
+	"""The stage each run is actually waiting on.
+
+	Read from the signoffs rather than from `current_stage`, because
+	`current_stage` stops moving once a run goes to Awaiting Verification and a
+	multi-stage process would otherwise report the wrong one.
+
+	Compared by *time*, not by existence. A stage that was sent back and then
+	redone carries both the verifier's rejection and a fresh operator sign-off;
+	treating any verifier row as "already dealt with" made the redone pack vanish
+	from the queue for ever — it had been verified once, so it was never offered
+	again. The rule is the obvious one once written down: a stage needs a
+	signature when the operator has signed it more recently than a verifier has.
+	"""
+	if not runs:
+		return {}
+	rows = frappe.get_all(
+		"Process Run Signoff",
+		filters={"parent": ["in", runs]},
+		fields=["parent", "stage", "level", "signed_at"],
+		order_by="parent asc, signed_at asc",
+		limit_page_length=0,
+	)
+
+	latest: dict[tuple, dict] = {}
+	for row in rows:
+		key = (row.parent, row.stage)
+		side = "operator" if row.level == "Operator" else "verifier"
+		latest.setdefault(key, {})[side] = row.signed_at
+
+	out: dict[str, str] = {}
+	for (parent, stage), when in latest.items():
+		operator = when.get("operator")
+		if not operator:
+			continue
+		verifier = when.get("verifier")
+		if verifier and verifier >= operator:
+			continue
+		out.setdefault(parent, stage)
+	return out
+
+
+def _full_names(users: set) -> dict[str, str]:
+	users = {u for u in users if u}
+	if not users:
+		return {}
+	return {
+		row.name: row.full_name
+		for row in frappe.get_all("User", filters={"name": ["in", list(users)]}, fields=["name", "full_name"])
+	}
+
+
+def _photo_counts(runs: list[str]) -> dict[str, int]:
+	"""How much evidence each run carries — the first thing a verifier looks for."""
+	if not runs:
+		return {}
+	rows = frappe.get_all(
+		"Process Run Photo",
+		filters={"parent": ["in", runs]},
+		fields=["parent", "count(name) as n"],
+		group_by="parent",
+		limit_page_length=0,
+	)
+	return {row["parent"]: cint(row["n"]) for row in rows}
+
+
+def _assert_not_signed_by_its_own_operator(doc, stage: str) -> None:
+	"""Four-eyes. The whole reason a stage asks for a second signature.
+
+	Compared against whoever signed *this stage* off as operator rather than
+	against `started_by`: a pack is worked by several people, and the person who
+	opened the run is often not the person who finished the module being
+	verified.
+
+	The gate register has had this rule since it shipped; the engine never did,
+	so a run could be approved by the person who filled it in as long as they
+	held the role. Off only when a site explicitly opts out, for the single-shift
+	benches where there genuinely is nobody else.
+	"""
+	if frappe.conf.get("allow_self_verification"):
+		return
+	operator = (
+		next(
+			(s.user for s in reversed(doc.signoffs or []) if s.stage == stage and s.level == "Operator"),
+			None,
+		)
+		or doc.started_by
+	)
+	if operator == frappe.session.user:
+		frappe.throw(
+			_("This stage has to be verified by somebody other than the person who carried it out."),
+			frappe.PermissionError,
+		)
+
+
+@frappe.whitelist()
 def verify_stage(
 	run: str, stage: str, decision: str, remarks: str | None = None, signature: str | None = None
 ) -> dict:
@@ -1304,6 +1556,7 @@ def verify_stage(
 			frappe.throw(
 				_("Verifying this stage requires the {0} role.").format(required), frappe.PermissionError
 			)
+		_assert_not_signed_by_its_own_operator(doc, stage)
 
 		if decision not in ("Approved", "Rejected"):
 			frappe.throw(_("Decision must be Approved or Rejected."))
@@ -1324,8 +1577,26 @@ def verify_stage(
 		)
 
 		if decision == "Rejected":
-			doc.status = C.STATUS_QUARANTINED
-			doc.quarantine_reason = remarks or _("Rejected at verification.")
+			# Back to the operator, not into a dead end.
+			#
+			# This used to quarantine, and nothing anywhere moves a run out of
+			# quarantine — the status exists, `In Rework` exists, and no code path
+			# had ever set it. A pack rejected by a verifier was therefore held for
+			# ever with no way to record that it had been put right, which makes
+			# "send it back" a button that cannot mean what it says.
+			doc.status = C.STATUS_IN_REWORK
+			doc.current_stage = stage
+			doc.quarantine_reason = remarks or _("Sent back at verification.")
+			# The stage has to read as outstanding again or the run finalises with
+			# work nobody redid. Only the operator's sign-off for *this* stage is
+			# dropped; the verifier's rejection stays, and who answered each check
+			# is recorded on the check itself, so nothing about the first attempt
+			# is lost.
+			doc.signoffs = [
+				row for row in doc.signoffs or [] if not (row.stage == stage and row.level == "Operator")
+			]
+			for idx, row in enumerate(doc.signoffs, start=1):
+				row.idx = idx
 		else:
 			ordered = sorted(definition.stages or [], key=lambda x: cint(x.sequence))
 			idx = next((i for i, s in enumerate(ordered) if s.stage_code == stage), 0)

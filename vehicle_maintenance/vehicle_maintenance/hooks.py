@@ -122,11 +122,18 @@ after_migrate = [
 	# and a screen that reads it all back. Creates the version only when it is
 	# absent, so a later version authored in Desk stays the live one.
 	"vehicle_maintenance.patches.v2_8.rebuild_material_gate.execute",
+	# The battery line's second signoff, which has been asked for since the
+	# process was published and had nobody able to give it: a role, a plant on
+	# people and on runs, and the Installation stage pointed at the new role.
+	# Grants the role to everyone who already held Process Verifier, so the
+	# migrate that renames who has access takes it from nobody.
+	"vehicle_maintenance.patches.v2_9.seed_battery_verification.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.
 APP_ROLES = [
 	"Depot Manager",
+	"Battery Verification Engineer",
 	"Service Engineer",
 	"Technician",
 	"Central Ops",

@@ -196,15 +196,22 @@ private fun MovementCard(row: MovementSummary, onClick: () -> Unit) {
                 MovementStatusChip(row.status)
             }
 
+            // The part, named. It is what somebody scanning the register is
+            // looking for — not the supplier, which this flow does not even ask
+            // for and which therefore read "Unnamed party" on every entry.
             Text(
-                row.party_name?.takeIf { it.isNotBlank() } ?: "Unnamed party",
+                buildString {
+                    append(row.headline.ifBlank { "No items yet" })
+                    if (row.more_items > 0) append("  +${row.more_items} more")
+                },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
 
             val subtitle = listOfNotNull(
-                row.purpose?.takeIf { it.isNotBlank() },
+                row.chassis_no?.takeIf { it.isNotBlank() }?.let { "for $it" },
                 row.reference_no?.takeIf { it.isNotBlank() },
+                row.party_name?.takeIf { it.isNotBlank() },
                 row.transport_vehicle_no?.takeIf { it.isNotBlank() },
             ).joinToString("  ·  ")
             if (subtitle.isNotBlank()) {

@@ -192,6 +192,18 @@ data class MovementSummary(
     val started_at: String? = null,
     val submitted_at: String? = null,
     val verified_at: String? = null,
+    /**
+     * What this movement is *of* — the first part on it, named.
+     *
+     * The row used to lead with the party, which read "Unnamed party" on every
+     * gate entry because the capture flow does not ask for one. Nobody scanning
+     * a register is looking for the supplier; they are looking for the part.
+     */
+    val headline: String = "",
+    /** How many more parts are on it, when there is more than one. */
+    val more_items: Int = 0,
+    /** The bus the first part is for, when one was named. */
+    val chassis_no: String? = null,
 )
 
 @Serializable

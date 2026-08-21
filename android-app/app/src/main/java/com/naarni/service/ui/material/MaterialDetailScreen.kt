@@ -164,8 +164,15 @@ fun MaterialDetailScreen(
 private fun Header(movement: Movement) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Named by what crossed the gate, for the same reason the register
+            // row is: the part is the subject of this record.
             Text(
-                movement.party_name?.takeIf { it.isNotBlank() } ?: "Unnamed party",
+                movement.items.firstOrNull()
+                    ?.let { first ->
+                        first.item_name.ifBlank { first.item } +
+                            if (movement.items.size > 1) "  +${movement.items.size - 1} more" else ""
+                    }
+                    ?: "No items yet",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),

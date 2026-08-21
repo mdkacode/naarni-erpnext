@@ -452,3 +452,50 @@ class TestScanning(unittest.TestCase):
 		"""A bad date must never lose the scan it came from."""
 		for bad in ("", "99", "999999", "321326", "abcdef"):
 			self.assertIsNone(scanning.parse_mfg_date(bad, "DDMMYY"))
+
+
+class TestFreeTextLandsFromEitherField(unittest.TestCase):
+	"""A typed serial must be recorded whichever field the app put it in.
+
+	Found on a real handset. The app has two renderers for a text step and they
+	disagree: the list card posts the typed answer as `response`, the full-screen
+	runner as `value`. `evaluate` read only `response`, so every serial, batch number
+	and date typed on the runner — the screen operators actually use — came back
+	`is_answered = False`. The module showed "0 of 26" with answers on the screen,
+	the submit gate demanded checks that had been filled in, and the text never
+	reached the record at all.
+	"""
+
+	def test_text_in_the_response_field_is_answered(self):
+		step = {"step_code": "T", "response_type": "Text Short"}
+
+		out = evaluation.evaluate(step, response="SN-9931", value=None)
+
+		self.assertTrue(out["is_answered"])
+		self.assertEqual(out["value_text"], "SN-9931")
+
+	def test_text_in_the_value_field_is_answered_too(self):
+		step = {"step_code": "T", "response_type": "Text Short"}
+
+		out = evaluation.evaluate(step, response=None, value="SN-9931")
+
+		self.assertTrue(out["is_answered"])
+		self.assertEqual(out["value_text"], "SN-9931")
+		# Mirrored onto `response` so the report and the replay check agree with
+		# every other answer in the run.
+		self.assertEqual(out["response"], "SN-9931")
+
+	def test_a_blank_text_answer_is_still_unanswered(self):
+		step = {"step_code": "T", "response_type": "Text Short"}
+
+		out = evaluation.evaluate(step, response="", value="   ")
+
+		self.assertFalse(out["is_answered"])
+
+	def test_a_date_typed_into_value_lands(self):
+		step = {"step_code": "D", "response_type": "Date"}
+
+		out = evaluation.evaluate(step, response=None, value="2026-08-17")
+
+		self.assertTrue(out["is_answered"])
+		self.assertEqual(out["value_text"], "2026-08-17")

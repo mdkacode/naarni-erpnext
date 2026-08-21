@@ -193,7 +193,16 @@ def dispatch(run, step: dict, result: dict, actions: list[dict]) -> dict:
 
 		try:
 			if atype == C.ACT_QUARANTINE:
-				run.status = C.STATUS_QUARANTINED
+				# The reason is recorded the moment the check fails, and
+				# `_finalise` turns any recorded reason into a quarantine
+				# whatever the score says — so this is exactly as impossible to
+				# dodge as it was.
+				#
+				# What it no longer does is change the run's *status* half way
+				# through. A run marked Quarantined at check 3 of 59 read as a
+				# finished, failed inspection while 56 checks were still to do,
+				# and dropped out of the operator's resume list with no way back
+				# to it. The verdict is the end of the story, not the middle.
 				reason = _render(action.get("message_template"), context) or _(
 					"Critical failure at step {0}"
 				).format(result.get("display_no") or result.get("step_code"))

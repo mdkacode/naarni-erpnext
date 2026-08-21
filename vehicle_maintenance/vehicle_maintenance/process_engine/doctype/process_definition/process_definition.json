@@ -124,6 +124,14 @@
       "description": "Optional regex the typed or scanned identifier must match. Blank accepts anything."
     },
     {
+      "fieldname": "identifier_keypad",
+      "label": "Identifier Keypad",
+      "fieldtype": "Select",
+      "options": "Text\nNumbers Only",
+      "default": "Text",
+      "description": "Numbers Only shows the phone's number pad and refuses letters. Use it when the label is a plain serial number."
+    },
+    {
       "fieldname": "customer",
       "label": "Customer",
       "fieldtype": "Link",

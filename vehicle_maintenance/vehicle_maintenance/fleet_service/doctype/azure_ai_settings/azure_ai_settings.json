@@ -1,0 +1,85 @@
+{
+  "name": "Azure AI Settings",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "issingle": 1,
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "description": "Azure OpenAI, called directly. This is the same resource and the same model ONYX runs on, so it costs the same — the reason to prefer it is that Azure can be told to return a fixed JSON shape and ONYX cannot, which removes a whole class of 'the summary did not parse today'. ONYX stays in use for search.",
+  "fields": [
+    {
+      "fieldname": "sb_connection",
+      "label": "Connection",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "enabled",
+      "label": "Enabled",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "When on, AI-assisted features summarise through Azure directly and fall back to ONYX, then to plain deterministic output. Off: they use ONYX as before. Either way nothing breaks when both are unreachable."
+    },
+    {
+      "fieldname": "endpoint",
+      "label": "Endpoint",
+      "fieldtype": "Data",
+      "default": "https://naanri.openai.azure.com",
+      "description": "The Azure OpenAI resource host, no path. This is the same resource ONYX is configured against."
+    },
+    {
+      "fieldname": "api_key",
+      "label": "API Key",
+      "fieldtype": "Password",
+      "description": "Azure OpenAI key for the resource above — the same value ONYX holds under Admin > LLM. Azure portal > the resource > Keys and Endpoint."
+    },
+    {
+      "fieldname": "col_break_conn",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "deployment",
+      "label": "Deployment",
+      "fieldtype": "Data",
+      "default": "gpt-4.1-mini",
+      "description": "The deployment name, not the model name. Must be a model that supports structured outputs — the gpt-4.1 and gpt-4o families do."
+    },
+    {
+      "fieldname": "api_version",
+      "label": "API Version",
+      "fieldtype": "Data",
+      "default": "2025-03-01-preview",
+      "description": "Structured outputs need 2024-08-01-preview or newer. Older versions will silently ignore the schema and hand back prose."
+    },
+    {
+      "fieldname": "timeout_seconds",
+      "label": "Timeout (seconds)",
+      "fieldtype": "Int",
+      "default": "45",
+      "description": "Calls only ever run in background jobs, never in a request a person is waiting on."
+    },
+    {
+      "fieldname": "max_tokens",
+      "label": "Max Response Tokens",
+      "fieldtype": "Int",
+      "default": "1200",
+      "description": "A response cut off by this limit is treated as a failure, not as a partial answer — half a JSON object is worse than none."
+    },
+    {
+      "fieldname": "sb_note",
+      "label": "Notes",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "note",
+      "label": "How this is used",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "default": "Summarising prefers Azure because the model can be constrained to a fixed JSON shape. Search and 'ask about past days' still go through ONYX, which is the only thing that holds the document index. After three consecutive failures this stops being called for 15 minutes.",
+      "description": "Test the connection with vehicle_maintenance.integrations.azure_ai.ping"
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Central Ops", "read": 1}
+  ]
+}

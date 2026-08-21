@@ -1,0 +1,147 @@
+{
+  "name": "Daily Status Settings",
+  "module": "Fleet Service",
+  "doctype": "DocType",
+  "issingle": 1,
+  "engine": "InnoDB",
+  "track_changes": 1,
+  "description": "How the daily status works: who is asked for one, when they are asked, and who gets the evening digest. The whole feature is one chat room per person — this page only decides who and when.",
+  "fields": [
+    {
+      "fieldname": "sb_master",
+      "label": "Daily Status",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "enabled",
+      "label": "Enabled",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "Off by default. Nothing is generated, nudged or emailed until this is on."
+    },
+    {
+      "fieldname": "reporting_roles",
+      "label": "Who Reports",
+      "fieldtype": "Table MultiSelect",
+      "options": "Daily Status Role",
+      "description": "Everyone holding one of these roles gets a status room and appears in the digest."
+    },
+    {
+      "fieldname": "col_break_master",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "on_duty_only",
+      "label": "Only People Who Were On Duty",
+      "fieldtype": "Check",
+      "default": "0",
+      "description": "On: only people with a duty punch that day are asked and counted, so leave is not a missed report. Off (default): everyone holding a reporting role. Turn this on only once every depot reliably punches in — until then it would quietly drop the people who work but do not punch."
+    },
+    {
+      "fieldname": "day_start_hour",
+      "label": "Day Starts At (IST hour)",
+      "fieldtype": "Int",
+      "default": "4",
+      "description": "A night shift that runs past midnight belongs to the day it started. 4 means the status day runs 04:00 to 04:00 IST."
+    },
+    {
+      "fieldname": "sb_nudge",
+      "label": "The Reminder",
+      "fieldtype": "Section Break",
+      "description": "A short message posted into the person's own status room, with a push notification. It asks three plain questions, which is also what gives the summary something to work with."
+    },
+    {
+      "fieldname": "nudge_enabled",
+      "label": "Send a Reminder",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "nudge_text",
+      "label": "Reminder Text",
+      "fieldtype": "Small Text",
+      "default": "How did the day go?\n1. What did you finish today?\n2. What is still running?\n3. Anything stuck or needed for tomorrow?\n\nReply here — typing or a voice note, whichever is quicker.",
+      "description": "Keep it short and in plain language. It is read on a phone, at the end of a shift."
+    },
+    {
+      "fieldname": "col_break_nudge",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "use_ai",
+      "label": "Organise With AI",
+      "fieldtype": "Check",
+      "default": "1",
+      "description": "Sorts the day's messages into finished / running / stuck. Uses Azure OpenAI when it is enabled, otherwise ONYX. When neither is reachable the day is still recorded and still emailed, just rendered plainly."
+    },
+    {
+      "fieldname": "max_messages",
+      "label": "Messages Per Summary",
+      "fieldtype": "Int",
+      "default": "60",
+      "description": "A cap on how much of a very talkative day is sent to the AI. The full text is always kept on the record regardless."
+    },
+    {
+      "fieldname": "sb_digest",
+      "label": "The Digest",
+      "fieldtype": "Section Break",
+      "description": "One email per depot listing everyone's day, blockers first — not one email per person, which is how a daily report gets filtered away in a week."
+    },
+    {
+      "fieldname": "digest_enabled",
+      "label": "Email a Digest",
+      "fieldtype": "Check",
+      "default": "1"
+    },
+    {
+      "fieldname": "recipient_roles",
+      "label": "Send To Roles",
+      "fieldtype": "Table MultiSelect",
+      "options": "Daily Status Role",
+      "description": "Resolved to users at send time. A recipient only receives the depots they are attached to, unless they hold Central Ops or System Manager, who get every depot."
+    },
+    {
+      "fieldname": "col_break_digest",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "extra_recipients",
+      "label": "Also Send To",
+      "fieldtype": "Table MultiSelect",
+      "options": "Daily Status Recipient",
+      "description": "Named people who get every depot's digest regardless of role."
+    },
+    {
+      "fieldname": "include_silent",
+      "label": "List People Who Did Not Report",
+      "fieldtype": "Check",
+      "default": "1",
+      "description": "Recommended. A digest that only shows who replied quietly hides the ones who did not."
+    },
+    {
+      "fieldname": "sb_index",
+      "label": "Search",
+      "fieldtype": "Section Break",
+      "collapsible": 1,
+      "description": "Push each finished day into ONYX as a document, so anyone can ask it questions later — \"what were the blockers at this depot last week?\" — from ONYX's own search. Needs an ONYX API key with curator rights."
+    },
+    {
+      "fieldname": "index_in_onyx",
+      "label": "Make Days Searchable In ONYX",
+      "fieldtype": "Check",
+      "default": "0"
+    },
+    {
+      "fieldname": "onyx_cc_pair_id",
+      "label": "ONYX Connector Id",
+      "fieldtype": "Int",
+      "depends_on": "index_in_onyx",
+      "description": "The connector-credential pair to file these documents under in ONYX. Leave 0 for the default ingestion connector."
+    }
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1},
+    {"role": "Central Ops", "read": 1, "write": 1},
+    {"role": "Depot Manager", "read": 1}
+  ]
+}

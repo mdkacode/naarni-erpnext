@@ -63,6 +63,19 @@ class ProcessRun(Document):
 		for field, value in totals.items():
 			setattr(self, field, value)
 
+		# A verdict belongs to a *finished* inspection, and this method runs on
+		# every single answer. Without this, a run carried a Pass or a Fail from
+		# its first tap onwards — computed against a threshold on the two checks
+		# done so far — and every screen that reads `result` showed a decision
+		# nobody had made about a battery nobody had finished inspecting.
+		#
+		# The numbers above stay live on purpose: score, counts and progress are
+		# how an operator sees where they are. It is only the judgement that
+		# waits for the end.
+		if not self.completed_at:
+			self.result = ""
+			self.is_first_pass = 0
+
 		expected = scanning.expected_counts(list(steps_by_code.values()))
 		self.trace_completeness_pct = scoring.trace_completeness(
 			expected, [s.as_dict() for s in self.scans or []]
@@ -101,3 +114,62 @@ class ProcessRun(Document):
 			if row.stage == stage_code and row.level == level:
 				return row
 		return None
+
+
+# ------------------------------------------------------------------ visibility
+
+#: Roles that may see and act on *anyone's* inspection.
+#:
+#: Kept, and still meaningful, even though runs are no longer private: it is what
+#: distinguishes somebody who may *verify* and administer inspections from
+#: somebody who may only perform them.
+SUPERVISOR_ROLES = frozenset(
+	{
+		"System Manager",
+		"Administrator",
+		"Process Author",
+		"Process Verifier",
+		"Process Viewer",
+		"Central Ops",
+		"Depot Manager",
+	}
+)
+
+
+def is_process_supervisor(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	return bool(SUPERVISOR_ROLES & set(frappe.get_roles(user)))
+
+
+def get_permission_query_conditions(user: str | None = None) -> str:
+	"""No row-level narrowing: an inspection is the plant's record, not a diary.
+
+	This deliberately reverses the isolation added in August 2026, which scoped
+	every run to `started_by`. That fix was right about the symptom and wrong
+	about the cause. The problem was never that operators could *see* each
+	other's inspections — it was that nothing said who had done what, so two
+	people at one pack could not tell their work apart.
+
+	The fix for that is attribution, not walls, and the attribution now exists:
+	`answered_by` on every result row, `user` on every sign-off, and a
+	participant list on the run. A battery is fifty-nine checks across several
+	modules; hiding a colleague's half of it meant the second operator scanned
+	the same label and started a rival record of the same physical pack.
+
+	Frappe's role permissions still decide who reaches Process Run at all. What
+	this no longer does is decide *whose* runs they are.
+	"""
+	return ""
+
+
+def has_permission(doc, ptype: str = "read", user: str | None = None) -> bool:
+	"""Document-level twin of the query condition — see it for the reasoning.
+
+	Kept as a hook rather than deleted so there is still exactly one place to
+	express a per-document rule if one is ever needed again. `ensure_open` is
+	what stops a finished run being edited; that is a different question from
+	whose run it is, and it has not changed.
+	"""
+	return True

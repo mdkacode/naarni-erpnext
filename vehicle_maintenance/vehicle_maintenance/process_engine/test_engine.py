@@ -163,6 +163,25 @@ class TestEvaluation(unittest.TestCase):
 		self.assertTrue(out["is_pass"])
 		self.assertIn("1 of 3", out["spec_summary"])
 
+	def test_a_scan_typed_by_hand_counts_as_answered(self):
+		"""Every scan step offers a box to type into, and its help text says so.
+
+		Labels come off crates greasy, torn or printed too small for any camera.
+		Judging only the camera made a keyed-in serial read as unanswered, so the
+		submit gate demanded a step that was filled in on screen.
+		"""
+		step = {"step_code": "SC1", "response_type": C.SCAN, "scan_count": 1}
+		for field, kwargs in (("response", {"response": "KA25AB1234"}), ("value", {"value": "KA25AB1234"})):
+			with self.subTest(field=field):
+				out = evaluation.evaluate(step, **kwargs)
+				self.assertTrue(out["is_answered"])
+				self.assertTrue(out["is_pass"])
+				self.assertEqual(out["value_text"], "KA25AB1234")
+
+	def test_a_scan_step_nobody_has_touched_is_still_unanswered(self):
+		step = {"step_code": "SC1", "response_type": C.SCAN, "scan_count": 1}
+		self.assertFalse(evaluation.evaluate(step)["is_answered"])
+
 	def test_spec_summary_reads_like_the_paper_sheet(self):
 		self.assertEqual(evaluation.spec_summary(torque_step()), "10 ± 1 Nm (9–11)")
 		self.assertEqual(

@@ -30,10 +30,19 @@ FAMILY = "MATERIAL_GATE"
 #: reports it rather than letting it pass.
 STEP_DIRECTION = "DIRECTION"
 STEP_ITEM = "ITEM"
+STEP_WEIGHT = "WEIGHT"
+#: v2 of the process. The document number and the chassis the part is for.
+STEP_DOC_NO = "DOC_NO"
+STEP_CHASSIS = "CHASSIS"
+#: v1 only. Read for as long as runs recorded against the old shape are still
+#: syncing off handsets; a v2 run simply has no answer under these codes.
 STEP_SERIAL = "SERIAL"
 STEP_SOURCE_IN = "SOURCE_IN"
 STEP_SOURCE_OUT = "SOURCE_OUT"
-STEP_WEIGHT = "WEIGHT"
+
+#: Which step's photographs are paperwork rather than the part. Everything else
+#: is filed against the item line, which is what the app's viewer reads.
+DOCUMENT_STEPS = frozenset({STEP_DOC_NO})
 
 
 def on_run_update(doc, method=None) -> None:
@@ -109,11 +118,25 @@ def _project(run) -> None:
 	source_step = STEP_SOURCE_OUT if movement_type == C.OUTWARD else STEP_SOURCE_IN
 	party = _answer_text(answers.get(source_step))
 
+	# v2 asks for the paperwork number and the chassis instead of a source master.
+	# Both are free text on purpose: a challan number is whatever the supplier
+	# printed, and a chassis on the line at Hubli usually has no record anywhere
+	# yet — a Link field would have made the honest answer unenterable.
+	document_no = _answer_text(answers.get(STEP_DOC_NO)) or ""
+	chassis_no = _answer_text(answers.get(STEP_CHASSIS)) or ""
+	if not chassis_no:
+		chassis_scan = next((s for s in run.scans or [] if s.step_code == STEP_CHASSIS and s.serial_no), None)
+		if chassis_scan:
+			chassis_no = chassis_scan.serial_no
+
 	weight_row = answers.get(STEP_WEIGHT)
 	weight = flt(getattr(weight_row, "value_numeric", 0)) if weight_row else 0.0
 
 	serial = ""
-	scan = next((s for s in run.scans or [] if s.serial_no), None)
+	scan = next(
+		(s for s in run.scans or [] if s.serial_no and s.step_code != STEP_CHASSIS),
+		None,
+	)
 	if scan:
 		serial = scan.serial_no
 	elif answers.get(STEP_SERIAL):
@@ -136,6 +159,7 @@ def _project(run) -> None:
 			"status": C.STATUS_AWAITING_VERIFICATION,
 			"party_name": party or "",
 			"party_type": _party_type(party),
+			"reference_no": document_no,
 			"transport_vehicle_no": "",
 			"started_by": run.started_by,
 			"started_at": run.started_at,
@@ -157,6 +181,7 @@ def _project(run) -> None:
 					"has_qr": (master.has_qr if master else 0),
 					"qr_code": serial,
 					"qr_source": C.QR_SCANNED if scan else (C.QR_TYPED if serial else None),
+					"chassis_no": chassis_no,
 					"remarks": f"Weight {weight} KG" if weight else "",
 				}
 			],
@@ -175,8 +200,11 @@ def _photos(run, row_uuid: str) -> list[dict]:
 	return [
 		{
 			"file_url": p.file_url,
-			"kind": "Item",
-			"item_row": row_uuid,
+			# Paperwork is filed as paperwork. The app's register view groups the
+			# item photographs under the line and the challan above it, and a
+			# challan tagged "Item" shows up as a picture of the part.
+			"kind": "Document" if p.step_code in DOCUMENT_STEPS else "Item",
+			"item_row": "" if p.step_code in DOCUMENT_STEPS else row_uuid,
 			"caption": p.caption or p.step_code,
 			"captured_by": p.captured_by,
 			"captured_at": p.captured_at,

@@ -45,9 +45,23 @@ subject**. That shape is right for an inspection and wrong for a gate.
 | Evidence | Photo per *step* | Photo per *item* |
 
 Forcing a gate note into `Process Step` rows would mean authoring a step per
-catalogue item — 151 steps, of which a typical truck answers four. So this is a
-**sibling module, not a process**. What it deliberately *reuses* is everything
-that was expensive to get right:
+catalogue item — 151 steps, of which a typical truck answers four. So the
+**register** is a sibling module, not a process.
+
+**The capture surface is a process, though — and the two are bridged.** The
+table above compares a run to a whole gate note; compare it to a *single line*
+and the shapes match exactly. So one run is one item: six questions and a check,
+authored as `MATERIAL_GATE`, which is what buys the gate offline capture with a
+Room-backed queue, resume after a dead battery, the photo stamp and the scanner
+without any of it being written twice. Every completed run is projected into one
+`Material Movement` line by `material_movement/gate_process.py`, so Desk still
+shows one register and no report has to know two shapes.
+
+It also makes a forty-item truck parallel: forty short runs several people can
+work at once, rather than one clerk's forty-minute form.
+
+What the register deliberately *reuses* is everything that was expensive to get
+right:
 
 - **Photo stamping** — `StampingCamera` / `PhotoStamper`, unchanged: date-time,
   latitude/longitude and the capturing user's name burned into every frame.
@@ -151,6 +165,7 @@ advisory (§8.3) without the record quietly rotting.
 | `condition` | OK / Damaged / Short / Excess / Rejected |
 | `has_qr`, `qr_code`, `qr_scanned_at`, `qr_source` | `qr_source` = Scanned / Typed — an audit cares which |
 | `batch_no`, `mfg_date` | Parsed out of the QR when the pattern yields them |
+| `chassis_no` | Which bus this part is going into (step 3). Free text on purpose: a chassis on the line at Hubli usually has no record anywhere yet, and a Link field would make the honest answer unenterable. Indexed, so "what went into KA25AB1234" is one query. |
 | `photo_count` | Maintained by the server |
 | `no_photo_reason` | Why evidence is missing, when it is |
 | `is_new_item` | Set when the item was created inline at the gate (§7.2) |
@@ -387,39 +402,63 @@ produces one row, not two — the lesson the chat module already paid for.
 
 ## 10. App
 
-A new bottom-tab, **Material**, visible only to the three material roles plus
+A bottom-tab, **Material**, visible only to the three material roles plus
 `System Manager` / `Depot Manager`.
 
 ```
 Material (list)
- ├── + New            → Gate Details      (type, location, party, transport, document)
- │                    → Items             (the working screen)
- │                        ├── SmartSelect item picker  → "+ Add a new item" sheet
- │                        ├── QR scan / type
- │                        └── StampingCamera per item
- │                    → Review & Submit
+ ├── + New            → one gate entry = one run of MATERIAL_GATE
  └── tap a movement   → Detail (+ Verify / Reject for supervisors)
 ```
 
-Following the EAS framework — the New-Movement flow is **three steps of four
-fields**, not one form of nineteen:
+### 10.1 The six questions, in the order of the work
 
-1. **What & where** — Inward/Outward as two big buttons, location (pre-filled from
-   the operator's default), purpose.
-2. **Who & what document** — party type, party name, reference type + number.
-   Skippable; a truck at the gate is not always accompanied by paperwork.
-3. **Transport** — vehicle number, driver name, driver phone. Skippable.
+An entry is one part crossing the gate, asked one question per screen. The order
+is the order the information actually arrives in — direction is known when the
+truck pulls up, the challan is in the operator's other hand, the store knows
+which bus the parts are for before anyone picks a part number.
 
-Then the **Items screen**, which is where the clerk actually lives: a running
-list of captured rows, a fat "Add item" button, and per row an inline quantity
-stepper, a condition chip, a QR chip and a photo button. Each row reads as one
-line — *`HVAC Unit · 1 Nos · OK · QR ✓ · 📷 2`* — so a 40-item movement is
-scannable without opening anything.
+| # | Question | Type | Required |
+|---|---|---|---|
+| 1 | Is this coming in or going out? | Choice — Inward / Outward | yes |
+| 2 | Document number, if there is one | Short text + optional photo of the paper | no |
+| 3 | Which chassis is this for? | Scan the QR, or type it | asked; skippable with a reason |
+| 4 | Which part? | Searchable picker over the 151-item catalogue, with **+ create** | yes |
+| 5 | Photograph the part | Stamping camera, tap to review | **yes, no skip** |
+| 6 | Weight in KG | Typed, pre-filled by on-device OCR of the scale photo | no |
+| 7 | Check this over before you finish | Every answer and every photo, read back | **yes, no skip** |
+
+Only step 5 and step 7 are hard requirements. Everything else either has a real
+answer or a recorded reason for not having one — a clerk blocked on a challan
+they were never handed records the load on a scrap of paper instead, which is
+worse than a gap the register can see.
+
+**INWARD** or **OUTWARD** is printed across the top of every photograph the
+entry takes, alongside the standard stamp, so the picture still says which way
+the item was going once it has left this record.
+
+### 10.2 What the operator never has to do
+
+- **Name the entry.** `identifier_mode = Auto Generate` mints `GN-YYYY-#####`.
+  A clerk has no number to type before the truck is open, and inventing one is
+  how two people record the same load twice.
+- **Type a part name.** The picker opens populated before a keystroke and
+  searches code, name and spec together; a missing part is created inline and
+  flagged for an administrator to review.
+- **Type the weight.** The scale photograph is read on the device. The reading
+  fills an empty box once and never overwrites a number the operator has typed.
+- **Wait for a network.** The whole run is answered into Room and synced later.
+
+### 10.3 The register
 
 Design follows the app's existing system: near-black surfaces, the single indigo
 accent, `AppSurface`/semantic tokens, one `AppBar`, Rounded icons. Inward is
 marked with a downward arrow and the accent; Outward with an upward arrow and the
 muted tone — colour is never the only signal.
+
+Multi-item movements — the ones an administrator raises in Desk — still open in
+the detail screen with their items and photographs. The app only ever *writes*
+one item per entry.
 
 ---
 

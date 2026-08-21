@@ -35,6 +35,11 @@ SECTION_NOTE = "Section Note"
 #: number off the photo with on-device OCR and pre-fills the box; the operator
 #: confirms or corrects it. Capability 2 — see STEP_TYPE_CAPABILITY below.
 WEIGHT_PHOTO = "Weight from Photo"
+#: The last screen of a run: everything answered so far, listed back with its
+#: photographs, and one button that says it is right. Records nothing new — it
+#: exists so the person who captured the evidence is the person who checks it,
+#: while the item is still in front of them. Capability 3.
+REVIEW = "Review & Confirm"
 
 RESPONSE_TYPES = (
 	CHOICE,
@@ -54,6 +59,7 @@ RESPONSE_TYPES = (
 	LINK,
 	SECTION_NOTE,
 	WEIGHT_PHOTO,
+	REVIEW,
 )
 
 #: Types whose answer is a number held in `value_numeric`.
@@ -63,7 +69,7 @@ NUMERIC_TYPES = (NUMBER, NUMBER_IN_RANGE, NUMBER_WITH_TOLERANCE, COMPUTED, WEIGH
 JUDGED_TYPES = (CHOICE, CHOICE_MULTI, YES_NO, *NUMERIC_TYPES)
 
 #: Types that never score, whatever weight is set on the step.
-UNSCORED_TYPES = (SECTION_NOTE,)
+UNSCORED_TYPES = (SECTION_NOTE, REVIEW)
 
 #: Minimum app capability level per response type. Bump the level (never renumber
 #: an existing one) when adding a type, and raise
@@ -89,6 +95,10 @@ STEP_TYPE_CAPABILITY = {
 	# reports capability 1, so the server marks this step unsupported and the
 	# runner shows a read-only card with an update prompt rather than crashing.
 	WEIGHT_PHOTO: 2,
+	# Level 3: the run's own summary screen. An app that cannot draw it would
+	# otherwise fall through to a text box asking the operator to type the word
+	# "confirmed", which is worse than telling them to update.
+	REVIEW: 3,
 }
 
 # ---------------------------------------------------------------- pass conditions

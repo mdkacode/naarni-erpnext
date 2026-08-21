@@ -117,6 +117,11 @@ after_migrate = [
 	# the first operators. Seeds the process only when the family has no version,
 	# so a plant edit is never overwritten.
 	"vehicle_maintenance.patches.v2_7.seed_material_gate_process.execute",
+	# Version 2 of that gate, published rather than left in Draft: direction,
+	# document number, the chassis it is for, the part, its photo, its weight,
+	# and a screen that reads it all back. Creates the version only when it is
+	# absent, so a later version authored in Desk stays the live one.
+	"vehicle_maintenance.patches.v2_8.rebuild_material_gate.execute",
 ]
 
 # Roles owned by this app — exported so `bench migrate` creates them on every site.

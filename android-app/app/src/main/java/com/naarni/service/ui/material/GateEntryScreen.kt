@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.naarni.service.ui.AppViewModel
+import com.naarni.service.ui.theme.Radii
 
 /** The process the gate runs on. The register is projected from its runs. */
 const val GATE_FAMILY = "MATERIAL_GATE"
@@ -108,7 +109,7 @@ fun GateEntryScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = Radii.md,
                 ) {
                     Text("Try again", fontWeight = FontWeight.Bold)
                 }

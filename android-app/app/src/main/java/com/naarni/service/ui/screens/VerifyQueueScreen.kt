@@ -43,6 +43,7 @@ import com.naarni.service.ui.components.MetaChip
 import com.naarni.service.ui.components.Refreshable
 import com.naarni.service.ui.theme.AppSurface
 import com.naarni.service.ui.theme.Semantic
+import com.naarni.service.ui.theme.Radii
 
 /**
  * Packs waiting for a signature, oldest first.
@@ -138,7 +139,7 @@ fun VerifyQueueScreen(
 @Composable
 private fun QueueCard(run: VerificationRun, onClick: () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = Radii.lg,
         color = AppSurface.raised,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {

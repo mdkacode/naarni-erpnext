@@ -1,0 +1,2 @@
+import{o as e,j as a,g as o,a as n,t as r,C as l,D as s}from"./main-0N5LZRC-.js";const m={__name:"NRecordId",props:{value:{type:String,default:""},to:{type:[String,Object],default:null}},setup(t){return(c,u)=>(e(),a(s(t.to?"router-link":"span"),l(t.to?{to:t.to}:{},{class:["whitespace-nowrap font-mono tabular text-label-sm",t.to?"text-accent hover:underline":"text-muted"]}),{default:o(()=>[n(r(t.value||"—"),1)]),_:1},16,["class"]))}};export{m as _};
+//# sourceMappingURL=NRecordId-CPGRAKKI.js.map

@@ -29,6 +29,7 @@ repos:
         exclude: |
             (?x)^(
                 erpnext/public/dist/.*|
+                vehicle_maintenance/vehicle_maintenance/public/frontend/.*|
                 cypress/.*|
                 .*node_modules.*|
                 .*boilerplate.*|
@@ -45,6 +46,7 @@ repos:
         exclude: |
             (?x)^(
                 erpnext/public/dist/.*|
+                vehicle_maintenance/vehicle_maintenance/public/frontend/.*|
                 cypress/.*|
                 .*node_modules.*|
                 .*boilerplate.*|

@@ -1,0 +1,2 @@
+import{P as a,B as l,d as n}from"./main-0N5LZRC-.js";import{a as u,h as i}from"./permissions-jGrIsyy_.js";const y={__name:"RoleBoundary",props:{roles:{type:Array,required:!0,validator:s=>s.length>0&&s.every(e=>typeof e=="string")},requireAll:{type:Boolean,default:!1},invert:{type:Boolean,default:!1}},setup(s){const e=s,{roles:o}=a(),t=n(()=>{const r=e.requireAll?u(o,e.roles):i(o,e.roles);return e.invert?!r:r});return(r,p)=>t.value?l(r.$slots,"default",{key:0}):l(r.$slots,"fallback",{key:1})}};export{y as _};
+//# sourceMappingURL=RoleBoundary-Bdt0_mFu.js.map

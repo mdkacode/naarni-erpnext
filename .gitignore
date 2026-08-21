@@ -27,3 +27,10 @@ deploy/*.log
 naarni-care-firebase-adminsdk-*.json
 *firebase-adminsdk*.json
 **/google-services.json
+
+# Live credentials pasted for local wiring — never commit these.
+token.json
+git.json
+
+# Kotlin compiler crash dumps — build junk, regenerated on every failure.
+android-app/.kotlin/

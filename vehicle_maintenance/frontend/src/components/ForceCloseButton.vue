@@ -1,101 +1,83 @@
+<!--
+  ForceCloseButton — closing a card that cannot complete normally.
+
+  Genuinely destructive to the record's meaning, so: a danger button, a named
+  confirm, a mandatory reason, and the severity's authority shown *next to the
+  choice* rather than discovered when the server refuses. The backend re-checks
+  the severity against the caller's roles — this dialog is a hint, not the gate.
+-->
 <template>
-  <!--
-    ForceCloseButton — PRD p.6 Force-Close Severity Matrix.
+	<div>
+		<NButton
+			variant="secondary"
+			icon="circle-x"
+			:disabled="disabled"
+			class="text-critical"
+			@click="open = true"
+		>
+			Force close
+		</NButton>
 
-    Severity → Authority:
-      Minor    → SE / DM / Aftersales Eng / N. Maintenance Head
-      Major    → DM / Aftersales Eng / N. Maintenance Head (DM approval mandatory)
-      Critical → N. Maintenance Head only
+		<NDialog v-model="open" title="Force close job card" size="sm" persistent @close="reset">
+			<div class="space-y-4">
+				<p class="text-body-sm text-muted">
+					Pick the severity that describes why this card cannot complete normally.
+				</p>
 
-    Reason is mandatory. The backend re-validates severity vs. the logged-in
-    user's roles — this button is a UX hint, not the enforcement layer.
-  -->
-  <div>
-    <button
-      type="button"
-      :disabled="disabled"
-      @click="open = true"
-      class="px-3 py-2 text-sm font-medium text-red-700 border border-red-300 hover:bg-red-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-    >
-      Force Close
-    </button>
+				<div class="space-y-2" role="radiogroup" aria-label="Severity">
+					<button
+						v-for="s in severities"
+						:key="s.value"
+						type="button"
+						role="radio"
+						:aria-checked="severity === s.value"
+						class="w-full rounded-md border p-3 text-left transition-colors duration-instant focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+						:class="
+							severity === s.value
+								? `${semanticClasses(s.semantic).border} ${semanticClasses(s.semantic).tint}`
+								: 'border-hairline bg-raised hover:bg-sunken'
+						"
+						@click="severity = s.value"
+					>
+						<div class="flex items-baseline gap-2">
+							<span
+								class="text-title-sm"
+								:class="severity === s.value ? semanticClasses(s.semantic).text : 'text-ink'"
+							>
+								{{ s.label }}
+							</span>
+							<span class="ml-auto text-caption text-muted">{{ s.authority }}</span>
+						</div>
+						<p class="mt-0.5 text-body-sm text-muted">{{ s.description }}</p>
+					</button>
+				</div>
 
-    <!-- Modal -->
-    <div
-      v-if="open"
-      class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      @click.self="close"
-    >
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <h3 class="text-lg font-semibold text-gray-900">Force Close Job Card</h3>
-        <p class="text-sm text-gray-600">
-          Select the severity that best describes why this job card cannot complete normally.
-        </p>
+				<NTextarea
+					v-model="reason"
+					label="What prevented normal closure?"
+					required
+					:rows="3"
+					placeholder="Inventory unavailable, issue resolved on its own…"
+				/>
 
-        <div class="space-y-2">
-          <button
-            v-for="s in severities"
-            :key="s.value"
-            type="button"
-            @click="severity = s.value"
-            class="w-full text-left p-3 rounded-lg border-2 transition-all"
-            :class="
-              severity === s.value
-                ? `${s.activeClasses}`
-                : 'border-gray-200 hover:border-gray-300'
-            "
-          >
-            <div class="flex items-start gap-2">
-              <div class="font-semibold text-sm">{{ s.label }}</div>
-              <div class="text-xs text-gray-500 ml-auto">{{ s.authority }}</div>
-            </div>
-            <div class="text-xs text-gray-600 mt-1">{{ s.description }}</div>
-          </button>
-        </div>
+				<NAlert v-if="error" semantic="critical" :body="error" />
+			</div>
 
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">
-            Reason <span class="text-red-500">*</span>
-          </label>
-          <textarea
-            v-model="reason"
-            rows="3"
-            placeholder="What prevented normal closure? Inventory unavailable, issue resolved on its own, etc."
-            class="input-field"
-          />
-        </div>
-
-        <div v-if="error" class="text-sm text-red-600">{{ error }}</div>
-
-        <div class="flex gap-2 justify-end pt-2">
-          <button
-            type="button"
-            @click="close"
-            class="px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            @click="submit"
-            :disabled="submitting || !canSubmit"
-            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {{ submitting ? "Closing…" : "Confirm Force Close" }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+			<template #actions>
+				<NButton @click="open = false">Cancel</NButton>
+				<NButton variant="danger" :loading="submitting" :disabled="!canSubmit" @click="submit">
+					Force close
+				</NButton>
+			</template>
+		</NDialog>
+	</div>
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { computed, ref } from "vue";
+import { NButton, NDialog, NTextarea, NAlert, semanticClasses } from "../ui/index.js";
 
-const props = defineProps({
-  disabled: { type: Boolean, default: false },
-});
-
+defineProps({ disabled: { type: Boolean, default: false } });
 const emit = defineEmits(["submit"]);
 
 const open = ref(false);
@@ -105,60 +87,49 @@ const submitting = ref(false);
 const error = ref("");
 
 const severities = [
-  {
-    value: "Minor",
-    label: "Minor",
-    description: "Cosmetic or minor functional issue. Safe to defer to next PMS.",
-    authority: "SE can force close",
-    activeClasses: "border-amber-500 bg-amber-50",
-  },
-  {
-    value: "Major",
-    label: "Major",
-    description: "Operational but with a significant issue. Needs follow-up within 24h.",
-    authority: "DM or Aftersales approval",
-    activeClasses: "border-orange-500 bg-orange-50",
-  },
-  {
-    value: "Critical",
-    label: "Critical",
-    description: "Vehicle non-operational or safety risk. Auto-creates follow-up in 24h.",
-    authority: "N. Maintenance Head only",
-    activeClasses: "border-red-500 bg-red-50",
-  },
+	{
+		value: "Minor",
+		label: "Minor",
+		semantic: "caution",
+		description: "Cosmetic or minor functional issue. Safe to defer to the next PMS.",
+		authority: "SE can force close",
+	},
+	{
+		value: "Major",
+		label: "Major",
+		semantic: "caution",
+		description: "Operational but with a significant issue. Needs follow-up within 24 hours.",
+		authority: "DM or aftersales approval",
+	},
+	{
+		value: "Critical",
+		label: "Critical",
+		semantic: "critical",
+		description: "Vehicle non-operational or a safety risk. A follow-up card is raised in 24 hours.",
+		authority: "Maintenance head only",
+	},
 ];
 
 const canSubmit = computed(() => severity.value && reason.value.trim().length > 0);
 
-function close() {
-  open.value = false;
-  severity.value = "";
-  reason.value = "";
-  error.value = "";
-  submitting.value = false;
+function reset() {
+	severity.value = "";
+	reason.value = "";
+	error.value = "";
+	submitting.value = false;
 }
 
 async function submit() {
-  if (!canSubmit.value) return;
-  submitting.value = true;
-  error.value = "";
-  try {
-    await emit("submit", {
-      severity: severity.value,
-      reason: reason.value.trim(),
-    });
-    close();
-  } catch (e) {
-    error.value = e?.message || "Force close failed. Please try again.";
-    submitting.value = false;
-  }
+	if (!canSubmit.value) return;
+	submitting.value = true;
+	error.value = "";
+	try {
+		await emit("submit", { severity: severity.value, reason: reason.value.trim() });
+		open.value = false;
+		reset();
+	} catch (e) {
+		error.value = e?.message || "Force close failed. Try again.";
+		submitting.value = false;
+	}
 }
 </script>
-
-<style scoped>
-.input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-         focus:ring-2 focus:ring-brand-500 focus:border-brand-500
-         text-gray-900 placeholder-gray-400 transition-colors;
-}
-</style>

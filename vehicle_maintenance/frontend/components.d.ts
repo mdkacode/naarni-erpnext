@@ -8,24 +8,23 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppShell: typeof import('./src/components/AppShell.vue')['default']
+    AppSidebar: typeof import('./src/components/AppSidebar.vue')['default']
     BreakdownDiagnosisPanel: typeof import('./src/components/BreakdownDiagnosisPanel.vue')['default']
     CustomerTrackingTimeline: typeof import('./src/components/CustomerTrackingTimeline.vue')['default']
     FeedbackModal: typeof import('./src/components/FeedbackModal.vue')['default']
     ForceCloseButton: typeof import('./src/components/ForceCloseButton.vue')['default']
     HealthScoreCard: typeof import('./src/components/HealthScoreCard.vue')['default']
-    InfoCard: typeof import('./src/components/InfoCard.vue')['default']
     InventoryRequestPanel: typeof import('./src/components/InventoryRequestPanel.vue')['default']
     JobCardCreationWizard: typeof import('./src/components/JobCardCreationWizard.vue')['default']
     LeadReminderModal: typeof import('./src/components/LeadReminderModal.vue')['default']
     MaintenanceJobTable: typeof import('./src/components/MaintenanceJobTable.vue')['default']
-    NavBar: typeof import('./src/components/NavBar.vue')['default']
     ReopenButton: typeof import('./src/components/ReopenButton.vue')['default']
     RepairJobTable: typeof import('./src/components/RepairJobTable.vue')['default']
     RoleBoundary: typeof import('./src/components/RoleBoundary.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SoftwareUpdatePanel: typeof import('./src/components/SoftwareUpdatePanel.vue')['default']
-    StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
     SubsystemPicker: typeof import('./src/components/SubsystemPicker.vue')['default']
     Wizard: typeof import('./src/components/Wizard.vue')['default']
   }

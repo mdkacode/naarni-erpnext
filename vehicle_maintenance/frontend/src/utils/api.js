@@ -16,27 +16,7 @@ const APP_PREFIX = "vehicle_maintenance.api";
  * @returns {Promise<any>} The `message` field from Frappe's response (our {success, data, message} envelope)
  */
 export async function callAPI(method, params = {}) {
-  const fullPath = method.includes("vehicle_maintenance")
-    ? method
-    : `${APP_PREFIX}.${method}`;
+	const fullPath = method.includes("vehicle_maintenance") ? method : `${APP_PREFIX}.${method}`;
 
-  return call(fullPath, params);
-}
-
-/**
- * Map workflow_state to a CSS badge class name.
- * @param {string} state
- * @returns {string}
- */
-export function stateBadgeClass(state) {
-  const map = {
-    Open: "badge-open",
-    WIP: "badge-wip",
-    "Awaiting Customer Approval": "badge-approval",
-    "Awaiting Parts": "badge-parts",
-    "Parts Fitted": "badge-fitted",
-    "Verification Pending": "badge-verify",
-    Closed: "badge-closed",
-  };
-  return `badge-status ${map[state] || "badge-open"}`;
+	return call(fullPath, params);
 }

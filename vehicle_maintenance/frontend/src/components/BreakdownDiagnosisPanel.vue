@@ -1,638 +1,452 @@
+<!--
+  Breakdown diagnosis.
+
+  The thirteen-step breakdown flow, as six sections in the order it actually
+  happens: incident → SOP override → remote attempt → travel → resolution →
+  trial trip → handover → RCA.
+
+  Every timestamp on this panel is stamped by a button press, never typed. The
+  service engineer is standing beside a bus on a highway; asking them to pick a
+  datetime is asking for a wrong one.
+
+  Colour here is verdict, not decoration: a permanent fix is `positive`, a
+  temporary one `caution`, a force close `critical`, and high risk is the same
+  red as a breached SLA.
+-->
 <template>
-  <!--
-    BreakdownDiagnosisPanel — PRD p.15-16 Breakdown lifecycle.
+	<div class="space-y-4">
+		<!-- ── Last PMS context ─────────────────────────────────────────────── -->
+		<div
+			v-if="breakdown.last_pms_date || breakdown.last_pms_odometer"
+			class="grid grid-cols-2 gap-3 rounded-md border border-hairline bg-sunken p-3 sm:grid-cols-4"
+		>
+			<div>
+				<p class="text-caption uppercase tracking-wide text-muted">Last PMS</p>
+				<p class="text-body-sm text-ink">{{ fmt.date(breakdown.last_pms_date) }}</p>
+			</div>
+			<div>
+				<p class="text-caption uppercase tracking-wide text-muted">At odometer</p>
+				<p class="tabular text-body-sm text-ink">{{ fmt.distance(breakdown.last_pms_odometer) }}</p>
+			</div>
+			<div v-if="breakdown.last_service_tolerance_level">
+				<p class="text-caption uppercase tracking-wide text-muted">Tolerance then</p>
+				<p class="text-body-sm text-ink">{{ breakdown.last_service_tolerance_level }}</p>
+			</div>
+			<div v-if="breakdown.last_serviced_by">
+				<p class="text-caption uppercase tracking-wide text-muted">Serviced by</p>
+				<p class="truncate text-body-sm text-ink">{{ fmt.person(breakdown.last_serviced_by) }}</p>
+			</div>
+		</div>
 
-    Collapses the 13-step Breakdown flow into a single inline panel that tracks:
-      1. Last PMS context (auto-filled from prior closed PMS card)
-      2. Incident place + Fault codes
-      3. Remote resolution SLA timer (30-min)
-      4. Travel start/arrive timestamps (Mark Start Travel / Mark Arrived)
-      5. Fix type + Recurrence/Occurrence risk + Next-level engineer
-      6. Trial trip start/end with dead-KM auto-compute
-      7. Vehicle handover
-      8. Total downtime (server-computed)
-      9. RCA notes (Aftersales Eng permlevel 1 — UI allows all internal roles)
+		<!-- ── Incident ─────────────────────────────────────────────────────── -->
+		<NCard title="Incident">
+			<div class="space-y-4">
+				<NChoice
+					:model-value="breakdown.incident_place"
+					label="Where did it happen?"
+					:options="['Depot', 'En Route']"
+					:columns="2"
+					:disabled="disabled"
+					@update:model-value="(v) => emitPatch({ incident_place: v })"
+				/>
 
-    EAS applied:
-      Eliminate — No raw timestamps in ISO format shown; friendly labels only.
-      Automate  — Travel duration, trial-trip distance/duration, total downtime
-                 are all auto-computed server-side; UI just renders them.
-      Simplify  — One primary action per row ("Mark Start Travel"), so SE never
-                 has to pick between datetime pickers.
-  -->
-  <div class="space-y-4">
-    <!-- ─── Last PMS context ─── -->
-    <div
-      v-if="breakdown.last_pms_date || breakdown.last_pms_odometer"
-      class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs grid grid-cols-2 gap-2"
-    >
-      <div>
-        <span class="text-gray-500">Last PMS</span>
-        <div class="font-medium text-gray-800">
-          {{ formatDate(breakdown.last_pms_date) }}
-        </div>
-      </div>
-      <div>
-        <span class="text-gray-500">Last Serviced Odometer</span>
-        <div class="font-medium text-gray-800">
-          {{ (breakdown.last_pms_odometer || 0).toLocaleString() }} km
-        </div>
-      </div>
-      <div v-if="breakdown.last_service_tolerance_level">
-        <span class="text-gray-500">Last Tolerance</span>
-        <div class="font-medium text-gray-800">{{ breakdown.last_service_tolerance_level }}</div>
-      </div>
-      <div v-if="breakdown.last_serviced_by">
-        <span class="text-gray-500">Last Serviced By</span>
-        <div class="font-medium text-gray-800">{{ breakdown.last_serviced_by }}</div>
-      </div>
-    </div>
+				<div class="grid grid-cols-3 gap-3">
+					<NInput
+						v-for="i in [1, 2, 3]"
+						:key="i"
+						:model-value="breakdown[`fault_code_${i}`]"
+						:label="`Fault code ${i}`"
+						placeholder="Optional"
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ [`fault_code_${i}`]: v })"
+					/>
+				</div>
 
-    <!-- ─── Incident + Fault codes ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <h4 class="text-sm font-semibold text-gray-800">Incident</h4>
+				<div class="space-y-1.5">
+					<p class="text-label text-ink">Groups impacted</p>
+					<NMultiSelect
+						:model-value="breakdown.groups_impacted || []"
+						:options="groupOptions"
+						:disabled="disabled"
+						placeholder="Add groups"
+						search-placeholder="Search part groups"
+						@update:model-value="(next) => $emit('save-groups', next)"
+					/>
+				</div>
+			</div>
+		</NCard>
 
-      <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">Incident Place</label>
-        <div class="flex gap-2">
-          <button
-            v-for="p in ['Depot', 'En Route']"
-            :key="p"
-            type="button"
-            :disabled="disabled"
-            @click="emitPatch({ incident_place: p })"
-            class="flex-1 py-2 text-xs font-medium rounded-lg border-2 transition-all disabled:opacity-50"
-            :class="
-              breakdown.incident_place === p
-                ? 'border-brand-500 bg-brand-50 text-brand-700'
-                : 'border-gray-200 text-gray-500 hover:border-gray-300'
-            "
-          >
-            {{ p }}
-          </button>
-        </div>
-      </div>
+		<!-- ── SOP override ─────────────────────────────────────────────────── -->
+		<NCard title="SOP override">
+			<p class="-mt-1 mb-3 text-body-sm text-muted">
+				Tick only if no documented process applies, or the documented process did not resolve it.
+			</p>
 
-      <div class="grid grid-cols-3 gap-2">
-        <div v-for="i in [1, 2, 3]" :key="i">
-          <label class="block text-xs font-medium text-gray-500 mb-1">
-            Fault Code {{ i }}
-          </label>
-          <input
-            :value="breakdown[`fault_code_${i}`]"
-            :disabled="disabled"
-            @change="emitPatch({ [`fault_code_${i}`]: $event.target.value })"
-            type="text"
-            placeholder="optional"
-            class="input-field"
-          />
-        </div>
-      </div>
+			<div class="space-y-4">
+				<div>
+					<NCheckbox
+						:model-value="Boolean(breakdown.force_override)"
+						label="Force override"
+						description="There is no SOP for this group."
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ force_override: v ? 1 : 0 })"
+					/>
+					<NTextarea
+						v-if="breakdown.force_override"
+						class="mt-2"
+						:model-value="breakdown.force_override_reason || ''"
+						:rows="2"
+						placeholder="Why was there no documented process?"
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ force_override_reason: v })"
+					/>
+				</div>
 
-      <div class="pt-1">
-        <label class="block text-xs font-medium text-gray-500 mb-1">
-          Groups Impacted
-          <span class="text-gray-400 font-normal">(multi-select)</span>
-        </label>
-        <div v-if="breakdown.groups_impacted?.length" class="flex flex-wrap gap-1.5 mb-1">
-          <span
-            v-for="g in breakdown.groups_impacted"
-            :key="g"
-            class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-brand-50 text-brand-700"
-          >
-            {{ g }}
-            <button
-              v-if="!disabled"
-              type="button"
-              @click="toggleGroup(g)"
-              class="text-brand-400 hover:text-red-500"
-              aria-label="Remove"
-            >
-              &times;
-            </button>
-          </span>
-        </div>
-        <div v-else class="text-xs text-gray-400 mb-1">None selected</div>
-        <div v-if="!disabled" class="relative">
-          <button
-            type="button"
-            @click="groupOpen = !groupOpen"
-            class="text-xs text-brand-600 hover:underline"
-          >
-            {{ groupOpen ? "Close" : "+ Add groups" }}
-          </button>
-          <div
-            v-if="groupOpen"
-            class="absolute z-20 left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto p-2"
-          >
-            <input
-              v-model="groupSearch"
-              type="text"
-              placeholder="Search groups…"
-              class="w-full px-2 py-1.5 text-xs border border-gray-200 rounded mb-2 focus:outline-none focus:border-brand-500"
-            />
-            <div v-if="!filteredGroupOptions.length" class="text-xs text-gray-400 text-center py-2">
-              No groups match.
-            </div>
-            <button
-              v-for="opt in filteredGroupOptions"
-              :key="opt.name"
-              type="button"
-              @click="toggleGroup(opt.name)"
-              class="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-brand-50 flex justify-between"
-            >
-              <span>{{ opt.part_group_name || opt.name }}</span>
-              <span class="text-gray-400">{{ opt.bus_system }}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+				<div>
+					<NCheckbox
+						:model-value="Boolean(breakdown.process_override)"
+						label="Process override"
+						description="The SOP was followed but did not resolve it — record what was done instead."
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ process_override: v ? 1 : 0 })"
+					/>
+					<NTextarea
+						v-if="breakdown.process_override"
+						class="mt-2"
+						:model-value="breakdown.process_override_steps || ''"
+						:rows="3"
+						placeholder="Step by step, what troubleshooting was actually performed."
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ process_override_steps: v })"
+					/>
+				</div>
+			</div>
+		</NCard>
 
-    <!-- ─── Force Override / Process Override ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <h4 class="text-sm font-semibold text-gray-800">SOP Override</h4>
-      <p class="text-xs text-gray-500 -mt-1">
-        PRD p.15 step 8 — tick only if no documented process applies or the
-        documented process didn't resolve the issue.
-      </p>
+		<!-- ── Remote resolution ────────────────────────────────────────────── -->
+		<NCard title="Remote resolution">
+			<template #actions>
+				<NBadge
+					:semantic="remoteSemantic"
+					:label="breakdown.remote_resolution_status || 'Not started'"
+				/>
+			</template>
 
-      <!-- Force Override -->
-      <div>
-        <label class="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            :checked="!!breakdown.force_override"
-            :disabled="disabled"
-            @change="emitPatch({ force_override: $event.target.checked ? 1 : 0 })"
-            class="mt-0.5"
-          />
-          <span>
-            <span class="font-medium">Force Override</span>
-            <span class="block text-xs text-gray-500">No SOP available for this group</span>
-          </span>
-        </label>
-        <textarea
-          v-if="breakdown.force_override"
-          :value="breakdown.force_override_reason || ''"
-          :disabled="disabled"
-          @change="emitPatch({ force_override_reason: $event.target.value })"
-          rows="2"
-          placeholder="Why was there no documented process?"
-          class="input-field mt-2"
-        />
-      </div>
+			<div class="space-y-3">
+				<div class="grid grid-cols-2 gap-3">
+					<NTimestamp label="Started" :value="breakdown.remote_resolution_started_at" />
+					<div>
+						<p class="text-caption uppercase tracking-wide text-muted">Elapsed of 30 min</p>
+						<p class="tabular text-body-sm" :class="slaBreached ? 'text-critical' : 'text-ink'">
+							{{ remoteElapsedMinutes }}m<span v-if="slaBreached"> · SLA breached</span>
+						</p>
+					</div>
+				</div>
 
-      <!-- Process Override -->
-      <div>
-        <label class="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            :checked="!!breakdown.process_override"
-            :disabled="disabled"
-            @change="emitPatch({ process_override: $event.target.checked ? 1 : 0 })"
-            class="mt-0.5"
-          />
-          <span>
-            <span class="font-medium">Process Override</span>
-            <span class="block text-xs text-gray-500">SOP was attempted but didn't resolve — record alternate steps taken</span>
-          </span>
-        </label>
-        <textarea
-          v-if="breakdown.process_override"
-          :value="breakdown.process_override_steps || ''"
-          :disabled="disabled"
-          @change="emitPatch({ process_override_steps: $event.target.value })"
-          rows="3"
-          placeholder="Step-by-step alternate troubleshooting actions the SE performed"
-          class="input-field mt-2"
-        />
-      </div>
-    </section>
+				<NMeter
+					:value="remoteElapsedMinutes"
+					:max="30"
+					mode="count"
+					label="Remote resolution SLA"
+					:semantic="slaBreached ? 'critical' : 'active'"
+				/>
 
-    <!-- ─── Remote Resolution Timer ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <div class="flex items-center justify-between">
-        <h4 class="text-sm font-semibold text-gray-800">Remote Resolution (30-min SLA)</h4>
-        <span
-          class="text-xs font-medium px-2 py-0.5 rounded-full"
-          :class="remoteStatusClass"
-        >
-          {{ breakdown.remote_resolution_status || "Not started" }}
-        </span>
-      </div>
-      <div class="text-xs text-gray-500 grid grid-cols-2 gap-2">
-        <div>
-          <span>Started</span>
-          <div class="font-medium text-gray-800">
-            {{ formatDateTime(breakdown.remote_resolution_started_at) }}
-          </div>
-        </div>
-        <div>
-          <span>Elapsed</span>
-          <div
-            class="font-medium"
-            :class="remoteElapsedMinutes >= 30 ? 'text-red-700' : 'text-gray-800'"
-          >
-            {{ remoteElapsedMinutes }}m
-            {{ remoteElapsedMinutes >= 30 ? "· SLA breached" : "" }}
-          </div>
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <button
-          type="button"
-          :disabled="disabled || breakdown.remote_resolution_status === 'Resolved'"
-          @click="emitPatch({ remote_resolution_status: 'Resolved' })"
-          class="flex-1 py-2 text-xs font-medium rounded-lg border-2 border-green-500 text-green-700 hover:bg-green-50 disabled:opacity-50"
-        >
-          Mark Resolved
-        </button>
-        <button
-          type="button"
-          :disabled="disabled || breakdown.remote_resolution_status === 'Failed'"
-          @click="emitPatch({ remote_resolution_status: 'Failed' })"
-          class="flex-1 py-2 text-xs font-medium rounded-lg border-2 border-red-500 text-red-700 hover:bg-red-50 disabled:opacity-50"
-        >
-          Mark Failed
-        </button>
-      </div>
-    </section>
+				<div class="flex gap-2">
+					<NButton
+						class="flex-1"
+						variant="primary"
+						:disabled="disabled || breakdown.remote_resolution_status === 'Resolved'"
+						@click="emitPatch({ remote_resolution_status: 'Resolved' })"
+					>
+						Resolved remotely
+					</NButton>
+					<NButton
+						class="flex-1 text-critical"
+						:disabled="disabled || breakdown.remote_resolution_status === 'Failed'"
+						@click="emitPatch({ remote_resolution_status: 'Failed' })"
+					>
+						Could not fix remotely
+					</NButton>
+				</div>
+			</div>
+		</NCard>
 
-    <!-- ─── Travel to BD location ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <h4 class="text-sm font-semibold text-gray-800">Travel to BD Location</h4>
-      <div class="grid grid-cols-3 gap-2 text-xs">
-        <div>
-          <span class="text-gray-500">Start Travel</span>
-          <div class="font-medium text-gray-800">
-            {{ formatDateTime(breakdown.travel_started_at) || "—" }}
-          </div>
-        </div>
-        <div>
-          <span class="text-gray-500">Arrived</span>
-          <div class="font-medium text-gray-800">
-            {{ formatDateTime(breakdown.arrived_at_location) || "—" }}
-          </div>
-        </div>
-        <div>
-          <span class="text-gray-500">Duration</span>
-          <div class="font-medium text-gray-800">
-            {{ breakdown.travel_duration_minutes
-              ? `${breakdown.travel_duration_minutes.toFixed(0)} min`
-              : "—" }}
-          </div>
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <button
-          type="button"
-          :disabled="disabled || breakdown.travel_started_at"
-          @click="emitPatch({ travel_started_at: nowISO() })"
-          class="flex-1 py-2 text-xs font-medium rounded-lg border-2 border-brand-500 text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-        >
-          Mark Start Travel
-        </button>
-        <button
-          type="button"
-          :disabled="disabled || !breakdown.travel_started_at || breakdown.arrived_at_location"
-          @click="emitPatch({ arrived_at_location: nowISO() })"
-          class="flex-1 py-2 text-xs font-medium rounded-lg border-2 border-brand-500 text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-        >
-          Mark Arrived
-        </button>
-      </div>
-    </section>
+		<!-- ── Travel ───────────────────────────────────────────────────────── -->
+		<NCard title="Travel to the breakdown">
+			<div class="space-y-3">
+				<div class="grid grid-cols-3 gap-3">
+					<NTimestamp label="Left" :value="breakdown.travel_started_at" />
+					<NTimestamp label="Arrived" :value="breakdown.arrived_at_location" />
+					<div>
+						<p class="text-caption uppercase tracking-wide text-muted">Took</p>
+						<p class="tabular text-body-sm text-ink">
+							{{ minutes(breakdown.travel_duration_minutes) }}
+						</p>
+					</div>
+				</div>
 
-    <!-- ─── Fix Type + Risk ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <h4 class="text-sm font-semibold text-gray-800">Resolution</h4>
+				<div class="flex gap-2">
+					<NButton
+						class="flex-1"
+						:disabled="disabled || Boolean(breakdown.travel_started_at)"
+						@click="emitPatch({ travel_started_at: nowStamp() })"
+					>
+						I have set off
+					</NButton>
+					<NButton
+						class="flex-1"
+						:disabled="
+							disabled || !breakdown.travel_started_at || Boolean(breakdown.arrived_at_location)
+						"
+						@click="emitPatch({ arrived_at_location: nowStamp() })"
+					>
+						I have arrived
+					</NButton>
+				</div>
+			</div>
+		</NCard>
 
-      <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">Fix Type</label>
-        <div class="flex gap-2">
-          <button
-            v-for="t in ['Permanent', 'Temporary', 'Force Closed']"
-            :key="t"
-            type="button"
-            :disabled="disabled"
-            @click="emitPatch({ fix_type: t })"
-            class="flex-1 py-2 text-xs font-medium rounded-lg border-2 transition-all disabled:opacity-50"
-            :class="
-              breakdown.fix_type === t
-                ? fixTypeClass(t)
-                : 'border-gray-200 text-gray-500 hover:border-gray-300'
-            "
-          >
-            {{ t }}
-          </button>
-        </div>
-      </div>
+		<!-- ── Resolution ───────────────────────────────────────────────────── -->
+		<NCard title="Resolution">
+			<div class="space-y-4">
+				<NChoice
+					:model-value="breakdown.fix_type"
+					label="What kind of fix was it?"
+					:options="FIX_TYPES"
+					:columns="3"
+					:disabled="disabled"
+					@update:model-value="(v) => emitPatch({ fix_type: v })"
+				/>
 
-      <div v-if="breakdown.fix_type === 'Temporary'">
-        <label class="block text-xs font-medium text-gray-500 mb-1">Escalate to Next-Level Engineer</label>
-        <input
-          :value="breakdown.next_level_engineer"
-          :disabled="disabled"
-          @change="emitPatch({ next_level_engineer: $event.target.value })"
-          type="text"
-          placeholder="User ID of senior engineer"
-          class="input-field"
-        />
-      </div>
+				<NInput
+					v-if="breakdown.fix_type === 'Temporary'"
+					:model-value="breakdown.next_level_engineer"
+					label="Escalate to"
+					placeholder="User ID of the senior engineer"
+					hint="A temporary fix has to belong to somebody."
+					:disabled="disabled"
+					@update:model-value="(v) => emitPatch({ next_level_engineer: v })"
+				/>
 
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Recurrence Risk (this vehicle)</label>
-          <div class="flex gap-2">
-            <button
-              v-for="r in ['Low', 'High']"
-              :key="r"
-              type="button"
-              :disabled="disabled"
-              @click="emitPatch({ recurrence_risk: r })"
-              class="flex-1 py-1.5 text-xs font-medium rounded-lg border-2 disabled:opacity-50"
-              :class="
-                breakdown.recurrence_risk === r
-                  ? riskClass(r)
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
-              "
-            >
-              {{ r }}
-            </button>
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Occurrence Risk (fleet-wide)</label>
-          <div class="flex gap-2">
-            <button
-              v-for="r in ['Low', 'High']"
-              :key="r"
-              type="button"
-              :disabled="disabled"
-              @click="emitPatch({ occurrence_risk: r })"
-              class="flex-1 py-1.5 text-xs font-medium rounded-lg border-2 disabled:opacity-50"
-              :class="
-                breakdown.occurrence_risk === r
-                  ? riskClass(r)
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
-              "
-            >
-              {{ r }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<NChoice
+						:model-value="breakdown.recurrence_risk"
+						label="Could it happen again on this bus?"
+						:options="RISKS"
+						:columns="2"
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ recurrence_risk: v })"
+					/>
+					<NChoice
+						:model-value="breakdown.occurrence_risk"
+						label="Could it happen across the fleet?"
+						:options="RISKS"
+						:columns="2"
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ occurrence_risk: v })"
+					/>
+				</div>
+			</div>
+		</NCard>
 
-    <!-- ─── Trial Trip ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <h4 class="text-sm font-semibold text-gray-800">Trial Trip</h4>
-      <div class="grid grid-cols-4 gap-2 text-xs">
-        <div>
-          <span class="text-gray-500">Start</span>
-          <div class="font-medium text-gray-800">
-            {{ formatDateTime(breakdown.trial_trip_started_at) || "—" }}
-          </div>
-        </div>
-        <div>
-          <label class="block text-gray-500 mb-1">Start km</label>
-          <input
-            :value="breakdown.trial_trip_start_km"
-            :disabled="disabled"
-            @change="emitPatch({ trial_trip_start_km: Number($event.target.value) || 0 })"
-            type="number"
-            min="0"
-            class="input-field"
-          />
-        </div>
-        <div>
-          <span class="text-gray-500">End</span>
-          <div class="font-medium text-gray-800">
-            {{ formatDateTime(breakdown.trial_trip_ended_at) || "—" }}
-          </div>
-        </div>
-        <div>
-          <label class="block text-gray-500 mb-1">End km</label>
-          <input
-            :value="breakdown.trial_trip_end_km"
-            :disabled="disabled"
-            @change="emitPatch({ trial_trip_end_km: Number($event.target.value) || 0 })"
-            type="number"
-            min="0"
-            class="input-field"
-          />
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-2 text-xs">
-        <div class="bg-gray-50 p-2 rounded">
-          <span class="text-gray-500">Dead km</span>
-          <div class="font-medium text-gray-800">
-            {{ breakdown.trial_trip_distance_km ?? "—" }}
-          </div>
-        </div>
-        <div class="bg-gray-50 p-2 rounded">
-          <span class="text-gray-500">Duration</span>
-          <div class="font-medium text-gray-800">
-            {{ breakdown.trial_trip_duration_minutes
-              ? `${breakdown.trial_trip_duration_minutes.toFixed(0)} min`
-              : "—" }}
-          </div>
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <button
-          type="button"
-          :disabled="disabled || breakdown.trial_trip_started_at"
-          @click="emitPatch({ trial_trip_started_at: nowISO() })"
-          class="flex-1 py-2 text-xs font-medium rounded-lg border-2 border-brand-500 text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-        >
-          Start Trial Trip
-        </button>
-        <button
-          type="button"
-          :disabled="disabled || !breakdown.trial_trip_started_at || breakdown.trial_trip_ended_at"
-          @click="emitPatch({ trial_trip_ended_at: nowISO() })"
-          class="flex-1 py-2 text-xs font-medium rounded-lg border-2 border-brand-500 text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-        >
-          End Trial Trip
-        </button>
-      </div>
-    </section>
+		<!-- ── Trial trip ───────────────────────────────────────────────────── -->
+		<NCard title="Trial trip">
+			<div class="space-y-3">
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+					<NTimestamp label="Started" :value="breakdown.trial_trip_started_at" />
+					<NInput
+						:model-value="breakdown.trial_trip_start_km"
+						label="Start km"
+						type="number"
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ trial_trip_start_km: Number(v) || 0 })"
+					/>
+					<NTimestamp label="Ended" :value="breakdown.trial_trip_ended_at" />
+					<NInput
+						:model-value="breakdown.trial_trip_end_km"
+						label="End km"
+						type="number"
+						:disabled="disabled"
+						@update:model-value="(v) => emitPatch({ trial_trip_end_km: Number(v) || 0 })"
+					/>
+				</div>
 
-    <!-- ─── Vehicle Handover + Downtime ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <h4 class="text-sm font-semibold text-gray-800">Handover</h4>
-      <div class="grid grid-cols-2 gap-2 text-xs">
-        <div>
-          <span class="text-gray-500">Vehicle Handed Over</span>
-          <div class="font-medium text-gray-800">
-            {{ formatDateTime(breakdown.vehicle_handover_at) || "—" }}
-          </div>
-        </div>
-        <div>
-          <span class="text-gray-500">Total Downtime</span>
-          <div class="font-medium text-gray-800">
-            {{ breakdown.total_downtime_minutes
-              ? `${breakdown.total_downtime_minutes.toFixed(0)} min`
-              : "—" }}
-          </div>
-        </div>
-      </div>
-      <button
-        type="button"
-        :disabled="disabled || breakdown.vehicle_handover_at"
-        @click="emitPatch({ vehicle_handover_at: nowISO() })"
-        class="w-full py-2 text-xs font-medium rounded-lg border-2 border-green-500 text-green-700 hover:bg-green-50 disabled:opacity-50"
-      >
-        Mark Vehicle Handed Over
-      </button>
-    </section>
+				<div class="grid grid-cols-2 gap-3">
+					<div class="rounded-sm bg-sunken p-2.5">
+						<p class="text-caption uppercase tracking-wide text-muted">Dead km</p>
+						<p class="tabular text-body-sm text-ink">
+							{{ fmt.or(breakdown.trial_trip_distance_km) }}
+						</p>
+					</div>
+					<div class="rounded-sm bg-sunken p-2.5">
+						<p class="text-caption uppercase tracking-wide text-muted">Took</p>
+						<p class="tabular text-body-sm text-ink">
+							{{ minutes(breakdown.trial_trip_duration_minutes) }}
+						</p>
+					</div>
+				</div>
 
-    <!-- ─── RCA ─── -->
-    <section class="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
-      <div class="flex items-center justify-between">
-        <h4 class="text-sm font-semibold text-gray-800">Root Cause Analysis</h4>
-        <span v-if="breakdown.rca_received_at" class="text-xs text-green-700">
-          Received {{ formatDateTime(breakdown.rca_received_at) }}
-        </span>
-      </div>
-      <textarea
-        :value="breakdown.rca_notes || ''"
-        :disabled="disabled || !canEditRca"
-        @change="emitPatch({ rca_notes: $event.target.value })"
-        rows="4"
-        placeholder="Aftersales Engineer — root cause, fix narrative, customer-facing summary…"
-        class="input-field"
-      />
-      <div v-if="!canEditRca && !disabled" class="text-xs text-gray-400">
-        Only Aftersales Eng / DM / N. Maint. Head can edit the RCA.
-      </div>
-    </section>
-  </div>
+				<div class="flex gap-2">
+					<NButton
+						class="flex-1"
+						:disabled="disabled || Boolean(breakdown.trial_trip_started_at)"
+						@click="emitPatch({ trial_trip_started_at: nowStamp() })"
+					>
+						Start trial trip
+					</NButton>
+					<NButton
+						class="flex-1"
+						:disabled="
+							disabled ||
+							!breakdown.trial_trip_started_at ||
+							Boolean(breakdown.trial_trip_ended_at)
+						"
+						@click="emitPatch({ trial_trip_ended_at: nowStamp() })"
+					>
+						End trial trip
+					</NButton>
+				</div>
+			</div>
+		</NCard>
+
+		<!-- ── Handover ─────────────────────────────────────────────────────── -->
+		<NCard title="Handover">
+			<div class="space-y-3">
+				<div class="grid grid-cols-2 gap-3">
+					<NTimestamp label="Handed back" :value="breakdown.vehicle_handover_at" />
+					<div>
+						<p class="text-caption uppercase tracking-wide text-muted">Total downtime</p>
+						<p class="tabular text-body-sm text-ink">
+							{{ minutes(breakdown.total_downtime_minutes) }}
+						</p>
+					</div>
+				</div>
+
+				<NButton
+					variant="primary"
+					block
+					:disabled="disabled || Boolean(breakdown.vehicle_handover_at)"
+					@click="emitPatch({ vehicle_handover_at: nowStamp() })"
+				>
+					Bus handed back to the depot
+				</NButton>
+			</div>
+		</NCard>
+
+		<!-- ── RCA ──────────────────────────────────────────────────────────── -->
+		<NCard title="Root cause analysis">
+			<template v-if="breakdown.rca_received_at" #actions>
+				<NBadge semantic="positive" :label="`Received ${fmt.date(breakdown.rca_received_at)}`" />
+			</template>
+
+			<NTextarea
+				:model-value="breakdown.rca_notes || ''"
+				:rows="4"
+				placeholder="Root cause, what was done about it, and the summary the customer will read."
+				:disabled="disabled || !canEditRca"
+				:hint="
+					!canEditRca && !disabled
+						? 'Only aftersales, the depot manager or the maintenance head can write the RCA.'
+						: ''
+				"
+				@update:model-value="(v) => emitPatch({ rca_notes: v })"
+			/>
+		</NCard>
+	</div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { call } from "frappe-ui";
+import {
+	NCard,
+	NInput,
+	NTextarea,
+	NChoice,
+	NCheckbox,
+	NMultiSelect,
+	NButton,
+	NBadge,
+	NMeter,
+	NTimestamp,
+	fmt,
+	EMPTY,
+} from "../ui/index.js";
 
 const props = defineProps({
-  modelValue: { type: Object, default: () => ({}) },
-  disabled: { type: Boolean, default: false },
-  canEditRca: { type: Boolean, default: true },
+	modelValue: { type: Object, default: () => ({}) },
+	disabled: { type: Boolean, default: false },
+	canEditRca: { type: Boolean, default: true },
 });
 const emit = defineEmits(["save", "save-groups"]);
 
+const FIX_TYPES = [
+	{ value: "Permanent", label: "Permanent", semantic: "positive" },
+	{ value: "Temporary", label: "Temporary", semantic: "caution" },
+	{ value: "Force Closed", label: "Force closed", semantic: "critical" },
+];
+
+const RISKS = [
+	{ value: "Low", label: "Low", semantic: "positive" },
+	{ value: "High", label: "High", semantic: "critical" },
+];
+
+/** The remote-resolution SLA, in minutes. */
+const REMOTE_SLA = 30;
+
 const breakdown = computed(() => props.modelValue || {});
 
-// ── Groups Impacted picker state ──
-const groupOpen = ref(false);
-const groupSearch = ref("");
 const groupOptions = ref([]);
 
-const filteredGroupOptions = computed(() => {
-  const q = groupSearch.value.trim().toLowerCase();
-  if (!q) return groupOptions.value;
-  return groupOptions.value.filter((o) =>
-    (o.part_group_name || o.name || "").toLowerCase().includes(q),
-  );
+onMounted(async () => {
+	try {
+		const res = await call("vehicle_maintenance.api.job_card.list_part_groups");
+		groupOptions.value = (res?.data || []).map((g) => ({
+			value: g.name,
+			label: g.part_group_name || g.name,
+			group: g.bus_system || "Other",
+		}));
+	} catch {
+		groupOptions.value = [];
+	}
 });
-
-async function loadGroups() {
-  try {
-    const res = await call("vehicle_maintenance.api.job_card.list_part_groups");
-    groupOptions.value = res?.data || [];
-  } catch {
-    groupOptions.value = [];
-  }
-}
-
-function toggleGroup(name) {
-  const current = breakdown.value.groups_impacted || [];
-  const next = current.includes(name)
-    ? current.filter((n) => n !== name)
-    : [...current, name];
-  emit("save-groups", next);
-}
-
-onMounted(loadGroups);
 
 const remoteElapsedMinutes = computed(() => {
-  if (!breakdown.value.remote_resolution_started_at) return 0;
-  const start = new Date(breakdown.value.remote_resolution_started_at);
-  const end = breakdown.value.remote_resolution_failed_at
-    ? new Date(breakdown.value.remote_resolution_failed_at)
-    : new Date();
-  const mins = Math.round((end - start) / 60000);
-  return Number.isFinite(mins) && mins > 0 ? mins : 0;
+	if (!breakdown.value.remote_resolution_started_at) return 0;
+	const start = new Date(String(breakdown.value.remote_resolution_started_at).replace(" ", "T"));
+	const end = breakdown.value.remote_resolution_failed_at
+		? new Date(String(breakdown.value.remote_resolution_failed_at).replace(" ", "T"))
+		: new Date();
+	const mins = Math.round((end - start) / 60000);
+	return Number.isFinite(mins) && mins > 0 ? mins : 0;
 });
 
-const remoteStatusClass = computed(() => {
-  const map = {
-    "In Progress": "bg-amber-100 text-amber-700",
-    Resolved: "bg-green-100 text-green-700",
-    Failed: "bg-red-100 text-red-700",
-  };
-  return map[breakdown.value.remote_resolution_status] || "bg-gray-100 text-gray-600";
-});
+const slaBreached = computed(() => remoteElapsedMinutes.value >= REMOTE_SLA);
+
+const remoteSemantic = computed(
+	() =>
+		({ "In Progress": "active", Resolved: "positive", Failed: "critical" }[
+			breakdown.value.remote_resolution_status
+		] || "idle")
+);
+
+function minutes(value) {
+	return Number.isFinite(Number(value)) && value ? `${Math.round(Number(value))} min` : EMPTY;
+}
 
 function emitPatch(patch) {
-  emit("save", patch);
+	emit("save", patch);
 }
 
-function nowISO() {
-  // Frappe accepts "YYYY-MM-DD HH:MM:SS" for Datetime fields.
-  const pad = (n) => String(n).padStart(2, "0");
-  const d = new Date();
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-  );
-}
-
-function formatDate(val) {
-  if (!val) return "—";
-  try {
-    return new Date(val).toLocaleDateString("en-IN", {
-      day: "numeric", month: "short", year: "numeric",
-    });
-  } catch {
-    return val;
-  }
-}
-
-function formatDateTime(val) {
-  if (!val) return "";
-  try {
-    return new Date(val).toLocaleString("en-IN", {
-      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-    });
-  } catch {
-    return val;
-  }
-}
-
-function fixTypeClass(t) {
-  const m = {
-    Permanent: "border-green-500 bg-green-50 text-green-700",
-    Temporary: "border-amber-500 bg-amber-50 text-amber-700",
-    "Force Closed": "border-red-500 bg-red-50 text-red-700",
-  };
-  return m[t];
-}
-
-function riskClass(r) {
-  return r === "High"
-    ? "border-red-500 bg-red-50 text-red-700"
-    : "border-green-500 bg-green-50 text-green-700";
+/* Frappe stores Datetime as "YYYY-MM-DD HH:MM:SS" in site-local time, so the
+   stamp is built from the local clock rather than an ISO string in UTC — an
+   ISO stamp arrives five and a half hours off in an Indian depot. */
+function nowStamp() {
+	const pad = (n) => String(n).padStart(2, "0");
+	const d = new Date();
+	return (
+		`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+		`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+	);
 }
 </script>
-
-<style scoped>
-.input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-         focus:ring-2 focus:ring-brand-500 focus:border-brand-500
-         text-gray-900 placeholder-gray-400 transition-colors
-         disabled:opacity-60 disabled:cursor-not-allowed;
-}
-</style>

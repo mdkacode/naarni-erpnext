@@ -1,170 +1,156 @@
+<!--
+  New job card.
+
+  Four steps: what kind of work, which bus, where and why, then a review. The
+  job-card types were rendered with emoji (🔧 🛠 💻 🚨) — which render as a
+  different drawing on every phone in the depot and cannot be tinted or aligned.
+  They are icons now, from the one set.
+
+  The vehicle and depot pickers were two hand-rolled async dropdowns with their
+  own debounce, their own outside-click handler and their own "selected" panel.
+  Both are NCombobox now, which also fixes the out-of-order-response bug they
+  shared: a slow request for "DL" could land after a fast one for "DL-01" and
+  repopulate the list with the wrong buses.
+-->
 <template>
-  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-6">
-      <router-link to="/service-portal" class="text-sm text-brand-600 hover:underline">&larr; Back to list</router-link>
-      <h1 class="text-2xl font-bold text-gray-900 mt-2">New Job Card</h1>
-    </div>
+	<div>
+		<NPageHeader title="New job card" back="/service-portal" back-label="Back to job cards" />
 
-    <Wizard :steps="steps" v-model="formData" submit-label="Create Job Card" @complete="handleSubmit">
+		<div class="p-5">
+			<Wizard v-model="formData" :steps="steps" submit-label="Create job card" @complete="handleSubmit">
+				<template #step-type="{ data, updateField }">
+					<NChoice
+						:model-value="data.job_card_type"
+						:options="jobCardTypes"
+						label="What kind of work is this?"
+						:columns="2"
+						required
+						@update:model-value="(v) => selectJobType(v, updateField)"
+					/>
+				</template>
 
-      <!-- ━━━ Step 1: Job Card Type ━━━ -->
-      <template #step-type="{ data, updateField }">
-        <div class="space-y-5">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">What type of service?</label>
-            <div class="grid grid-cols-2 gap-3">
-              <button v-for="t in jobCardTypes" :key="t.value" type="button"
-                @click="selectJobType(t.value, updateField)"
-                class="flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all"
-                :class="data.job_card_type === t.value ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-gray-200 hover:border-gray-300'">
-                <span class="text-2xl">{{ t.icon }}</span>
-                <div>
-                  <span class="text-sm font-semibold text-gray-800">{{ t.label }}</span>
-                  <p class="text-xs text-gray-500 mt-0.5">{{ t.desc }}</p>
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-      </template>
+				<template #step-vehicle="{ data, updateField }">
+					<div class="space-y-4">
+						<NCombobox
+							:model-value="selectedVehicle"
+							label="Vehicle"
+							placeholder="Registration number or model"
+							hint="Type at least two characters."
+							required
+							:search="searchVehicles"
+							:display="(v) => fmt.vehicle(v.registration_number)"
+							:describe="(v) => v.make_model || ''"
+							@update:model-value="(v) => selectVehicle(v, updateField)"
+						/>
 
-      <!-- ━━━ Step 2: Vehicle (searchable dropdown) + Odometer ━━━ -->
-      <template #step-vehicle="{ data, updateField }">
-        <div class="space-y-5">
-          <!-- Vehicle search -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Vehicle Number</label>
-            <div class="relative">
-              <input
-                v-model="vehicleSearch"
-                @input="searchVehicles"
-                @focus="showVehicleDropdown = true"
-                type="text"
-                placeholder="Type to search... e.g. DL-01 or Naarni 12M"
-                class="input-field uppercase"
-                autocomplete="off"
-              />
-              <!-- Dropdown results -->
-              <div v-if="showVehicleDropdown && vehicleResults.length"
-                class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                <button v-for="v in vehicleResults" :key="v.name" type="button"
-                  @click="selectVehicle(v, updateField)"
-                  class="w-full px-4 py-3 text-left hover:bg-brand-50 border-b border-gray-50 last:border-0 transition-colors">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <span class="font-bold text-gray-900">{{ formatVehicle(v.registration_number) }}</span>
-                      <span class="text-sm text-gray-500 ml-2">{{ v.make_model }}</span>
-                    </div>
-                    <span class="text-xs text-gray-400">{{ v.customer }}</span>
-                  </div>
-                </button>
-              </div>
-              <div v-if="showVehicleDropdown && vehicleSearch.length >= 2 && !vehicleResults.length && !searchingVehicle"
-                class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-4 text-sm text-gray-400 text-center">
-                No vehicles found
-              </div>
-            </div>
-            <!-- Selected vehicle card -->
-            <div v-if="data.vehicle" class="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between">
-              <div>
-                <span class="font-bold text-green-800 text-lg tracking-wide">{{ formatVehicle(data.vehicle_number) }}</span>
-                <span class="text-sm text-green-700 ml-2">{{ data.vehicle_make_model }}</span>
-              </div>
-              <button type="button" @click="clearVehicle(updateField)" class="text-green-600 hover:text-red-500 text-sm">Change</button>
-            </div>
-          </div>
+						<NInput
+							:model-value="data.odometer_reading ?? ''"
+							label="Odometer reading"
+							type="number"
+							inputmode="numeric"
+							placeholder="145000"
+							required
+							@update:model-value="
+								(v) => updateField('odometer_reading', v === '' ? null : Number(v))
+							"
+						>
+							<template #suffix><span class="pr-2 text-body-sm text-muted">km</span></template>
+						</NInput>
 
-          <!-- Odometer -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Odometer Reading</label>
-            <div class="relative">
-              <input :value="data.odometer_reading"
-                @input="updateField('odometer_reading', Number($event.target.value))"
-                type="number" inputmode="numeric" min="0" placeholder="e.g. 145000"
-                class="input-field pr-12" />
-              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">km</span>
-            </div>
-          </div>
+						<NCard v-if="data.customer_name || data.auto_check_sheet" padded>
+							<NKeyValue
+								:items="[
+									{ label: 'Customer', value: data.customer_name, hideWhenEmpty: true },
+									{
+										label: 'Check sheet',
+										value: data.auto_check_sheet,
+										hideWhenEmpty: true,
+									},
+								]"
+							/>
+						</NCard>
+					</div>
+				</template>
 
-          <!-- Auto-filled info -->
-          <div v-if="data.customer_name" class="p-3 bg-gray-50 rounded-xl text-sm space-y-1">
-            <div class="flex justify-between"><span class="text-gray-500">Customer</span><span class="font-medium">{{ data.customer_name }}</span></div>
-            <div v-if="data.auto_check_sheet" class="flex justify-between"><span class="text-gray-500">Check Sheet</span><span class="font-medium">{{ data.auto_check_sheet }}</span></div>
-          </div>
-        </div>
-      </template>
+				<template #step-details="{ data, updateField }">
+					<div class="space-y-4">
+						<NCombobox
+							:model-value="selectedDepot"
+							label="Depot or workshop"
+							placeholder="Depot name"
+							required
+							:min-chars="1"
+							:search="searchDepots"
+							:display="(d) => d.depot_name"
+							:describe="(d) => d.city || ''"
+							@update:model-value="(d) => selectDepot(d, updateField)"
+						/>
 
-      <!-- ━━━ Step 3: Depot + VOC ━━━ -->
-      <template #step-details="{ data, updateField }">
-        <div class="space-y-5">
-          <!-- Depot search -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Depot / Workshop</label>
-            <div class="relative">
-              <input v-model="depotSearch" @input="searchDepots" @focus="showDepotDropdown = true"
-                type="text" placeholder="Search depot..." class="input-field" autocomplete="off" />
-              <div v-if="showDepotDropdown && depotResults.length"
-                class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                <button v-for="d in depotResults" :key="d.name" type="button"
-                  @click="selectDepot(d, updateField)"
-                  class="w-full px-4 py-3 text-left hover:bg-brand-50 border-b border-gray-50 last:border-0">
-                  <span class="font-medium text-gray-800">{{ d.depot_name }}</span>
-                  <span class="text-xs text-gray-400 ml-2">{{ d.city }}</span>
-                </button>
-              </div>
-            </div>
-            <div v-if="data.depot" class="mt-2 text-sm text-green-700 font-medium">Selected: {{ data.depot }}</div>
-          </div>
+						<NTextarea
+							:model-value="data.complaint_description"
+							label="What did the driver or customer report?"
+							placeholder="List every issue they mentioned."
+							required
+							:rows="3"
+							@update:model-value="(v) => updateField('complaint_description', v)"
+						/>
 
-          <!-- Driver complaints -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Driver / Customer Complaints</label>
-            <textarea :value="data.complaint_description"
-              @input="updateField('complaint_description', $event.target.value)"
-              rows="3" placeholder="What did the driver or customer report? List all issues..."
-              class="input-field" />
-          </div>
+						<NTextarea
+							:model-value="data.se_observations"
+							label="What did you find?"
+							placeholder="Anything you saw during the initial inspection."
+							hint="Optional — the technician will add to this."
+							:rows="3"
+							@update:model-value="(v) => updateField('se_observations', v)"
+						/>
+					</div>
+				</template>
 
-          <!-- SE observations -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Your Observations (SE)</label>
-            <textarea :value="data.se_observations"
-              @input="updateField('se_observations', $event.target.value)"
-              rows="3" placeholder="Issues you found during initial inspection..."
-              class="input-field" />
-          </div>
-        </div>
-      </template>
+				<template #step-review="{ data }">
+					<div class="space-y-4">
+						<NCard>
+							<NKeyValue
+								:items="[
+									{ label: 'Type', value: data.job_card_type },
+									{ label: 'Model', value: data.vehicle_make_model },
+									{ label: 'Odometer', value: fmt.distance(data.odometer_reading) },
+									{ label: 'Customer', value: data.customer_name },
+									{ label: 'Depot', value: data.depot },
+								]"
+							>
+								<div class="flex items-baseline justify-between gap-6 py-2">
+									<dt class="text-body-sm text-muted">Vehicle</dt>
+									<dd><NVehicle :value="data.vehicle_number" /></dd>
+								</div>
+								<div class="flex items-center justify-between gap-6 py-2">
+									<dt class="text-body-sm text-muted">Priority</dt>
+									<dd><NPriority :value="data.priority" /></dd>
+								</div>
+							</NKeyValue>
+						</NCard>
 
-      <!-- ━━━ Step 4: Review ━━━ -->
-      <template #step-review="{ data }">
-        <div class="space-y-4">
-          <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Review & Submit</h3>
-          <div class="bg-gray-50 rounded-xl p-5 space-y-3 text-sm">
-            <div class="flex justify-between"><span class="text-gray-500">Type</span><span class="font-bold text-gray-900">{{ data.job_card_type }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Vehicle</span><span class="font-bold text-gray-900 tracking-wide">{{ formatVehicle(data.vehicle_number) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Model</span><span class="font-medium">{{ data.vehicle_make_model }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Odometer</span><span class="font-medium">{{ Number(data.odometer_reading || 0).toLocaleString('en-IN') }} km</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Customer</span><span class="font-medium">{{ data.customer_name }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Depot</span><span class="font-medium">{{ data.depot }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Priority</span>
-              <span class="font-semibold" :class="data.priority === 'Urgent' ? 'text-red-600' : ''">{{ data.priority }}</span>
-            </div>
-          </div>
-          <div v-if="data.complaint_description" class="bg-amber-50 rounded-xl p-4 text-sm">
-            <p class="text-xs font-semibold text-amber-700 mb-1">Driver Complaints</p>
-            <p class="text-gray-800">{{ data.complaint_description }}</p>
-          </div>
-          <div v-if="data.se_observations" class="bg-blue-50 rounded-xl p-4 text-sm">
-            <p class="text-xs font-semibold text-blue-700 mb-1">SE Observations</p>
-            <p class="text-gray-800">{{ data.se_observations }}</p>
-          </div>
-        </div>
-      </template>
-    </Wizard>
+						<NCard v-if="data.complaint_description" title="Reported by the driver">
+							<p class="whitespace-pre-line text-body text-ink">
+								{{ data.complaint_description }}
+							</p>
+						</NCard>
 
-    <div v-if="submitError" class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{{ submitError }}</div>
-  </div>
+						<NCard v-if="data.se_observations" title="Your observations">
+							<p class="whitespace-pre-line text-body text-ink">{{ data.se_observations }}</p>
+						</NCard>
+					</div>
+				</template>
+			</Wizard>
+
+			<NAlert
+				v-if="submitError"
+				semantic="critical"
+				title="Could not create the job card"
+				:body="submitError"
+				class="mx-auto mt-4 max-w-form"
+			/>
+		</div>
+	</div>
 </template>
 
 <script setup>
@@ -172,213 +158,167 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { call } from "frappe-ui";
 import Wizard from "../components/Wizard.vue";
+import {
+	NPageHeader,
+	NChoice,
+	NCombobox,
+	NInput,
+	NTextarea,
+	NCard,
+	NKeyValue,
+	NVehicle,
+	NPriority,
+	NAlert,
+	fmt,
+} from "../ui/index.js";
 
 const router = useRouter();
 const submitError = ref("");
 
-// ── Job Card Types per PRD ──
 const jobCardTypes = [
-  { value: "PMS + Repair", label: "PMS + Repair", icon: "\u{1F527}", desc: "Scheduled maintenance + any repairs" },
-  { value: "Only Repair", label: "Only Repair", icon: "\u{1F6E0}", desc: "Specific repair, vehicle operational" },
-  { value: "Software Update", label: "Software Update", icon: "\u{1F4BB}", desc: "Firmware / software update" },
-  { value: "Breakdown", label: "Breakdown", icon: "\u{1F6A8}", desc: "Vehicle non-operational" },
+	{
+		value: "PMS + Repair",
+		label: "PMS + repair",
+		icon: "wrench",
+		description: "Scheduled maintenance plus any repairs found",
+	},
+	{
+		value: "Only Repair",
+		label: "Only repair",
+		icon: "settings",
+		description: "A specific repair; the bus still runs",
+	},
+	{
+		value: "Software Update",
+		label: "Software update",
+		icon: "upload",
+		description: "Firmware or software only",
+	},
+	{
+		value: "Breakdown",
+		label: "Breakdown",
+		icon: "alert-triangle",
+		description: "The bus is off the road",
+	},
 ];
 
-// ── Form State ──
 const formData = ref({
-  job_card_type: "",
-  vehicle: "",
-  vehicle_number: "",
-  vehicle_make_model: "",
-  odometer_reading: null,
-  customer: "",
-  customer_name: "",
-  depot: "",
-  priority: "Medium",
-  service_type: "",
-  complaint_description: "",
-  se_observations: "",
-  auto_check_sheet: "",
+	job_card_type: "",
+	vehicle: "",
+	vehicle_number: "",
+	vehicle_make_model: "",
+	odometer_reading: null,
+	customer: "",
+	customer_name: "",
+	depot: "",
+	priority: "Medium",
+	service_type: "",
+	complaint_description: "",
+	se_observations: "",
+	auto_check_sheet: "",
 });
 
-// ── Vehicle Search ──
-const vehicleSearch = ref("");
-const vehicleResults = ref([]);
-const showVehicleDropdown = ref(false);
-const searchingVehicle = ref(false);
-let vehicleTimer = null;
+const selectedVehicle = ref(null);
+const selectedDepot = ref(null);
 
-function searchVehicles() {
-  clearTimeout(vehicleTimer);
-  if (vehicleSearch.value.length < 2) { vehicleResults.value = []; return; }
-  searchingVehicle.value = true;
-  vehicleTimer = setTimeout(async () => {
-    try {
-      const res = await call("vehicle_maintenance.api.job_card.search_vehicles", {
-        txt: vehicleSearch.value,
-        limit: 10,
-      });
-      vehicleResults.value = res?.data || [];
-    } catch { vehicleResults.value = []; }
-    finally { searchingVehicle.value = false; }
-  }, 300);
+async function searchVehicles(txt) {
+	const res = await call("vehicle_maintenance.api.job_card.search_vehicles", { txt, limit: 10 });
+	return res?.data || [];
+}
+
+async function searchDepots(txt) {
+	const res = await call("vehicle_maintenance.api.job_card.search_depots", { txt, limit: 10 });
+	return res?.data || [];
 }
 
 function selectVehicle(v, updateField) {
-  updateField("vehicle", v.name);
-  updateField("vehicle_number", v.registration_number);
-  updateField("vehicle_make_model", v.make_model);
-  updateField("customer", v.customer);
-  updateField("customer_name", v.customer || "");
-  vehicleSearch.value = v.registration_number;
-  showVehicleDropdown.value = false;
-  vehicleResults.value = [];
-  // Fetch customer name via our whitelisted API
-  if (v.customer) {
-    call("vehicle_maintenance.api.job_card.get_customer_name", { customer: v.customer })
-      .then(r => { if (r?.data?.customer_name) updateField("customer_name", r.data.customer_name); });
-  }
-}
-
-function clearVehicle(updateField) {
-  updateField("vehicle", "");
-  updateField("vehicle_number", "");
-  updateField("vehicle_make_model", "");
-  updateField("customer", "");
-  updateField("customer_name", "");
-  vehicleSearch.value = "";
-}
-
-// ── Depot Search ──
-const depotSearch = ref("");
-const depotResults = ref([]);
-const showDepotDropdown = ref(false);
-let depotTimer = null;
-
-function searchDepots() {
-  clearTimeout(depotTimer);
-  if (depotSearch.value.length < 1) { depotResults.value = []; return; }
-  depotTimer = setTimeout(async () => {
-    try {
-      const res = await call("vehicle_maintenance.api.job_card.search_depots", {
-        txt: depotSearch.value,
-        limit: 10,
-      });
-      depotResults.value = res?.data || [];
-    } catch { depotResults.value = []; }
-  }, 200);
+	selectedVehicle.value = v;
+	updateField("vehicle", v?.name || "");
+	updateField("vehicle_number", v?.registration_number || "");
+	updateField("vehicle_make_model", v?.make_model || "");
+	updateField("customer", v?.customer || "");
+	updateField("customer_name", v?.customer || "");
+	if (v?.customer) {
+		call("vehicle_maintenance.api.job_card.get_customer_name", { customer: v.customer }).then((r) => {
+			if (r?.data?.customer_name) updateField("customer_name", r.data.customer_name);
+		});
+	}
 }
 
 function selectDepot(d, updateField) {
-  updateField("depot", d.name);
-  depotSearch.value = d.depot_name;
-  showDepotDropdown.value = false;
-  depotResults.value = [];
+	selectedDepot.value = d;
+	updateField("depot", d?.name || "");
 }
 
-// ── Job Type selection → auto-set fields ──
+/* Choosing the kind of work fills in the service type and priority. A breakdown
+   is urgent by definition and nobody should have to say so twice. */
 function selectJobType(type, updateField) {
-  updateField("job_card_type", type);
-  const map = {
-    "PMS + Repair": { service_type: "Scheduled Maintenance", priority: "Medium" },
-    "Only Repair": { service_type: "General Inspection", priority: "Medium" },
-    "Software Update": { service_type: "Software Update", priority: "Low" },
-    "Breakdown": { service_type: "Breakdown Repair", priority: "Urgent" },
-  };
-  const cfg = map[type];
-  if (cfg) {
-    updateField("service_type", cfg.service_type);
-    updateField("priority", cfg.priority);
-  }
+	updateField("job_card_type", type);
+	const map = {
+		"PMS + Repair": { service_type: "Scheduled Maintenance", priority: "Medium" },
+		"Only Repair": { service_type: "General Inspection", priority: "Medium" },
+		"Software Update": { service_type: "Software Update", priority: "Low" },
+		Breakdown: { service_type: "Breakdown Repair", priority: "Urgent" },
+	};
+	const cfg = map[type];
+	if (cfg) {
+		updateField("service_type", cfg.service_type);
+		updateField("priority", cfg.priority);
+	}
 }
 
-// ── Indian vehicle number format ──
-function formatVehicle(num) {
-  if (!num) return "";
-  let c = num.replace(/[-\s]/g, "").toUpperCase();
-  let m = c.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
-  return m ? `${m[1]} ${m[2].padStart(2,"0")} ${m[3]} ${m[4]}` : num;
-}
-
-// ── Wizard Steps ──
 const steps = [
-  {
-    id: "type",
-    title: "Job Card Type",
-    description: "Select the type of service needed.",
-    validate: (data) => {
-      if (!data.job_card_type) return ["Please select a job card type."];
-      return [];
-    },
-  },
-  {
-    id: "vehicle",
-    title: "Vehicle & Odometer",
-    description: "Search and select the bus, enter odometer reading.",
-    validate: (data) => {
-      const errors = [];
-      if (!data.vehicle) errors.push("Please search and select a vehicle.");
-      if (!data.odometer_reading || data.odometer_reading <= 0) errors.push("Enter a valid odometer reading.");
-      return errors;
-    },
-  },
-  {
-    id: "details",
-    title: "Location & Complaints",
-    description: "Select depot and record customer/driver complaints.",
-    validate: (data) => {
-      const errors = [];
-      if (!data.depot) errors.push("Please select a depot.");
-      if (!data.complaint_description?.trim()) errors.push("Please record the driver/customer complaints.");
-      return errors;
-    },
-  },
-  {
-    id: "review",
-    title: "Review",
-    description: "Confirm everything before creating.",
-  },
+	{
+		id: "type",
+		title: "What kind of job card?",
+		description: "This sets the checklist and the default priority.",
+		validate: (d) => (d.job_card_type ? [] : ["Choose a job card type."]),
+	},
+	{
+		id: "vehicle",
+		title: "Which bus?",
+		description: "Search for it, then record the odometer.",
+		validate: (d) => {
+			const errors = [];
+			if (!d.vehicle) errors.push("Search for and select a vehicle.");
+			if (!d.odometer_reading || d.odometer_reading <= 0) errors.push("Enter the odometer reading.");
+			return errors;
+		},
+	},
+	{
+		id: "details",
+		title: "Where, and what is wrong?",
+		description: "The depot doing the work, and what was reported.",
+		validate: (d) => {
+			const errors = [];
+			if (!d.depot) errors.push("Select a depot.");
+			if (!d.complaint_description?.trim()) errors.push("Record what the driver or customer reported.");
+			return errors;
+		},
+	},
+	{ id: "review", title: "Check it over", description: "Nothing is saved until you create the card." },
 ];
 
-// ── Submit ──
 async function handleSubmit(data) {
-  submitError.value = "";
-  try {
-    const result = await call("frappe.client.insert", {
-      doc: {
-        doctype: "Job Card",
-        job_card_type: data.job_card_type,
-        vehicle: data.vehicle,
-        odometer_reading: data.odometer_reading,
-        customer: data.customer,
-        service_type: data.service_type,
-        priority: data.priority,
-        depot: data.depot,
-        complaint_description: data.complaint_description,
-        se_observations: data.se_observations,
-      },
-    });
-    router.push(`/service-portal/job-card/${result.name}`);
-  } catch (e) {
-    submitError.value = e?.messages?.[0] || e?.message || "Failed to create job card.";
-  }
-}
-
-// Close dropdowns on outside click
-if (typeof document !== "undefined") {
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest(".relative")) {
-      showVehicleDropdown.value = false;
-      showDepotDropdown.value = false;
-    }
-  });
+	submitError.value = "";
+	try {
+		const result = await call("frappe.client.insert", {
+			doc: {
+				doctype: "Job Card",
+				job_card_type: data.job_card_type,
+				vehicle: data.vehicle,
+				odometer_reading: data.odometer_reading,
+				customer: data.customer,
+				service_type: data.service_type,
+				priority: data.priority,
+				depot: data.depot,
+				complaint_description: data.complaint_description,
+				se_observations: data.se_observations,
+			},
+		});
+		router.push(`/service-portal/job-card/${result.name}`);
+	} catch (e) {
+		submitError.value = e?.messages?.[0] || e?.message || "Please try again.";
+	}
 }
 </script>
-
-<style scoped>
-.input-field {
-  @apply w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
-         focus:ring-2 focus:ring-brand-500 focus:border-brand-500
-         text-gray-900 placeholder-gray-400 transition-colors;
-}
-</style>

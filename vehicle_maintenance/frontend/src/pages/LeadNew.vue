@@ -1,257 +1,183 @@
-<template>
-	<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-		<div class="mb-6">
-			<router-link to="/service-portal/crm/leads" class="text-sm text-brand-600 hover:underline"
-				>&larr; Back to leads</router-link
-			>
-			<h1 class="text-2xl font-bold text-gray-900 mt-2">New Lead</h1>
-			<p class="text-sm text-gray-500 mt-1">
-				Capture the essentials now — you can log calls and visits from the detail page.
-			</p>
-		</div>
+<!--
+  New lead.
 
-		<Wizard :steps="steps" v-model="formData" submit-label="Create Lead" @complete="handleSubmit">
-			<!-- ───────────────────── Step 1: Who ───────────────────── -->
-			<template #step-who="{ data, updateField }">
-				<div class="space-y-4">
-					<div>
-						<label class="label">Lead Name *</label>
-						<input
-							:value="data.lead_name"
-							@input="updateField('lead_name', $event.target.value)"
-							type="text"
-							class="input-field"
-							placeholder="e.g. Ravi Kumar"
+  Four steps — who, what, where, who owns it — each of them four or five fields.
+  Every value that comes from a known set is a picker, not a text box; the only
+  genuinely free text on the form is the address and the notes.
+-->
+<template>
+	<div>
+		<NPageHeader
+			title="New lead"
+			subtitle="Capture the essentials now — calls and visits are logged from the lead itself."
+			back="/service-portal/crm/leads"
+			back-label="Back to leads"
+		/>
+
+		<div class="p-5">
+			<Wizard v-model="formData" :steps="steps" submit-label="Create lead" @complete="handleSubmit">
+				<template #step-who="{ data, updateField }">
+					<div class="space-y-4">
+						<NInput
+							:model-value="data.lead_name"
+							label="Lead name"
+							placeholder="Ravi Kumar"
+							required
+							@update:model-value="(v) => updateField('lead_name', v)"
 						/>
-					</div>
-					<div>
-						<label class="label">Phone *</label>
-						<input
-							:value="data.phone"
-							@input="updateField('phone', $event.target.value)"
+						<NInput
+							:model-value="data.phone"
+							label="Phone"
 							type="tel"
 							inputmode="numeric"
-							class="input-field"
+							prefix="+91"
+							maxlength="10"
 							placeholder="10-digit mobile"
+							required
+							@update:model-value="
+								(v) => updateField('phone', String(v).replace(/\D+/g, '').slice(0, 10))
+							"
 						/>
-					</div>
-					<div>
-						<label class="label">Email</label>
-						<input
-							:value="data.email"
-							@input="updateField('email', $event.target.value)"
+						<NInput
+							:model-value="data.email"
+							label="Email"
 							type="email"
-							class="input-field"
-							placeholder="optional"
+							hint="Optional."
+							@update:model-value="(v) => updateField('email', v)"
+						/>
+						<NInput
+							:model-value="data.company_name"
+							label="Company"
+							hint="Optional."
+							@update:model-value="(v) => updateField('company_name', v)"
 						/>
 					</div>
-					<div>
-						<label class="label">Company</label>
-						<input
-							:value="data.company_name"
-							@input="updateField('company_name', $event.target.value)"
-							type="text"
-							class="input-field"
-							placeholder="optional"
-						/>
-					</div>
-				</div>
-			</template>
+				</template>
 
-			<!-- ───────────────────── Step 2: What ───────────────────── -->
-			<template #step-what="{ data, updateField }">
-				<div class="space-y-4">
-					<div>
-						<label class="label">Industry</label>
-						<select
-							:value="data.industry"
-							@change="updateField('industry', $event.target.value)"
-							class="select-field"
-						>
-							<option value="">— Select —</option>
-							<option v-for="i in INDUSTRIES" :key="i">{{ i }}</option>
-						</select>
-					</div>
-					<div>
-						<label class="label">Interested In</label>
-						<select
-							:value="data.interested_in"
-							@change="updateField('interested_in', $event.target.value)"
-							class="select-field"
-						>
-							<option value="">— Select —</option>
-							<option v-for="i in INTERESTS" :key="i">{{ i }}</option>
-						</select>
-					</div>
-					<div>
-						<label class="label">Fleet Size</label>
-						<div class="grid grid-cols-5 gap-2">
-							<button
-								type="button"
-								v-for="bucket in FLEET_BUCKETS"
-								:key="bucket"
-								@click="updateField('fleet_size_bucket', bucket)"
-								class="px-3 py-2 rounded-lg border text-sm transition"
-								:class="
-									data.fleet_size_bucket === bucket
-										? 'border-brand-500 bg-brand-50 text-brand-700 font-semibold'
-										: 'border-gray-200 hover:border-gray-300'
-								"
-							>
-								{{ bucket }}
-							</button>
-						</div>
-					</div>
-					<div>
-						<label class="label">Estimated Value (₹)</label>
-						<input
-							:value="data.estimated_value"
-							@input="updateField('estimated_value', $event.target.value)"
+				<template #step-what="{ data, updateField }">
+					<div class="space-y-4">
+						<NSelect
+							:model-value="data.industry"
+							label="Industry"
+							placeholder="Choose an industry"
+							:options="INDUSTRIES"
+							@update:model-value="(v) => updateField('industry', v)"
+						/>
+						<NSelect
+							:model-value="data.interested_in"
+							label="Interested in"
+							placeholder="Choose"
+							:options="INTERESTS"
+							@update:model-value="(v) => updateField('interested_in', v)"
+						/>
+						<NChoice
+							:model-value="data.fleet_size_bucket"
+							label="Fleet size"
+							:options="FLEET_BUCKETS"
+							:columns="5"
+							@update:model-value="(v) => updateField('fleet_size_bucket', v)"
+						/>
+						<NInput
+							:model-value="data.estimated_value"
+							label="Estimated value"
 							type="number"
-							class="input-field"
-							placeholder="optional"
-							min="0"
+							prefix="₹"
+							hint="Optional — a rough figure is fine."
+							@update:model-value="(v) => updateField('estimated_value', v)"
 						/>
 					</div>
-				</div>
-			</template>
+				</template>
 
-			<!-- ───────────────────── Step 3: Where ───────────────────── -->
-			<template #step-where="{ data, updateField }">
-				<div class="space-y-4">
-					<div>
-						<label class="label">State</label>
-						<select
-							:value="data.state"
-							@change="updateField('state', $event.target.value)"
-							class="select-field"
-						>
-							<option value="">— Select —</option>
-							<option v-for="s in STATES" :key="s">{{ s }}</option>
-						</select>
-					</div>
-					<div>
-						<label class="label">City</label>
-						<input
-							:value="data.city"
-							@input="updateField('city', $event.target.value)"
-							type="text"
-							class="input-field"
-							placeholder="City"
+				<template #step-where="{ data, updateField }">
+					<div class="space-y-4">
+						<NSelect
+							:model-value="data.state"
+							label="State"
+							placeholder="Choose a state"
+							:options="STATES"
+							@update:model-value="(v) => updateField('state', v)"
+						/>
+						<NInput
+							:model-value="data.city"
+							label="City"
+							@update:model-value="(v) => updateField('city', v)"
+						/>
+						<NSelect
+							:model-value="data.depot"
+							label="Nearest depot"
+							placeholder="Choose a depot"
+							:options="depotOptions"
+							@update:model-value="(v) => updateField('depot', v)"
+						/>
+						<NTextarea
+							:model-value="data.address_line"
+							label="Address"
+							:rows="2"
+							hint="Optional."
+							@update:model-value="(v) => updateField('address_line', v)"
 						/>
 					</div>
-					<div>
-						<label class="label">Depot</label>
-						<select
-							:value="data.depot"
-							@change="updateField('depot', $event.target.value)"
-							class="select-field"
-						>
-							<option value="">— Select —</option>
-							<option v-for="d in dropdowns.depots" :key="d.name" :value="d.name">
-								{{ d.depot_name || d.name }}
-							</option>
-						</select>
-					</div>
-					<div>
-						<label class="label">Address</label>
-						<textarea
-							:value="data.address_line"
-							@input="updateField('address_line', $event.target.value)"
-							rows="2"
-							class="input-field"
-							placeholder="optional"
-						/>
-					</div>
-				</div>
-			</template>
+				</template>
 
-			<!-- ───────────────────── Step 4: Assign ───────────────────── -->
-			<template #step-assign="{ data, updateField }">
-				<div class="space-y-4">
-					<div>
-						<label class="label">Source</label>
-						<select
-							:value="data.lead_source"
-							@change="updateField('lead_source', $event.target.value)"
-							class="select-field"
-						>
-							<option value="">— Select —</option>
-							<option v-for="s in dropdowns.sources" :key="s.name" :value="s.name">
-								{{ s.source_name }}
-							</option>
-						</select>
-					</div>
-					<div>
-						<label class="label">Assigned To</label>
-						<select
-							:value="data.assigned_to"
-							@change="updateField('assigned_to', $event.target.value)"
-							class="select-field"
-						>
-							<option value="">— Select —</option>
-							<option v-for="u in dropdowns.sales_users" :key="u.name" :value="u.name">
-								{{ u.full_name || u.name }}
-							</option>
-						</select>
-					</div>
-					<div>
-						<label class="label">Priority</label>
-						<div class="grid grid-cols-3 gap-2">
-							<button
-								type="button"
-								v-for="p in ['Low', 'Medium', 'High']"
-								:key="p"
-								@click="updateField('priority', p)"
-								class="px-3 py-2 rounded-lg border text-sm transition"
-								:class="
-									data.priority === p
-										? 'border-brand-500 bg-brand-50 text-brand-700 font-semibold'
-										: 'border-gray-200 hover:border-gray-300'
-								"
-							>
-								{{ p }}
-							</button>
-						</div>
-					</div>
-					<div>
-						<label class="label">Expected Close Date</label>
-						<input
-							:value="data.expected_close_date"
-							@input="updateField('expected_close_date', $event.target.value)"
+				<template #step-assign="{ data, updateField }">
+					<div class="space-y-4">
+						<NSelect
+							:model-value="data.lead_source"
+							label="Where did this lead come from?"
+							placeholder="Choose a source"
+							:options="sourceOptions"
+							@update:model-value="(v) => updateField('lead_source', v)"
+						/>
+						<NSelect
+							:model-value="data.assigned_to"
+							label="Assigned to"
+							placeholder="Choose a person"
+							:options="userOptions"
+							@update:model-value="(v) => updateField('assigned_to', v)"
+						/>
+						<NChoice
+							:model-value="data.priority"
+							label="Priority"
+							:options="['Low', 'Medium', 'High']"
+							:columns="3"
+							required
+							@update:model-value="(v) => updateField('priority', v)"
+						/>
+						<NInput
+							:model-value="data.expected_close_date"
+							label="Expected close date"
 							type="date"
-							class="input-field"
+							@update:model-value="(v) => updateField('expected_close_date', v)"
+						/>
+						<NTextarea
+							:model-value="data.notes"
+							label="Notes"
+							:rows="3"
+							placeholder="Context for the next step."
+							@update:model-value="(v) => updateField('notes', v)"
 						/>
 					</div>
-					<div>
-						<label class="label">Notes</label>
-						<textarea
-							:value="data.notes"
-							@input="updateField('notes', $event.target.value)"
-							rows="3"
-							class="input-field"
-							placeholder="Context for next steps"
-						/>
-					</div>
-				</div>
-			</template>
-		</Wizard>
+				</template>
+			</Wizard>
 
-		<div
-			v-if="errorMessage"
-			class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"
-		>
-			{{ errorMessage }}
+			<NAlert
+				v-if="errorMessage"
+				semantic="critical"
+				title="Could not create the lead"
+				:body="errorMessage"
+				class="mx-auto mt-4 max-w-form"
+			/>
 		</div>
 	</div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import Wizard from "../components/Wizard.vue";
 import { useLeads } from "../composables/useLeads.js";
 import { useCrmDropdowns } from "../composables/useCrmDropdowns.js";
+import { NPageHeader, NInput, NSelect, NTextarea, NChoice, NAlert } from "../ui/index.js";
 
 const router = useRouter();
 const leads = useLeads();
@@ -307,6 +233,16 @@ const STATES = [
 	"Puducherry",
 ];
 
+const depotOptions = computed(() =>
+	(dropdowns.depots || []).map((d) => ({ value: d.name, label: d.depot_name || d.name }))
+);
+const sourceOptions = computed(() =>
+	(dropdowns.sources || []).map((s) => ({ value: s.name, label: s.source_name }))
+);
+const userOptions = computed(() =>
+	(dropdowns.sales_users || []).map((u) => ({ value: u.name, label: u.full_name || u.name }))
+);
+
 const formData = reactive({
 	lead_name: "",
 	phone: "",
@@ -332,38 +268,33 @@ const steps = [
 	{
 		id: "who",
 		title: "Who is this lead?",
-		description: "Name and primary contact.",
+		description: "Name and the number you will actually call.",
 		validate: (d) => {
 			const errs = [];
-			if (!d.lead_name?.trim()) errs.push("Lead name is required.");
-			const digits = (d.phone || "").replace(/\D+/g, "");
-			if (digits.length < 10) errs.push("Phone must contain at least 10 digits.");
+			if (!d.lead_name?.trim()) errs.push("A lead needs a name.");
+			if ((d.phone || "").replace(/\D+/g, "").length < 10) errs.push("Enter a 10-digit mobile number.");
 			if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email))
-				errs.push("Enter a valid email or leave it blank.");
+				errs.push("That email address does not look right — or leave it blank.");
 			return errs;
 		},
 	},
 	{
 		id: "what",
 		title: "What do they need?",
-		description: "Qualification snapshot.",
+		description: "Enough to qualify them later.",
 		validate: () => [],
 	},
 	{
 		id: "where",
 		title: "Where are they?",
-		description: "Location and depot.",
+		description: "Location and the depot that would serve them.",
 		validate: () => [],
 	},
 	{
 		id: "assign",
 		title: "Who owns it?",
-		description: "Source, owner, priority.",
-		validate: (d) => {
-			const errs = [];
-			if (!d.priority) errs.push("Pick a priority.");
-			return errs;
-		},
+		description: "Source, owner and how hard to chase it.",
+		validate: (d) => (d.priority ? [] : ["Pick a priority."]),
 	},
 ];
 
@@ -376,21 +307,9 @@ async function handleSubmit(data) {
 		const res = await leads.create(payload);
 		router.push(`/service-portal/crm/leads/${encodeURIComponent(res.name)}`);
 	} catch (e) {
-		errorMessage.value = e?.message || "Failed to create lead.";
+		errorMessage.value = e?.message || "Please try again.";
 	}
 }
 
 onMounted(() => loadDropdowns());
 </script>
-
-<style scoped>
-.label {
-	@apply block text-sm font-medium text-gray-700 mb-1;
-}
-.input-field {
-	@apply w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none;
-}
-.select-field {
-	@apply w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none;
-}
-</style>

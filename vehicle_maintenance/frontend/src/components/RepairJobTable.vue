@@ -1,256 +1,206 @@
+<!--
+  Repair jobs editor.
+
+  One card per repair. The line total is computed and read-only, and the
+  approval warning fires per line as soon as it crosses the threshold — the
+  technician should learn that a customer has to approve this *while choosing
+  the part*, not when the card refuses to move states an hour later.
+-->
 <template>
-  <!--
-    RepairJobTable — PRD p.5 "Repair Job List".
+	<div class="space-y-3">
+		<div class="flex items-center justify-between">
+			<span class="text-label-sm uppercase tracking-wide text-muted"
+				>{{ rows.length }} repair{{ rows.length === 1 ? "" : "s" }}</span
+			>
+			<NButton variant="tonal" size="sm" icon="plus" @click="addRow">Add repair</NButton>
+		</div>
 
-    Each row represents a repair scoped to a Part Group and an Activity Type.
-      • Only Repair        → labour only, no part consumed
-      • Spare Replacement  → replace part(s), quantity required
-      • Both               → replacement + labour
+		<NEmptyState
+			v-if="!rows.length"
+			icon="wrench"
+			title="No repairs yet"
+			body="Add one for each thing being fixed on this card."
+		>
+			<template #action><NButton icon="plus" @click="addRow">Add repair</NButton></template>
+		</NEmptyState>
 
-    EAS applied:
-      Eliminate — Amount math and approval threshold logic hidden from the
-                  technician's view (computed on save, shown as read-only).
-      Automate  — Customer-approval flag auto-lights when line total > ₹1,000.
-      Simplify  — Tap-friendly Activity Type chips; photos collapse behind
-                  a single "Evidence" toggle per row.
-  -->
-  <div class="space-y-3">
-    <div class="flex items-center justify-between">
-      <h3 class="text-sm font-semibold text-gray-800">Repair Jobs</h3>
-      <button
-        type="button"
-        @click="addRow"
-        class="px-3 py-1.5 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors"
-      >
-        + Add Repair
-      </button>
-    </div>
+		<NCard v-for="(row, idx) in rows" :key="idx">
+			<template #header>
+				<span class="text-label-sm uppercase tracking-wide text-muted">Repair {{ idx + 1 }}</span>
+			</template>
+			<template #actions>
+				<NIconButton
+					icon="trash-2"
+					label="Remove this repair"
+					variant="danger"
+					size="sm"
+					@click="removeRow(idx)"
+				/>
+			</template>
 
-    <div v-if="!rows.length" class="text-center py-6 text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl">
-      No repair jobs yet — tap "Add Repair" to start.
-    </div>
+			<div class="space-y-4">
+				<NSelect
+					:model-value="row.part_group"
+					label="Part group"
+					placeholder="Choose a part group"
+					:options="partGroupOptions"
+					@update:model-value="(v) => updateRow(idx, 'part_group', v)"
+				/>
 
-    <div
-      v-for="(row, idx) in rows"
-      :key="idx"
-      class="bg-white border border-gray-200 rounded-xl p-4 space-y-3"
-    >
-      <!-- Row header: part group + remove -->
-      <div class="flex items-start gap-3">
-        <div class="flex-1">
-          <label class="block text-xs font-medium text-gray-500 mb-1">Part Group</label>
-          <select
-            :value="row.part_group"
-            @change="updateRow(idx, 'part_group', $event.target.value)"
-            class="input-field"
-          >
-            <option value="">Select part group…</option>
-            <option v-for="pg in partGroups" :key="pg.name" :value="pg.name">
-              {{ pg.part_group_name || pg.name }} ({{ pg.bus_system }})
-            </option>
-          </select>
-        </div>
-        <button
-          type="button"
-          @click="removeRow(idx)"
-          class="mt-5 text-red-500 hover:text-red-600 text-sm px-2 py-1"
-          aria-label="Remove row"
-        >
-          &#10005;
-        </button>
-      </div>
+				<NChoice
+					:model-value="row.activity_type"
+					label="What kind of work?"
+					:options="ACTIVITY_TYPES"
+					:columns="3"
+					@update:model-value="(v) => updateRow(idx, 'activity_type', v)"
+				/>
 
-      <!-- Activity type chips -->
-      <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">Activity Type</label>
-        <div class="flex gap-2">
-          <button
-            v-for="t in activityTypes"
-            :key="t"
-            type="button"
-            @click="updateRow(idx, 'activity_type', t)"
-            class="flex-1 py-2 text-xs font-medium rounded-lg border-2 transition-all"
-            :class="
-              row.activity_type === t
-                ? 'border-brand-500 bg-brand-50 text-brand-700'
-                : 'border-gray-200 text-gray-500 hover:border-gray-300'
-            "
-          >
-            {{ t }}
-          </button>
-        </div>
-      </div>
+				<NInput
+					:model-value="row.description"
+					label="What is being done?"
+					placeholder="Replace worn brake pads"
+					@update:model-value="(v) => updateRow(idx, 'description', v)"
+				/>
 
-      <!-- Description -->
-      <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">Work Description</label>
-        <input
-          :value="row.description"
-          @input="updateRow(idx, 'description', $event.target.value)"
-          type="text"
-          placeholder="e.g. Replace worn brake pads"
-          class="input-field"
-        />
-      </div>
+				<div class="grid grid-cols-3 gap-3">
+					<NInput
+						:model-value="row.qty"
+						label="Quantity"
+						type="number"
+						@update:model-value="(v) => updateRow(idx, 'qty', Number(v) || 0)"
+					/>
+					<NInput
+						:model-value="row.rate"
+						label="Rate"
+						type="number"
+						prefix="₹"
+						@update:model-value="(v) => updateRow(idx, 'rate', Number(v) || 0)"
+					/>
+					<div class="flex flex-col gap-1.5">
+						<span class="text-label text-ink">Line total</span>
+						<div
+							class="tabular flex h-control items-center rounded-sm border border-hairline bg-sunken px-2.5 text-body text-muted"
+						>
+							{{ fmt.money(lineTotal(row)) }}
+						</div>
+					</div>
+				</div>
 
-      <!-- Qty / Rate / Component status (3-tier) -->
-      <div class="grid grid-cols-3 gap-2">
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Qty</label>
-          <input
-            :value="row.qty"
-            @input="updateRow(idx, 'qty', Number($event.target.value) || 0)"
-            type="number"
-            min="0"
-            step="0.5"
-            class="input-field"
-          />
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Est. Rate (₹)</label>
-          <input
-            :value="row.rate"
-            @input="updateRow(idx, 'rate', Number($event.target.value) || 0)"
-            type="number"
-            min="0"
-            step="1"
-            class="input-field"
-          />
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Line Total</label>
-          <div class="input-field bg-gray-50 text-gray-500 flex items-center">
-            ₹ {{ ((row.qty || 0) * (row.rate || 0)).toLocaleString() }}
-          </div>
-        </div>
-      </div>
+				<NAlert
+					v-if="needsApproval(row)"
+					semantic="caution"
+					title="Customer approval needed"
+					:body="`This line is over ${fmt.money(
+						APPROVAL_THRESHOLD
+					)}, so parts cannot be allocated until the customer approves it.`"
+				/>
 
-      <!-- Customer approval banner — only relevant when parts are being replaced -->
-      <div
-        v-if="needsApproval(row)"
-        class="flex items-center gap-2 p-2 text-xs bg-amber-50 border border-amber-200 rounded-lg text-amber-800"
-      >
-        <span class="font-bold">!</span>
-        Over ₹1,000 — customer approval required before parts are allocated.
-      </div>
+				<details class="border-t border-hairline pt-3">
+					<summary class="cursor-pointer select-none text-body-sm text-muted hover:text-ink">
+						Evidence photos
+					</summary>
+					<div class="mt-3 grid gap-4 sm:grid-cols-2">
+						<NFileField
+							:model-value="row.pre_repair_photo"
+							label="Before the repair"
+							@update:model-value="(f) => updateRow(idx, 'pre_repair_photo', f)"
+						/>
+						<NFileField
+							:model-value="row.post_repair_photo"
+							label="After the repair"
+							@update:model-value="(f) => updateRow(idx, 'post_repair_photo', f)"
+						/>
+					</div>
+				</details>
+			</div>
+		</NCard>
 
-      <!-- Evidence (collapsed by default) -->
-      <details class="text-xs text-gray-600">
-        <summary class="cursor-pointer select-none font-medium">Evidence photos</summary>
-        <div class="grid grid-cols-2 gap-3 mt-2">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">Pre-Repair</label>
-            <input
-              type="file"
-              accept="image/*"
-              @change="onPhoto(idx, 'pre_repair_photo', $event)"
-              class="text-xs"
-            />
-            <div v-if="row.pre_repair_photo" class="mt-1 text-green-600">&#10003; Attached</div>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">Post-Repair</label>
-            <input
-              type="file"
-              accept="image/*"
-              @change="onPhoto(idx, 'post_repair_photo', $event)"
-              class="text-xs"
-            />
-            <div v-if="row.post_repair_photo" class="mt-1 text-green-600">&#10003; Attached</div>
-          </div>
-        </div>
-      </details>
-    </div>
-
-    <!-- Summary -->
-    <div v-if="rows.length" class="text-right text-sm text-gray-600 pt-2 border-t border-gray-100">
-      <span class="font-medium">Total Estimate:</span>
-      ₹ {{ totalEstimate.toLocaleString() }}
-      <span v-if="approvalNeeded" class="ml-3 text-amber-700 font-medium">
-        &middot; needs customer approval
-      </span>
-    </div>
-  </div>
+		<div v-if="rows.length" class="flex items-center justify-end gap-3 border-t border-hairline pt-3">
+			<span class="text-body-sm text-muted">Total estimate</span>
+			<span class="tabular text-title text-ink">{{ fmt.money(totalEstimate) }}</span>
+			<NBadge v-if="approvalNeeded" semantic="caution" label="Needs customer approval" />
+		</div>
+	</div>
 </template>
 
 <script setup>
 import { computed } from "vue";
+import {
+	NCard,
+	NSelect,
+	NInput,
+	NChoice,
+	NFileField,
+	NButton,
+	NIconButton,
+	NAlert,
+	NBadge,
+	NEmptyState,
+	fmt,
+} from "../ui/index.js";
 
 const props = defineProps({
-  modelValue: {
-    type: Array,
-    default: () => [],
-  },
-  partGroups: {
-    type: Array,
-    default: () => [],
-  },
+	modelValue: { type: Array, default: () => [] },
+	partGroups: { type: Array, default: () => [] },
 });
-
 const emit = defineEmits(["update:modelValue"]);
 
-const activityTypes = ["Only Repair", "Spare Replacement", "Both"];
+const ACTIVITY_TYPES = [
+	{ value: "Only Repair", label: "Labour only" },
+	{ value: "Spare Replacement", label: "Part replaced" },
+	{ value: "Both", label: "Both" },
+];
 
+/** Above this, a customer has to say yes before parts move. */
 const APPROVAL_THRESHOLD = 1000;
 
 const rows = computed(() => props.modelValue || []);
 
-const totalEstimate = computed(() =>
-  rows.value.reduce((sum, r) => sum + (Number(r.qty) || 0) * (Number(r.rate) || 0), 0)
+const partGroupOptions = computed(() =>
+	props.partGroups.map((pg) => ({
+		value: pg.name,
+		label: pg.bus_system
+			? `${pg.part_group_name || pg.name} (${pg.bus_system})`
+			: pg.part_group_name || pg.name,
+	}))
 );
 
-const approvalNeeded = computed(() =>
-  rows.value.some((r) => needsApproval(r))
-);
+function lineTotal(row) {
+	return (Number(row.qty) || 0) * (Number(row.rate) || 0);
+}
+
+const totalEstimate = computed(() => rows.value.reduce((sum, r) => sum + lineTotal(r), 0));
+const approvalNeeded = computed(() => rows.value.some(needsApproval));
 
 function needsApproval(row) {
-  if (row.activity_type !== "Spare Replacement" && row.activity_type !== "Both") {
-    return false;
-  }
-  const lineTotal = (Number(row.qty) || 0) * (Number(row.rate) || 0);
-  return lineTotal > APPROVAL_THRESHOLD;
+	if (row.activity_type !== "Spare Replacement" && row.activity_type !== "Both") return false;
+	return lineTotal(row) > APPROVAL_THRESHOLD;
 }
 
 function emitChange(next) {
-  emit("update:modelValue", next);
+	emit("update:modelValue", next);
 }
 
 function addRow() {
-  emitChange([
-    ...rows.value,
-    {
-      part_group: "",
-      activity_type: "Only Repair",
-      description: "",
-      qty: 1,
-      rate: 0,
-      pre_repair_photo: null,
-      post_repair_photo: null,
-    },
-  ]);
+	emitChange([
+		...rows.value,
+		{
+			part_group: "",
+			activity_type: "Only Repair",
+			description: "",
+			qty: 1,
+			rate: 0,
+			pre_repair_photo: null,
+			post_repair_photo: null,
+		},
+	]);
 }
 
 function removeRow(idx) {
-  emitChange(rows.value.filter((_, i) => i !== idx));
+	emitChange(rows.value.filter((_, i) => i !== idx));
 }
 
 function updateRow(idx, field, value) {
-  const copy = rows.value.map((r, i) => (i === idx ? { ...r, [field]: value } : r));
-  emitChange(copy);
-}
-
-function onPhoto(idx, field, event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  // Defer actual upload to submit time; store the File object as a placeholder.
-  updateRow(idx, field, file);
+	emitChange(rows.value.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
 }
 </script>
-
-<style scoped>
-.input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-         focus:ring-2 focus:ring-brand-500 focus:border-brand-500
-         text-gray-900 placeholder-gray-400 transition-colors;
-}
-</style>

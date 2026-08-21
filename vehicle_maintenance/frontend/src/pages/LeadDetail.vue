@@ -1,268 +1,267 @@
+<!--
+  A lead.
+
+  This page carried more emoji than any other in the product — 📞 for the phone,
+  💰 for the value, and a per-activity-type emoji in the timeline. Every one of
+  them drew differently on Android, Windows and macOS, and none could be tinted
+  or aligned to the text beside it. They are icons now.
+-->
 <template>
-	<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-		<div class="mb-4">
-			<router-link to="/service-portal/crm/leads" class="text-sm text-brand-600 hover:underline"
-				>&larr; All leads</router-link
-			>
-		</div>
+	<div>
+		<NPageHeader
+			:title="lead?.lead_name || 'Lead'"
+			:subtitle="subtitle"
+			back="/service-portal/crm/leads"
+			back-label="All leads"
+		>
+			<template v-if="lead" #badge>
+				<NBadge
+					v-if="lead.converted_to_customer"
+					semantic="positive"
+					:label="`Converted → ${lead.converted_to_customer}`"
+				/>
+			</template>
+			<template v-if="lead" #actions>
+				<NPriority :value="lead.priority" />
+				<select
+					:value="lead.status"
+					:disabled="changingStatus"
+					aria-label="Lead status"
+					class="h-control rounded-sm border border-line bg-sunken px-2 text-body-sm text-ink"
+					@change="onStatusChange($event.target.value)"
+				>
+					<option v-for="s in dropdowns.statuses" :key="s.name" :value="s.name">
+						{{ s.status_name }}
+					</option>
+				</select>
+			</template>
+			<template v-if="lead" #toolbar>
+				<NTabs v-model="activeTab" :tabs="tabs" class="border-0" />
+			</template>
+		</NPageHeader>
 
-		<div v-if="loading" class="text-center py-12 text-gray-400">Loading…</div>
+		<div class="p-5">
+			<NSkeleton v-if="loading" :count="3" variant="block" height="h-24" :delay="0" />
 
-		<div v-else-if="lead" class="space-y-6">
-			<!-- Header card -->
-			<div class="bg-white border border-gray-200 rounded-xl p-5">
-				<div class="flex items-start justify-between gap-4">
-					<div>
-						<h1 class="text-xl font-bold text-gray-900">{{ lead.lead_name }}</h1>
-						<p class="text-sm text-gray-500 mt-0.5">
-							{{ lead.company_name || "Individual lead" }}
-						</p>
-						<div class="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-sm text-gray-700">
-							<span>📞 {{ lead.phone }}</span>
-							<span v-if="lead.email">✉️ {{ lead.email }}</span>
-							<span v-if="lead.city || lead.state">
-								📍 {{ [lead.city, lead.state].filter(Boolean).join(", ") }}
-							</span>
-							<span v-if="lead.estimated_value">
-								💰 {{ formatCurrency(lead.estimated_value) }}
-							</span>
-						</div>
-					</div>
-					<div class="flex flex-col items-end gap-2">
-						<div class="flex items-center gap-2">
-							<label class="text-xs text-gray-500">Status</label>
-							<select
-								:value="lead.status"
-								@change="onStatusChange($event.target.value)"
-								class="select-field w-44"
-								:disabled="changingStatus"
+			<template v-else-if="lead">
+				<!-- ── Overview ─────────────────────────────────────────────── -->
+				<div v-if="activeTab === 'overview'" class="grid gap-4 lg:grid-cols-2">
+					<NCard title="Contact">
+						<ul class="space-y-2">
+							<li
+								v-for="c in contactLines"
+								:key="c.label"
+								class="flex items-center gap-2 text-body text-ink"
 							>
-								<option v-for="s in dropdowns.statuses" :key="s.name" :value="s.name">
-									{{ s.status_name }}
-								</option>
-							</select>
+								<NIcon :name="c.icon" :size="15" class="text-muted" />
+								<span class="sr-only-ndl">{{ c.label }}:</span>
+								{{ c.value }}
+							</li>
+						</ul>
+					</NCard>
+
+					<NCard title="Qualification">
+						<NKeyValue :items="qualificationItems" />
+					</NCard>
+
+					<NCard title="Notes" class="lg:col-span-2">
+						<p class="whitespace-pre-wrap text-body text-ink">{{ fmt.or(lead.notes) }}</p>
+					</NCard>
+				</div>
+
+				<!-- ── Activities ───────────────────────────────────────────── -->
+				<div v-else-if="activeTab === 'activities'" class="space-y-4">
+					<NCard title="Log an activity">
+						<div class="grid gap-3 md:grid-cols-3">
+							<NSelect
+								v-model="newActivity.activity_type"
+								label="What happened?"
+								placeholder="Choose"
+								:options="ACTIVITY_TYPES"
+								required
+							/>
+							<NSelect
+								v-model="newActivity.outcome"
+								label="Outcome"
+								placeholder="Choose"
+								:options="OUTCOMES"
+							/>
+							<NSelect
+								v-model="newActivity.next_action"
+								label="Next action"
+								placeholder="Choose"
+								:options="NEXT_ACTIONS"
+							/>
 						</div>
-						<span
-							v-if="lead.converted_to_customer"
-							class="text-xs text-green-700 bg-green-50 px-2 py-1 rounded"
-						>
-							Converted → {{ lead.converted_to_customer }}
-						</span>
-					</div>
-				</div>
-			</div>
-
-			<!-- Tabs -->
-			<div class="border-b border-gray-200">
-				<nav class="flex gap-6">
-					<button
-						v-for="tab in tabs"
-						:key="tab.id"
-						class="pb-2 text-sm font-medium border-b-2 transition"
-						:class="
-							activeTab === tab.id
-								? 'border-brand-600 text-brand-700'
-								: 'border-transparent text-gray-500 hover:text-gray-700'
-						"
-						@click="activeTab = tab.id"
-					>
-						{{ tab.label }}
-						<span v-if="tab.count != null" class="ml-1 text-xs text-gray-400">{{
-							tab.count
-						}}</span>
-					</button>
-				</nav>
-			</div>
-
-			<!-- Overview -->
-			<div v-if="activeTab === 'overview'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-				<InfoCard label="Source" :value="lead.lead_source" />
-				<InfoCard label="Industry" :value="lead.industry" />
-				<InfoCard label="Interested In" :value="lead.interested_in" />
-				<InfoCard label="Fleet Size" :value="lead.fleet_size_bucket" />
-				<InfoCard label="Priority" :value="lead.priority" />
-				<InfoCard label="Assigned To" :value="lead.assigned_to" />
-				<InfoCard label="Depot" :value="lead.depot" />
-				<InfoCard label="Expected Close" :value="lead.expected_close_date" />
-				<div class="md:col-span-2 bg-white border border-gray-200 rounded-xl p-4">
-					<div class="text-xs text-gray-500 mb-1">Notes</div>
-					<div class="text-sm text-gray-800 whitespace-pre-wrap">
-						{{ lead.notes || "—" }}
-					</div>
-				</div>
-			</div>
-
-			<!-- Activities -->
-			<div v-if="activeTab === 'activities'" class="space-y-4">
-				<div class="bg-white border border-gray-200 rounded-xl p-4">
-					<h3 class="text-sm font-semibold text-gray-800 mb-3">Log an activity</h3>
-					<div class="grid grid-cols-1 md:grid-cols-4 gap-2">
-						<select v-model="newActivity.activity_type" class="select-field">
-							<option value="">Type</option>
-							<option>Call</option>
-							<option>Visit</option>
-							<option>Demo</option>
-							<option>Quote Sent</option>
-							<option>Email</option>
-							<option>WhatsApp</option>
-							<option>Other</option>
-						</select>
-						<select v-model="newActivity.outcome" class="select-field">
-							<option value="">Outcome</option>
-							<option>Interested</option>
-							<option>Not Interested</option>
-							<option>Callback Requested</option>
-							<option>Meeting Scheduled</option>
-							<option>No Response</option>
-						</select>
-						<select v-model="newActivity.next_action" class="select-field">
-							<option value="">Next action</option>
-							<option>Call Back</option>
-							<option>Send Quote</option>
-							<option>Schedule Demo</option>
-							<option>Close as Lost</option>
-							<option>None</option>
-						</select>
-						<button
-							class="px-3 py-2 text-sm text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50"
-							:disabled="!newActivity.activity_type || addingActivity"
-							@click="submitActivity"
-						>
-							{{ addingActivity ? "…" : "Add" }}
-						</button>
-					</div>
-					<textarea
-						v-model="newActivity.summary"
-						rows="2"
-						class="input-field mt-2"
-						placeholder="Short note (optional)"
-					/>
-				</div>
-
-				<div class="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-					<div v-if="!(lead.activities || []).length" class="p-6 text-center text-sm text-gray-400">
-						No activities yet.
-					</div>
-					<div v-for="a in sortedActivities" :key="a.name" class="p-4 flex items-start gap-3">
-						<span class="text-lg">{{ activityIcon(a.activity_type) }}</span>
-						<div class="flex-1">
-							<div class="text-sm font-medium text-gray-900">
-								{{ a.activity_type }}
-								<span v-if="a.outcome" class="ml-2 text-xs font-normal text-gray-500"
-									>· {{ a.outcome }}</span
+						<NTextarea
+							v-model="newActivity.summary"
+							label="Note"
+							:rows="2"
+							hint="Optional."
+							class="mt-3"
+						/>
+						<template #footer>
+							<div class="flex justify-end">
+								<NButton
+									variant="primary"
+									icon="plus"
+									:loading="addingActivity"
+									:disabled="!newActivity.activity_type"
+									@click="submitActivity"
 								>
+									Add activity
+								</NButton>
 							</div>
-							<div v-if="a.summary" class="text-sm text-gray-700 mt-0.5 whitespace-pre-wrap">
-								{{ a.summary }}
-							</div>
-							<div class="text-xs text-gray-400 mt-1">
-								{{ formatDateTime(a.activity_date) }}
-								<span v-if="a.performed_by"> · {{ a.performed_by }}</span>
-								<span v-if="a.next_action && a.next_action !== 'None'">
-									· next: {{ a.next_action }}
-								</span>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
+						</template>
+					</NCard>
 
-			<!-- Reminders -->
-			<div v-if="activeTab === 'reminders'" class="space-y-4">
-				<div class="flex justify-end">
-					<button
-						class="px-3 py-2 text-sm text-white bg-brand-600 rounded-lg hover:bg-brand-700"
-						@click="showReminderModal = true"
-					>
-						+ Schedule reminder
-					</button>
-				</div>
-				<div class="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-					<div v-if="!reminders.length" class="p-6 text-center text-sm text-gray-400">
-						No reminders scheduled.
-					</div>
-					<div
-						v-for="r in reminders"
-						:key="r.name"
-						class="p-4 flex items-start justify-between gap-3"
-					>
-						<div>
-							<div class="text-sm font-medium text-gray-900">
-								{{ r.subject || "(no subject)" }}
-							</div>
-							<div class="text-xs text-gray-500 mt-0.5">
-								{{ formatDateTime(r.reminder_datetime) }} · {{ r.channel }}
-								<span v-if="r.recipient_email"> · {{ r.recipient_email }}</span>
-							</div>
-							<div v-if="r.failure_reason" class="text-xs text-red-600 mt-1">
-								{{ r.failure_reason }}
-							</div>
-						</div>
-						<div class="flex items-center gap-2">
-							<span :class="reminderBadge(r.status)">{{ r.status }}</span>
-							<button
-								v-if="r.status === 'Scheduled'"
-								class="text-xs text-red-600 hover:underline"
-								@click="cancelReminder(r.name)"
+					<NCard :padded="false">
+						<NEmptyState
+							v-if="!sortedActivities.length"
+							icon="message-square"
+							title="Nothing logged yet"
+							body="Calls, visits and quotes you record appear here, newest first."
+						/>
+						<ul v-else class="divide-y divide-hairline">
+							<li
+								v-for="a in sortedActivities"
+								:key="a.name"
+								class="flex items-start gap-3 py-3"
 							>
-								Cancel
-							</button>
-						</div>
-					</div>
+								<span
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sunken text-muted"
+								>
+									<NIcon :name="activityIcon(a.activity_type)" :size="15" />
+								</span>
+								<div class="min-w-0 flex-1">
+									<p class="text-title-sm text-ink">
+										{{ a.activity_type }}
+										<span v-if="a.outcome" class="font-normal text-muted"
+											>· {{ a.outcome }}</span
+										>
+									</p>
+									<p
+										v-if="a.summary"
+										class="mt-0.5 whitespace-pre-wrap text-body-sm text-ink"
+									>
+										{{ a.summary }}
+									</p>
+									<p class="mt-1 text-caption text-muted">
+										{{ fmt.dateTime(a.activity_date) }}
+										<span v-if="a.performed_by"> · {{ fmt.person(a.performed_by) }}</span>
+										<span v-if="a.next_action && a.next_action !== 'None'">
+											· next: {{ a.next_action }}</span
+										>
+									</p>
+								</div>
+							</li>
+						</ul>
+					</NCard>
 				</div>
-			</div>
 
-			<!-- Attachments -->
-			<div v-if="activeTab === 'attachments'" class="space-y-4">
-				<div class="bg-white border border-gray-200 rounded-xl p-4">
-					<label class="label">Upload file (image or PDF, max 5 MB)</label>
-					<input
-						type="file"
-						accept="image/jpeg,image/png,image/webp,application/pdf"
-						@change="onFilePick"
-						:disabled="uploading"
-						class="block text-sm"
-					/>
-					<input
-						v-model="newCaption"
-						type="text"
-						class="input-field mt-2"
-						placeholder="Caption (optional)"
-					/>
-					<p v-if="uploadError" class="text-sm text-red-600 mt-2">{{ uploadError }}</p>
+				<!-- ── Reminders ────────────────────────────────────────────── -->
+				<div v-else-if="activeTab === 'reminders'" class="space-y-3">
+					<div class="flex justify-end">
+						<NButton variant="primary" icon="bell" @click="showReminderModal = true"
+							>Schedule reminder</NButton
+						>
+					</div>
+
+					<NCard :padded="false">
+						<NEmptyState
+							v-if="!reminders.length"
+							icon="bell"
+							title="No reminders scheduled"
+							body="Schedule one so this lead does not go quiet."
+						/>
+						<ul v-else class="divide-y divide-hairline">
+							<li
+								v-for="r in reminders"
+								:key="r.name"
+								class="flex items-start justify-between gap-3 px-4 py-3"
+							>
+								<div class="min-w-0">
+									<p class="truncate text-title-sm text-ink">
+										{{ fmt.or(r.subject, "(no subject)") }}
+									</p>
+									<p class="text-caption text-muted">
+										{{ fmt.dateTime(r.reminder_datetime) }} · {{ r.channel }}
+										<span v-if="r.recipient_email"> · {{ r.recipient_email }}</span>
+									</p>
+									<p v-if="r.failure_reason" class="mt-1 text-caption text-critical">
+										{{ r.failure_reason }}
+									</p>
+								</div>
+								<div class="flex shrink-0 items-center gap-2">
+									<NBadge :semantic="dispatchSemantic(r.status)" :label="r.status" />
+									<NButton
+										v-if="r.status === 'Scheduled'"
+										variant="ghost"
+										size="sm"
+										@click="cancelReminder(r.name)"
+										>Cancel</NButton
+									>
+								</div>
+							</li>
+						</ul>
+					</NCard>
 				</div>
-				<div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-					<div
-						v-for="(att, idx) in lead.attachments || []"
-						:key="idx"
-						class="bg-white border border-gray-200 rounded-xl overflow-hidden"
-					>
-						<a :href="att.file_url" target="_blank" class="block">
+
+				<!-- ── Attachments ──────────────────────────────────────────── -->
+				<div v-else-if="activeTab === 'attachments'" class="space-y-4">
+					<NCard title="Add a file">
+						<div class="space-y-3">
+							<input
+								type="file"
+								accept="image/jpeg,image/png,image/webp,application/pdf"
+								:disabled="uploading"
+								aria-label="Choose a file to upload"
+								class="block w-full text-body-sm text-muted file:mr-3 file:h-control file:cursor-pointer file:rounded-sm file:border file:border-line file:bg-raised file:px-3 file:text-label file:text-ink hover:file:bg-sunken"
+								@change="onFilePick"
+							/>
+							<NInput
+								v-model="newCaption"
+								label="Caption"
+								hint="Optional. Images and PDFs up to 5 MB."
+							/>
+							<NAlert v-if="uploadError" semantic="critical" :body="uploadError" />
+						</div>
+					</NCard>
+
+					<NEmptyState
+						v-if="!(lead.attachments || []).length"
+						icon="paperclip"
+						title="No files yet"
+						body="Quotes, site photos and signed documents can live here."
+					/>
+					<div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+						<a
+							v-for="(att, idx) in lead.attachments"
+							:key="idx"
+							:href="att.file_url"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="overflow-hidden rounded-md border border-hairline bg-raised transition-colors duration-instant hover:bg-sunken"
+						>
 							<img
 								v-if="isImage(att.file_url)"
 								:src="att.file_url"
-								:alt="att.caption || 'attachment'"
-								class="w-full h-40 object-cover"
+								:alt="att.caption || fileName(att.file_url)"
+								class="h-32 w-full object-cover"
 							/>
 							<div
 								v-else
-								class="w-full h-40 flex items-center justify-center bg-gray-50 text-gray-400"
+								class="flex h-32 w-full items-center justify-center bg-sunken text-subtle"
 							>
-								📄 {{ fileName(att.file_url) }}
+								<NIcon name="file-text" :size="24" />
 							</div>
+							<p class="truncate px-2.5 py-2 text-caption text-muted">
+								{{ att.caption || fileName(att.file_url) }}
+							</p>
 						</a>
-						<div class="p-2 text-xs text-gray-600 truncate">
-							{{ att.caption || fileName(att.file_url) }}
-						</div>
-					</div>
-					<div
-						v-if="!(lead.attachments || []).length"
-						class="col-span-full text-center text-sm text-gray-400 py-6"
-					>
-						No attachments yet.
 					</div>
 				</div>
-			</div>
+			</template>
 		</div>
 
 		<LeadReminderModal
@@ -276,13 +275,43 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
-import InfoCard from "../components/InfoCard.vue";
 import LeadReminderModal from "../components/LeadReminderModal.vue";
 import { useLeads } from "../composables/useLeads.js";
 import { useCrmDropdowns } from "../composables/useCrmDropdowns.js";
-import { call } from "frappe-ui";
+import {
+	NPageHeader,
+	NTabs,
+	NCard,
+	NKeyValue,
+	NBadge,
+	NPriority,
+	NButton,
+	NIcon,
+	NInput,
+	NSelect,
+	NTextarea,
+	NAlert,
+	NEmptyState,
+	NSkeleton,
+	fmt,
+	dispatchSemantic,
+	toast,
+} from "../ui/index.js";
+
+const ACTIVITY_TYPES = ["Call", "Visit", "Demo", "Quote Sent", "Email", "WhatsApp", "Other"];
+const OUTCOMES = ["Interested", "Not Interested", "Callback Requested", "Meeting Scheduled", "No Response"];
+const NEXT_ACTIONS = ["Call Back", "Send Quote", "Schedule Demo", "Close as Lost", "None"];
+
+const ACTIVITY_ICONS = {
+	Call: "phone",
+	Visit: "map-pin",
+	Demo: "play",
+	"Quote Sent": "file-text",
+	Email: "mail",
+	WhatsApp: "message-square",
+};
 
 const route = useRoute();
 const leads = useLeads();
@@ -294,30 +323,63 @@ const loading = ref(true);
 const activeTab = ref("overview");
 const changingStatus = ref(false);
 
-const newActivity = reactive({
-	activity_type: "",
-	outcome: "",
-	next_action: "",
-	summary: "",
-});
+const newActivity = reactive({ activity_type: "", outcome: "", next_action: "", summary: "" });
 const addingActivity = ref(false);
-
 const showReminderModal = ref(false);
 
 const newCaption = ref("");
 const uploading = ref(false);
 const uploadError = ref("");
 
+const subtitle = computed(() => lead.value?.company_name || "Individual lead");
+
 const tabs = computed(() => [
-	{ id: "overview", label: "Overview" },
-	{ id: "activities", label: "Activities", count: (lead.value?.activities || []).length },
-	{ id: "reminders", label: "Reminders", count: reminders.value.length },
-	{ id: "attachments", label: "Attachments", count: (lead.value?.attachments || []).length },
+	{ value: "overview", label: "Overview" },
+	{ value: "activities", label: "Activities", count: (lead.value?.activities || []).length },
+	{ value: "reminders", label: "Reminders", count: reminders.value.length },
+	{ value: "attachments", label: "Files", count: (lead.value?.attachments || []).length },
 ]);
+
+const contactLines = computed(() => {
+	const l = lead.value;
+	if (!l) return [];
+	return [
+		l.phone && { icon: "phone", label: "Phone", value: l.phone },
+		l.email && { icon: "mail", label: "Email", value: l.email },
+		(l.city || l.state) && {
+			icon: "map-pin",
+			label: "Location",
+			value: [l.city, l.state].filter(Boolean).join(", "),
+		},
+		l.estimated_value && {
+			icon: "indian-rupee",
+			label: "Estimated value",
+			value: fmt.money(l.estimated_value),
+		},
+	].filter(Boolean);
+});
+
+const qualificationItems = computed(() => {
+	const l = lead.value;
+	if (!l) return [];
+	return [
+		{ label: "Source", value: fmt.or(l.lead_source) },
+		{ label: "Industry", value: fmt.or(l.industry) },
+		{ label: "Interested in", value: fmt.or(l.interested_in) },
+		{ label: "Fleet size", value: fmt.or(l.fleet_size_bucket) },
+		{ label: "Assigned to", value: fmt.person(l.assigned_to) },
+		{ label: "Depot", value: fmt.or(l.depot) },
+		{ label: "Expected close", value: fmt.date(l.expected_close_date) },
+	];
+});
 
 const sortedActivities = computed(() =>
 	[...(lead.value?.activities || [])].sort((a, b) => new Date(b.activity_date) - new Date(a.activity_date))
 );
+
+function activityIcon(type) {
+	return ACTIVITY_ICONS[type] || "pencil";
+}
 
 async function reload() {
 	loading.value = true;
@@ -336,6 +398,9 @@ async function onStatusChange(newStatus) {
 	try {
 		await leads.updateStatus(lead.value.name, newStatus);
 		await reload();
+		toast.success(`Status set to ${newStatus}.`);
+	} catch (e) {
+		toast.error(e?.message || "Could not change the status.");
 	} finally {
 		changingStatus.value = false;
 	}
@@ -346,12 +411,7 @@ async function submitActivity() {
 	addingActivity.value = true;
 	try {
 		await leads.addActivity(lead.value.name, { ...newActivity });
-		Object.assign(newActivity, {
-			activity_type: "",
-			outcome: "",
-			next_action: "",
-			summary: "",
-		});
+		Object.assign(newActivity, { activity_type: "", outcome: "", next_action: "", summary: "" });
 		await reload();
 	} finally {
 		addingActivity.value = false;
@@ -368,7 +428,7 @@ async function onFilePick(event) {
 	if (!file) return;
 	uploadError.value = "";
 	if (file.size > 5 * 1024 * 1024) {
-		uploadError.value = "File exceeds 5 MB.";
+		uploadError.value = "That file is over 5 MB. Compress it, or attach a smaller one.";
 		event.target.value = "";
 		return;
 	}
@@ -392,7 +452,7 @@ async function onFilePick(event) {
 		if (!resp.ok) throw new Error(`Upload failed (${resp.status})`);
 		const body = await resp.json();
 		const fileUrl = body.message?.file_url || body.file_url;
-		if (!fileUrl) throw new Error("No file_url in upload response.");
+		if (!fileUrl) throw new Error("The server did not return a file location.");
 
 		await leads.uploadAttachment(lead.value.name, fileUrl, newCaption.value);
 		newCaption.value = "";
@@ -405,27 +465,6 @@ async function onFilePick(event) {
 	}
 }
 
-function reminderBadge(status) {
-	const base = "inline-flex px-2 py-0.5 rounded-full text-xs font-medium";
-	if (status === "Scheduled") return `${base} bg-blue-50 text-blue-700`;
-	if (status === "Sent") return `${base} bg-green-50 text-green-700`;
-	if (status === "Failed") return `${base} bg-red-50 text-red-700`;
-	return `${base} bg-gray-100 text-gray-600`;
-}
-
-function activityIcon(t) {
-	return (
-		{
-			Call: "📞",
-			Visit: "🚗",
-			Demo: "💻",
-			"Quote Sent": "📄",
-			Email: "✉️",
-			WhatsApp: "💬",
-		}[t] || "📝"
-	);
-}
-
 function isImage(url) {
 	return /\.(jpe?g|png|webp|gif)$/i.test(url || "");
 }
@@ -434,39 +473,8 @@ function fileName(url) {
 	return (url || "").split("/").pop();
 }
 
-function formatCurrency(v) {
-	return new Intl.NumberFormat("en-IN", {
-		style: "currency",
-		currency: "INR",
-		maximumFractionDigits: 0,
-	}).format(v);
-}
-
-function formatDateTime(s) {
-	if (!s) return "";
-	return new Date(s).toLocaleString("en-IN", {
-		day: "2-digit",
-		month: "short",
-		year: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-	});
-}
-
 onMounted(async () => {
 	await loadDropdowns();
 	await reload();
 });
 </script>
-
-<style scoped>
-.label {
-	@apply block text-sm font-medium text-gray-700 mb-1;
-}
-.input-field {
-	@apply w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none;
-}
-.select-field {
-	@apply px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none;
-}
-</style>

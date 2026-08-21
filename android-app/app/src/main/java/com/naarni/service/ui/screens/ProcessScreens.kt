@@ -99,6 +99,8 @@ import com.naarni.service.ui.components.StampingCamera
 import com.naarni.service.core.ocr.WeightOcr
 import com.naarni.service.ui.components.OcrSuggestion
 import com.naarni.service.ui.components.ReviewablePhoto
+import com.naarni.service.ui.components.RunVerifyCard
+import com.naarni.service.ui.components.VerifyLine
 import com.naarni.service.ui.components.LinkPickerSheet
 import com.naarni.service.ui.components.StepAnswer
 import com.naarni.service.ui.components.StepCard
@@ -875,7 +877,7 @@ fun ProcessRunnerScreen(
             ?.takeIf { it >= 0 }
 
         val firstOpen = screens.indexOfFirst { candidate ->
-            candidate.steps.any { !answers[it.step_code].isAnswered() }
+            candidate.steps.any { !answers[it.step_code].isAnswered(it, photoCounts[it.step_code] ?: 0) }
         }
         // Every check answered and nothing remembered: leave the operator on the
         // last screen rather than the first, so Submit is one tap away instead of
@@ -1095,6 +1097,22 @@ fun ProcessRunnerScreen(
         }
     }
 
+    // The read-back is agreed with and the entry is finished in one tap. Two
+    // buttons that both mean "yes, that is right" is one too many, and the
+    // second is the one people learn to press without reading. Saving is
+    // awaited before submitting: the submit interlock reads the same store the
+    // answer is written to, so racing them reports the check as missing.
+    val confirmAndFinish: (ProcessStep) -> Unit = { step ->
+        uuid?.let { id ->
+            scope.launch {
+                runCatching {
+                    vm.inspections.saveAnswer(runUuid = id, step = step, response = CONFIRMED)
+                }.onFailure { banner = it.message }
+                advance()
+            }
+        }
+    }
+
     pendingGate?.let { gate ->
         RunnerGateDialog(
             gate = gate,
@@ -1155,15 +1173,25 @@ fun ProcessRunnerScreen(
         },
         bottomBar = {
             screen?.let { current ->
-                val answered = current.steps.count { s -> answers[s.step_code].isAnswered() }
+                val answered = current.steps.count { s ->
+                    answers[s.step_code].isAnswered(s, photoCounts[s.step_code] ?: 0)
+                }
                 val gate = gateFor(current.steps, answers, photoCounts)
+                val reviewStep = current.steps.firstOrNull {
+                    it.response_type == REVIEW_STEP && it.supported
+                }
                 RunnerNavBar(
                     canGoBack = screenIndex > 0,
                     onBack = { screenIndex-- },
                     // A "1 / 1" counter next to a single question is noise.
                     counter = if (single) null else "$answered / ${current.steps.size}",
-                    gate = gate,
+                    // The read-back has its own button and its own meaning; the
+                    // generic "you have not answered this" prompt on top of it
+                    // would be a warning about a screen that is nothing but
+                    // other screens' answers.
+                    gate = if (reviewStep != null) null else gate,
                     nextLabel = when {
+                        reviewStep != null -> "Confirm & finish"
                         screenIndex < screens.lastIndex && single -> "Next"
                         screenIndex < screens.lastIndex -> "Next section"
                         else -> "Submit ${stage?.label ?: ""}"
@@ -1172,7 +1200,13 @@ fun ProcessRunnerScreen(
                     // The gate interrupts; it never refuses. Pressing Next with
                     // something missing opens the dialog, and the dialog can
                     // still let the operator through.
-                    onNext = { if (gate != null) pendingGate = gate else advance() },
+                    onNext = {
+                        when {
+                            reviewStep != null -> confirmAndFinish(reviewStep)
+                            gate != null -> pendingGate = gate
+                            else -> advance()
+                        }
+                    },
                 )
             }
         },
@@ -1211,6 +1245,43 @@ fun ProcessRunnerScreen(
                 val liveScreen = screens.getOrNull(index) ?: current
                 val step = liveScreen.steps.first()
                 val stepAnswer = answers[step.step_code] ?: StepAnswer()
+                val stepHeader: @Composable () -> Unit = {
+                    StepProgress(index, screens.size)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            liveScreen.section.ifBlank { "Checks" }.uppercase(),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        AnsweredChip(stepAnswer)
+                    }
+                    banner?.let { RunnerBanner(it) }
+                }
+                if (step.response_type == REVIEW_STEP && step.supported) {
+                    // The read-back owns the whole screen: it is a list of every
+                    // other question, so drawing it inside the one-question card
+                    // would put a scrolling list where the answer buttons live.
+                    RunVerifyCard(
+                        step = step,
+                        lines = verifyLines(screens, index, answers, photosByStep, photoCounts),
+                        confirmed = stepAnswer.isAnswered(),
+                        onJump = { target -> screenIndex = target },
+                        onConfirm = { confirmAndFinish(step) },
+                        header = stepHeader,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 18.dp)
+                            .padding(top = 10.dp, bottom = 4.dp),
+                    )
+                    return@AnimatedContent
+                }
                 RunnerStep(
                     step = step,
                     answer = stepAnswer,
@@ -1226,27 +1297,11 @@ fun ProcessRunnerScreen(
                         .padding(horizontal = 18.dp)
                         .padding(top = 10.dp, bottom = 4.dp),
                     header = {
-                        StepProgress(index, screens.size)
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                liveScreen.section.ifBlank { "Checks" }.uppercase(),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f),
-                            )
-                            // Says which of the two screens this is. Coming back
-                            // to a check you have already marked and being unable
-                            // to tell is how an answer gets overwritten by
-                            // accident.
-                            AnsweredChip(stepAnswer)
-                        }
-                        banner?.let { RunnerBanner(it) }
+                        // Says which of the two screens this is, among other
+                        // things. Coming back to a check you have already marked
+                        // and being unable to tell is how an answer gets
+                        // overwritten by accident.
+                        stepHeader()
                         currentRun?.takeIf { it.status == "Quarantined" }?.let {
                             QuarantineBanner(it.quarantineReason)
                         }
@@ -1363,8 +1418,94 @@ private enum class RunnerGate(
     ),
 }
 
-private fun StepAnswer?.isAnswered(): Boolean =
-    this != null && (response != null || !value.isNullOrBlank() || skipped)
+/**
+ * Whether this step has been dealt with.
+ *
+ * [step] and [photoCount] are optional because most call sites do not have them
+ * — but on a `Photo Only` step the photograph *is* the answer and no answer row
+ * is ever written for one, so judging that step on its response alone reports a
+ * step the operator has just photographed as untouched. That put the resume
+ * logic back on a finished check and made the Next gate nag on every photo
+ * step. The server makes the same judgement, in `evaluation.evaluate`.
+ */
+private fun StepAnswer?.isAnswered(step: ProcessStep? = null, photoCount: Int = 0): Boolean {
+    if (step?.response_type == PHOTO_ONLY_STEP) return photoCount > 0 || this?.skipped == true
+    return this != null && (response != null || !value.isNullOrBlank() || skipped)
+}
+
+/** Response types this file branches on by name. The server's `constants.py`. */
+private const val PHOTO_ONLY_STEP = "Photo Only"
+internal const val REVIEW_STEP = "Review & Confirm"
+
+/** What a confirmed read-back stores. Any non-empty response would do; this reads. */
+internal const val CONFIRMED = "CONFIRMED"
+
+/**
+ * Everything answered so far, read back for the review screen.
+ *
+ * Built from the screens rather than from the definition's step list so a step
+ * hidden by a visibility condition is absent from the summary too — a read-back
+ * that lists questions the operator was never asked is a read-back nobody
+ * trusts.
+ */
+private fun verifyLines(
+    screens: List<ProcessScreen>,
+    reviewIndex: Int,
+    answers: Map<String, StepAnswer>,
+    photos: Map<String, List<ReviewablePhoto>>,
+    photoCounts: Map<String, Int>,
+): List<VerifyLine> = screens.take(reviewIndex).flatMapIndexed { index, screen ->
+    screen.steps
+        .filter { it.response_type != "Section Note" && it.response_type != REVIEW_STEP }
+        .map { step ->
+            val answer = answers[step.step_code]
+            val count = photoCounts[step.step_code] ?: 0
+            VerifyLine(
+                screenIndex = index,
+                displayNo = step.display_no?.takeIf { it.isNotBlank() } ?: "${index + 1}",
+                label = step.label,
+                answer = answerText(step, answer, count),
+                answered = answer.isAnswered(step, count) && answer?.skipped != true,
+                photos = photos[step.step_code].orEmpty(),
+            )
+        }
+}
+
+/** One answer in the words the operator used, not the words the database stores. */
+private fun answerText(step: ProcessStep, answer: StepAnswer?, photoCount: Int): String {
+    if (answer?.skipped == true) {
+        return "Skipped — " + (answer.skipReason?.takeIf { it.isNotBlank() } ?: "no reason given")
+    }
+    val unit = step.unit?.trim().orEmpty()
+    return when (step.response_type) {
+        PHOTO_ONLY_STEP -> when (photoCount) {
+            0 -> "No photo yet"
+            1 -> "1 photo"
+            else -> "$photoCount photos"
+        }
+        // The label, never the document name. An operator who picked "HVAC Unit"
+        // did not pick "AGG-001", and showing them the code reads as a different
+        // answer — see StepAnswer.valueLabel.
+        "Link" -> answer?.valueLabel?.takeIf { it.isNotBlank() }
+            ?: answer?.response?.takeIf { it.isNotBlank() }
+            ?: "Not chosen"
+        "Choice", "Choice Multi", "Yes No" -> answer?.response
+            ?.split(",")
+            ?.mapNotNull { pick ->
+                val key = pick.trim()
+                step.options.firstOrNull { it.value == key }?.label ?: key.ifBlank { null }
+            }
+            ?.joinToString(", ")
+            ?.takeIf { it.isNotBlank() }
+            ?: "Not answered"
+        else -> {
+            val raw = answer?.value?.takeIf { it.isNotBlank() }
+                ?: answer?.response?.takeIf { it.isNotBlank() }
+                ?: return "Not entered"
+            if (unit.isNotEmpty()) "$raw $unit" else raw
+        }
+    }
+}
 
 /** The first thing missing on this screen, or null when it is complete. */
 private fun gateFor(
@@ -1372,7 +1513,9 @@ private fun gateFor(
     answers: Map<String, StepAnswer>,
     photoCounts: Map<String, Int>,
 ): RunnerGate? {
-    if (steps.any { !answers[it.step_code].isAnswered() }) return RunnerGate.NOT_ANSWERED
+    if (steps.any { !answers[it.step_code].isAnswered(it, photoCounts[it.step_code] ?: 0) }) {
+        return RunnerGate.NOT_ANSWERED
+    }
     val missing = steps.any { step ->
         val answer = answers[step.step_code] ?: StepAnswer()
         step.wantsPhoto(answer) && (photoCounts[step.step_code] ?: 0) == 0

@@ -236,9 +236,11 @@ class ProcessRepository(private val api: FrappeApi) {
 
     companion object {
         /** Step-type capability this build renders. See the class docstring. */
-        // 2: this build renders `Weight from Photo` — a weight typed beside a
-        // photograph of the scale, with the number read off it by on-device OCR.
-        const val APP_STEP_CAPABILITY = 2
+        // 2: `Weight from Photo` — a weight typed beside a photograph of the
+        //    scale, with the number read off it by on-device OCR.
+        // 3: `Review & Confirm` — the run's own answers and photographs read
+        //    back on a last screen, each line a tap back to the question.
+        const val APP_STEP_CAPABILITY = 3
     }
 }
 

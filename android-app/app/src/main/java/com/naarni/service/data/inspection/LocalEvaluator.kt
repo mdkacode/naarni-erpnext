@@ -187,12 +187,22 @@ object LocalEvaluator {
 			)
 			step.response_type == SCAN -> {
 				val expected = maxOf(1, step.scan_count)
+				// Typed counts. Every scan step offers a box to type into and its
+				// help text tells the operator to use it — labels come off crates
+				// greasy, torn, or printed too small for any camera. Judging only
+				// the camera made a keyed-in chassis number read as unanswered, so
+				// the submit gate demanded a step that was filled in on screen.
+				// The server has the same rule, in `evaluation.py`.
+				val typed = trimmed?.takeIf { it.isNotEmpty() } ?: value?.trim()?.takeIf { it.isNotEmpty() }
+				val answered = scanCount > 0 || typed != null
 				blank.copy(
-					isAnswered = scanCount > 0,
+					response = typed ?: trimmed,
+					valueText = typed,
+					isAnswered = answered,
 					// A scan is never mandatory, so a partial capture still passes
 					// the step — the shortfall shows up as traceability
 					// completeness on the run, not as a failed check.
-					isPass = scanCount > 0,
+					isPass = answered,
 					valueNumeric = scanCount.toDouble(),
 					specSummary = "$scanCount of $expected captured",
 				)

@@ -65,9 +65,9 @@ import com.naarni.service.ui.screens.HomeScreen
 import com.naarni.service.ui.screens.JobCardDetailScreen
 import com.naarni.service.ui.screens.JobCardsScreen
 import com.naarni.service.ui.material.MaterialDetailScreen
-import com.naarni.service.ui.material.MaterialItemsScreen
+import com.naarni.service.ui.material.GATE_STAGE
+import com.naarni.service.ui.material.GateEntryScreen
 import com.naarni.service.ui.material.MaterialListScreen
-import com.naarni.service.ui.material.MaterialStartScreen
 import com.naarni.service.ui.material.MaterialViewModel
 import com.naarni.service.ui.screens.NotificationsScreen
 import com.naarni.service.ui.screens.ProcessHistoryScreen
@@ -433,37 +433,24 @@ fun MainShell(vm: AppViewModel) {
                 MaterialListScreen(
                     vm = materialVm,
                     onOpen = { name -> nav.navigate("movement/$name") },
-                    onNew = { type -> nav.navigate("newmovement/$type") },
+                    onNew = { nav.navigate("gateentry") },
                 )
             }
-            composable("newmovement/{type}") { entry ->
-                val materialVm: MaterialViewModel = viewModel(
-                    remember(entry) { nav.getBackStackEntry(Tab.Material.route) },
-                )
-                MaterialStartScreen(
-                    vm = materialVm,
-                    initialType = entry.arguments?.getString("type") ?: "Inward",
+            // One entry is one run of MATERIAL_GATE: six questions and a check,
+            // captured offline like every other process. What the app used to
+            // have here — a three-step wizard, then a screen of item rows, each
+            // with its own sheet — asked the same information in a shape the
+            // operator had to learn. The register it produced is unchanged; only
+            // the way it is filled in has changed.
+            composable("gateentry") {
+                GateEntryScreen(
+                    vm,
                     onBack = { nav.popBackStack() },
-                    onOpened = { name ->
-                        nav.navigate("movementitems/$name") {
-                            // Drop the wizard so Back returns to the list rather
-                            // than into a form that would open a second movement.
-                            popUpTo("newmovement/{type}") { inclusive = true }
-                        }
-                    },
-                )
-            }
-            composable("movementitems/{name}") { entry ->
-                val materialVm: MaterialViewModel = viewModel(
-                    remember(entry) { nav.getBackStackEntry(Tab.Material.route) },
-                )
-                MaterialItemsScreen(
-                    vm = materialVm,
-                    movementName = entry.arguments?.getString("name").orEmpty(),
-                    onBack = { nav.popBackStack() },
-                    onDone = {
-                        nav.navigate(Tab.Material.route) {
-                            popUpTo(Tab.Material.route) { inclusive = true }
+                    onStarted = { runUuid ->
+                        nav.navigate("run/$runUuid/$GATE_STAGE") {
+                            // Drop the launcher, so Back from question one lands
+                            // on the register rather than starting a second entry.
+                            popUpTo("gateentry") { inclusive = true }
                         }
                     },
                 )
@@ -476,7 +463,6 @@ fun MainShell(vm: AppViewModel) {
                     vm = materialVm,
                     movementName = entry.arguments?.getString("name").orEmpty(),
                     onBack = { nav.popBackStack() },
-                    onEdit = { name -> nav.navigate("movementitems/$name") },
                 )
             }
             composable("myinspections") {

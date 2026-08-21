@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.QrCode2
@@ -44,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.naarni.service.data.dto.Movement
 import com.naarni.service.data.dto.MovementItem
+import com.naarni.service.data.dto.MovementPhoto
 import com.naarni.service.ui.components.AppBar
 import com.naarni.service.ui.components.LoadingOverlay
 import com.naarni.service.ui.components.MetaChip
@@ -64,7 +64,6 @@ import com.naarni.service.ui.theme.Semantic
 @Composable
 fun MaterialDetailScreen(
     movementName: String,
-    onEdit: (String) -> Unit,
     onBack: () -> Unit,
     vm: MaterialViewModel = viewModel(),
 ) {
@@ -122,7 +121,6 @@ fun MaterialDetailScreen(
                     ActionBar(
                         movement = movement,
                         saving = ui.saving,
-                        onEdit = { onEdit(movement.name) },
                         onVerify = { vm.verify(onDone = onBack) },
                         onReject = { rejecting = true },
                     )
@@ -279,22 +277,19 @@ private fun Callout(title: String, body: String, tint: androidx.compose.ui.graph
 private fun ActionBar(
     movement: Movement,
     saving: Boolean,
-    onEdit: () -> Unit,
     onVerify: () -> Unit,
     onReject: () -> Unit,
 ) {
-    if (!movement.can_edit && !movement.can_verify) return
+    // Verification only. A movement in the app is the projection of a finished
+    // run, so there is nothing here to edit — the entry that produced it is the
+    // thing that was authored, and a second editable copy of it would be two
+    // records of one delivery that could disagree.
+    if (!movement.can_verify) return
     Surface(color = AppSurface.raised) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (movement.can_edit) {
-                Button(onClick = onEdit, modifier = Modifier.weight(1f), enabled = !saving) {
-                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("  Continue")
-                }
-            }
             if (movement.can_verify) {
                 OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f), enabled = !saving) {
                     Text("Send back")
@@ -307,3 +302,28 @@ private fun ActionBar(
         }
     }
 }
+
+/**
+ * The register's photographs, grouped by the item row each belongs to.
+ *
+ * Frappe has no grandchild table, so photos live on the movement and *point at*
+ * a row. Header photographs — the challan, the truck — carry no row and land
+ * under the null key.
+ */
+fun List<MovementPhoto>.byItemRow(): Map<String?, List<ReviewablePhoto>> =
+    groupBy { it.item_row?.takeIf { row -> row.isNotBlank() } }
+        .mapValues { (_, rows) ->
+            rows.map {
+                ReviewablePhoto(
+                    id = it.client_uuid.ifBlank { it.file_url },
+                    remoteUrl = it.file_url,
+                    caption = it.caption,
+                    // It came back from the server, so by definition it is up.
+                    uploaded = true,
+                )
+            }
+        }
+
+/** "12.0" reads wrong on a quantity; "12" does not. */
+fun Double.trimTrailingZero(): String =
+    if (this % 1.0 == 0.0) toLong().toString() else toString()

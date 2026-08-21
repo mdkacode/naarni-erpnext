@@ -60,7 +60,7 @@ import com.naarni.service.ui.theme.Semantic
 @Composable
 fun MaterialListScreen(
     onOpen: (String) -> Unit,
-    onNew: (String) -> Unit,
+    onNew: () -> Unit,
     vm: MaterialViewModel = viewModel(),
 ) {
     val ui = vm.ui
@@ -79,10 +79,14 @@ fun MaterialListScreen(
         },
         floatingActionButton = {
             if (ui.context?.can_write != false) {
+                // One button, not two. Inward or outward is the first
+                // question of the entry itself, so asking it here as well would
+                // be asking it twice — and a wrong tap here used to mean backing
+                // out of a movement that had already been created.
                 ExtendedFloatingActionButton(
-                    onClick = { onNew("Inward") },
+                    onClick = onNew,
                     icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                    text = { Text("New movement") },
+                    text = { Text("New entry") },
                 )
             }
         },
@@ -109,7 +113,7 @@ fun MaterialListScreen(
                                 "finished" -> "Nothing closed yet"
                                 else -> "No open movements"
                             },
-                            body = "Tap New movement when a truck arrives or leaves.",
+                            body = "Tap New entry when something crosses the gate.",
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {

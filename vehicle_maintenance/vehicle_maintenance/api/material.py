@@ -149,6 +149,7 @@ def _serialise_item(row) -> dict:
 		"qr_source": row.qr_source,
 		"batch_no": row.batch_no,
 		"mfg_date": str(row.mfg_date) if row.mfg_date else None,
+		"chassis_no": row.chassis_no,
 		"photo_count": cint(row.photo_count),
 		"no_photo_reason": row.no_photo_reason,
 		"is_new_item": cint(row.is_new_item),
@@ -1008,7 +1009,13 @@ def my_movements(scope: str = "open", location: str = "", limit: int = 25, offse
 	offset = max(0, int(offset or 0))
 
 	scopes = {
-		"open": [["status", "in", [C.STATUS_DRAFT, C.STATUS_IN_PROGRESS]]],
+		# "Open" is the operator's own sense of open: anything not yet closed.
+		# It used to stop at In Progress, so an entry the operator had just
+		# finished left their list the moment they finished it — the register
+		# they had been watching fill up went back to what it said before, and
+		# the only chip that would have shown it is the verifier's queue, which
+		# an operator cannot see. Waiting on a supervisor is still open work.
+		"open": [["status", "in", [C.STATUS_DRAFT, C.STATUS_IN_PROGRESS, C.STATUS_AWAITING_VERIFICATION]]],
 		"awaiting": [["status", "=", C.STATUS_AWAITING_VERIFICATION]],
 		"finished": [["status", "in", [C.STATUS_COMPLETED, C.STATUS_CANCELLED]]],
 		"all": [],

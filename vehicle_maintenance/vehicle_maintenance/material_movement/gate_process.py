@@ -153,6 +153,11 @@ def _project(run) -> None:
 			"movement_type": movement_type,
 			"location": _location_for(run),
 			"client_uuid": _uuid_for(run),
+			# `submit_stage` commits, so a movement projected during a test
+			# survives the suite's rollback and shows up in the plant's register
+			# as a real delivery. Flagged instead, which is what the register's
+			# own filter already looks for.
+			"is_test": 1 if frappe.flags.in_test else 0,
 			# Projected runs land already verified-pending: the operator finished
 			# the run, so the register entry is submitted, not a draft somebody has
 			# to remember to send on.

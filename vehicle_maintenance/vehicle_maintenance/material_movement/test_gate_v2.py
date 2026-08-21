@@ -249,3 +249,28 @@ class TestTheRegisterItProduces(GateV2TestCase):
 		frappe.get_doc("Process Run", run).save(ignore_permissions=True)
 		frappe.db.commit()  # nosemgrep — as above
 		self.assertEqual(frappe.db.count("Material Movement", {"client_uuid": f"run:{run}"}), 1)
+
+
+class TestTheOperatorsList(GateV2TestCase):
+	def test_a_finished_entry_stays_on_the_operators_list(self):
+		"""It used to vanish: submitted, and gone from every chip they can see."""
+		from vehicle_maintenance.api import material
+
+		run = self._start()
+		self._answer_everything(run)
+		api.submit_stage(run=run, stage="GATE")
+		frappe.db.commit()  # nosemgrep — the projection runs on the run's own save
+
+		name = frappe.db.get_value("Material Movement", {"client_uuid": f"run:{run}"})
+		self.assertIsNotNone(name)
+		self.assertEqual(
+			frappe.db.get_value("Material Movement", name, "status"), MC.STATUS_AWAITING_VERIFICATION
+		)
+
+		# The projection flags anything made under test so the plant's register
+		# does not fill up with them; cleared here because the list query filters
+		# on exactly that flag, and the thing being tested is the list query.
+		frappe.db.set_value("Material Movement", name, "is_test", 0)
+		visible = {m["name"] for m in material.my_movements(scope="open")["data"]["movements"]}
+		self.assertIn(name, visible)
+		self.addCleanup(frappe.db.set_value, "Material Movement", name, "is_test", 1)

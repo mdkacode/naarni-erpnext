@@ -721,3 +721,53 @@ data class LinkOption(
     val sublabel: String? = null,
     val badge: String? = null,
 )
+
+
+/**
+ * One pack waiting for a signature, as the queue lists it.
+ *
+ * `stage` is carried because the verify call needs it and the list is the only
+ * place that knows it: a run in Awaiting Verification does not move
+ * `current_stage`, so a multi-stage process would otherwise be signed off on
+ * the wrong module.
+ */
+@Serializable
+data class VerificationRun(
+    val name: String = "",
+    val run_identifier: String? = null,
+    val process_name: String = "",
+    val stage: String = "",
+    val stage_label: String = "",
+    val started_by: String? = null,
+    val started_by_name: String? = null,
+    val started_at: String? = null,
+    val completed_at: String? = null,
+    val modified: String? = null,
+    val pass_count: Int = 0,
+    val fail_count: Int = 0,
+    val critical_count: Int = 0,
+    val answered_count: Int = 0,
+    val photo_count: Int = 0,
+    val score_pct: Double = 0.0,
+    val result: String? = null,
+)
+
+/**
+ * The queue, plus why it is empty when it is.
+ *
+ * "Nothing to verify" and "you are not set up to verify anything" look
+ * identical on a screen and are not the same problem — one is a good morning,
+ * the other is an administrator's job. [reason] tells them apart.
+ */
+@Serializable
+data class VerificationQueue(
+    val runs: List<VerificationRun> = emptyList(),
+    val plant: String? = null,
+    val plant_name: String = "",
+    val has_more: Boolean = false,
+    /** `"no_role"` when this person verifies nothing anywhere; null otherwise. */
+    val reason: String? = null,
+) {
+    /** No plant on the profile: an administrator has to set one. */
+    val plantMissing: Boolean get() = plant.isNullOrBlank() && reason == null
+}

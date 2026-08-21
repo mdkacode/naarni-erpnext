@@ -3,6 +3,7 @@ package com.naarni.service.data.repo
 import com.naarni.service.core.network.FrappeApi
 import com.naarni.service.core.network.payload
 import com.naarni.service.data.dto.APP_STEP_CAPABILITY
+import com.naarni.service.data.dto.VerificationQueue
 import com.naarni.service.data.dto.FoundRun
 import com.naarni.service.data.dto.OpenRun
 import com.naarni.service.data.dto.ProcessDefinition
@@ -231,6 +232,10 @@ class ProcessRepository(private val api: FrappeApi) {
     /** Is this pack already being inspected? Asked straight off the scan. */
     suspend fun findOpenRun(process: String, identifier: String): FoundRun =
         api.findOpenProcessRun(process, identifier).payload()
+
+    /** Packs waiting on this person's signature. Needs the network, by nature. */
+    suspend fun verificationQueue(limit: Int = 50): VerificationQueue =
+        api.verificationQueue(limit).payload()
 
     suspend fun verifyStage(run: String, stage: String, approve: Boolean, remarks: String? = null): ProcessRun =
         api.verifyProcessStage(run, stage, if (approve) "Approved" else "Rejected", remarks).payload()

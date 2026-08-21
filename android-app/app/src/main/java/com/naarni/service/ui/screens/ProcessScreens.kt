@@ -109,6 +109,9 @@ import com.naarni.service.ui.components.SyncBadge
 import com.naarni.service.ui.components.wantsPhoto
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.rounded.FactCheck
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.rounded.Refresh
 
 /**
  * The process engine's three screens — a list, a start screen, and one runner
@@ -133,6 +136,7 @@ fun ProcessListScreen(
     onOpenProcess: (String) -> Unit,
     onResumeRun: (String) -> Unit,
     onOpenHistory: () -> Unit = {},
+    onOpenVerifyQueue: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -149,6 +153,11 @@ fun ProcessListScreen(
     /** Non-null while a hard push is running, so it can be watched. */
     var pushing by remember { mutableStateOf<InspectionRepository.PushProgress?>(null) }
 
+    // How many packs are waiting on this person's signature. Fetched quietly and
+    // shown only when there are some: a verification card on the screen of
+    // somebody who verifies nothing is a permanent nought.
+    var toVerify by remember { mutableIntStateOf(0) }
+
     // Local, so the resume list is right in a shed. A run started offline has no
     // server name to appear under, and the server's own open-runs list would
     // simply not know it exists.
@@ -157,6 +166,12 @@ fun ProcessListScreen(
     val remoteOnly = remember(remote, adopted) { remote.filter { it.name !in adopted } }
     val pending by vm.inspections.pendingSummary().collectAsState(initial = PendingSummary())
     val online by vm.online.collectAsState()
+
+    LaunchedEffect(Unit) {
+        // Needs the network by nature, and must never hold up the list: an
+        // engineer with no signal still starts inspections from this screen.
+        toVerify = runCatching { vm.processes.verificationQueue().runs.size }.getOrDefault(0)
+    }
 
     LaunchedEffect(Unit) {
         loading = true
@@ -236,6 +251,10 @@ fun ProcessListScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp),
             ) {
+            if (toVerify > 0) {
+                item { VerifyQueueCard(count = toVerify, onClick = onOpenVerifyQueue) }
+            }
+
             // Silent when there is nothing outstanding — see PendingWorkCard.
             item {
                 PendingWorkCard(pending, online) {
@@ -1333,8 +1352,8 @@ fun ProcessRunnerScreen(
                         // and being unable to tell is how an answer gets
                         // overwritten by accident.
                         stepHeader()
-                        currentRun?.takeIf { it.status == "Quarantined" }?.let {
-                            QuarantineBanner(it.quarantineReason)
+                        currentRun?.takeIf { it.status in HELD_STATUSES }?.let {
+                            QuarantineBanner(it.quarantineReason, it.status)
                         }
                         // Only when it needs saying. On a one-check screen the
                         // question should own the space, and "everything is on
@@ -1378,8 +1397,8 @@ fun ProcessRunnerScreen(
                                 online = online,
                             )
                         }
-                        if (r.status == "Quarantined") {
-                            item { QuarantineBanner(r.quarantineReason) }
+                        if (r.status in HELD_STATUSES) {
+                            item { QuarantineBanner(r.quarantineReason, r.status) }
                         }
                     }
 
@@ -1463,6 +1482,9 @@ private fun StepAnswer?.isAnswered(step: ProcessStep? = null, photoCount: Int = 
     if (step?.response_type == PHOTO_ONLY_STEP) return photoCount > 0 || this?.skipped == true
     return this != null && (response != null || !value.isNullOrBlank() || skipped)
 }
+
+/** Statuses that owe the operator an explanation before they carry on. */
+private val HELD_STATUSES = setOf("Quarantined", "In Rework")
 
 /** Response types this file branches on by name. The server's `constants.py`. */
 private const val PHOTO_ONLY_STEP = "Photo Only"
@@ -1787,21 +1809,34 @@ private fun SummaryTile(label: String, value: String, tint: Color, modifier: Mod
 }
 
 @Composable
-private fun QuarantineBanner(reason: String?) {
+private fun QuarantineBanner(reason: String?, status: String? = null) {
+    // Two different messages, because they are two different situations and the
+    // operator's next move differs. Quarantined means stop; sent back means the
+    // verifier has told you what to redo, and the words are theirs.
+    val rework = status == "In Rework"
+    val tint = if (rework) WarnAmber else FailRed
     Surface(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
-        color = FailRed.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, FailRed),
+        color = tint.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, tint),
     ) {
         Row(
             Modifier.padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Rounded.Lock, contentDescription = null, tint = FailRed)
+            Icon(
+                if (rework) Icons.Rounded.Refresh else Icons.Rounded.Lock,
+                contentDescription = null,
+                tint = tint,
+            )
             Column {
-                Text("Quarantined for QC review", fontWeight = FontWeight.SemiBold, color = FailRed)
+                Text(
+                    if (rework) "Sent back by the verifier" else "Quarantined for QC review",
+                    fontWeight = FontWeight.SemiBold,
+                    color = tint,
+                )
                 reason?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -1835,6 +1870,50 @@ private fun SkipRow(reasons: List<String>, onSkip: (String) -> Unit) {
                     ) { Text(reason, style = MaterialTheme.typography.bodySmall) }
                 }
             }
+        }
+    }
+}
+
+
+/**
+ * "Twelve packs are waiting for you." The way into the verification queue.
+ *
+ * At the very top, above the operator's own work, and absent entirely when the
+ * count is nought. A verifier's outstanding queue is somebody else's despatch
+ * waiting — it outranks anything this person might start next.
+ */
+@Composable
+private fun VerifyQueueCard(count: Int, onClick: () -> Unit) {
+    Surface(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = WarnAmber.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, WarnAmber),
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Rounded.FactCheck, contentDescription = null, tint = WarnAmber)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (count == 1) "1 pack to verify" else "$count packs to verify",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Waiting on your sign-off",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowForward,
+                contentDescription = null,
+                tint = WarnAmber,
+            )
         }
     }
 }

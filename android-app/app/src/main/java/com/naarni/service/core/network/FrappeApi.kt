@@ -591,6 +591,18 @@ interface FrappeApi {
         @Field("remarks") remarks: String? = null,
     ): FrappeWrap<Envelope<com.naarni.service.data.dto.ProcessRun>>
 
+    /**
+     * Packs waiting for this user to sign them off — their plant, their roles.
+     *
+     * Not a filter over the inspection list: which stage is waiting, and whether
+     * this person is the one it is waiting on, are decided server-side against
+     * the published definitions.
+     */
+    @GET("api/method/vehicle_maintenance.api.process.verification_queue")
+    suspend fun verificationQueue(
+        @Query("limit") limit: Int = 50,
+    ): FrappeWrap<Envelope<com.naarni.service.data.dto.VerificationQueue>>
+
     /** Runs this user started and has not finished — the resume list. */
     @GET("api/method/vehicle_maintenance.api.process.my_open_runs")
     suspend fun myOpenProcessRuns(): FrappeWrap<Envelope<List<com.naarni.service.data.dto.OpenRun>>>

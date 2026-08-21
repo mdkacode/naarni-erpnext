@@ -76,6 +76,7 @@ import com.naarni.service.ui.screens.ProcessListScreen
 import com.naarni.service.ui.screens.ProcessRunReportScreen
 import com.naarni.service.ui.screens.ProcessRunnerScreen
 import com.naarni.service.ui.screens.ProcessStartScreen
+import com.naarni.service.ui.screens.VerifyQueueScreen
 import com.naarni.service.ui.screens.ProfileScreen
 import com.naarni.service.ui.screens.TicketsScreen
 import com.naarni.service.ui.screens.VehicleDetailScreen
@@ -420,6 +421,7 @@ fun MainShell(vm: AppViewModel) {
                     onOpenProcess = { family -> nav.navigate("process/$family") },
                     onResumeRun = { run -> nav.navigate("run/$run") },
                     onOpenHistory = { nav.navigate("myinspections") },
+                    onOpenVerifyQueue = { nav.navigate("verifyqueue") },
                 )
             }
             // ── Material gate ──
@@ -477,6 +479,26 @@ fun MainShell(vm: AppViewModel) {
                     vm,
                     runName = entry.arguments?.getString("name").orEmpty(),
                     onBack = { nav.popBackStack() },
+                )
+            }
+            // ── Verification: the same record, with two buttons under it ──
+            composable("verifyqueue") {
+                VerifyQueueScreen(
+                    vm,
+                    onOpen = { run, stage -> nav.navigate("verify/$run/$stage") },
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable("verify/{name}/{stage}") { entry ->
+                ProcessRunReportScreen(
+                    vm,
+                    runName = entry.arguments?.getString("name").orEmpty(),
+                    verifyStage = entry.arguments?.getString("stage"),
+                    onBack = { nav.popBackStack() },
+                    // Back to the queue, not to the pack just signed: the next
+                    // thing this person does is the next pack, and the one they
+                    // have finished with should not still be on the screen.
+                    onVerified = { nav.popBackStack() },
                 )
             }
             composable("process/{family}") { entry ->

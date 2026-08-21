@@ -149,6 +149,14 @@
       "in_standard_filter": 1
     },
     {
+      "fieldname": "plant",
+      "label": "Plant",
+      "fieldtype": "Link",
+      "options": "Material Location",
+      "in_standard_filter": 1,
+      "description": "Where this run was carried out. Stamped at the start from the operator\u2019s own plant, and what scopes a verifier to their site."
+    },
+    {
       "fieldname": "latitude",
       "label": "Latitude",
       "fieldtype": "Float",
@@ -320,6 +328,7 @@
     {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "report": 1},
     {"role": "Process Author", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
     {"role": "Process Verifier", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+    {"role": "Battery Verification Engineer", "read": 1, "write": 1, "export": 1, "report": 1},
     {"role": "Process Operator", "read": 1, "write": 1, "create": 1},
     {"role": "Process Viewer", "read": 1, "export": 1, "report": 1},
     {"role": "Central Ops", "read": 1, "export": 1, "report": 1},

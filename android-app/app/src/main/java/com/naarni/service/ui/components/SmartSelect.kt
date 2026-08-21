@@ -11,8 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -34,6 +34,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.naarni.service.data.dto.SuggestionItem
 import kotlinx.coroutines.delay
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Stroke
+import com.naarni.service.ui.theme.Elevation
+import com.naarni.service.ui.theme.Radii
 
 /**
  * The one searchable dropdown used everywhere (KOTLIN_APP_PLAN.md §2.A / §4).
@@ -59,10 +63,9 @@ fun SmartSelect(
 
     Column(modifier) {
         Text(label, style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
-        Surface(
-            onClick = { open = true },
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp,
+        Surface(color = AppSurface.raised, border = Stroke.card, onClick = { open = true },
+            shape = Radii.lg,
+            tonalElevation = Elevation.e0,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         ) {
             Row(
@@ -70,7 +73,7 @@ fun SmartSelect(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(value?.label ?: placeholder, fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Normal)
-                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                Icon(Icons.Rounded.ArrowDropDown, contentDescription = null)
             }
         }
     }
@@ -105,7 +108,7 @@ fun SmartSelect(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("Search $label…") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )

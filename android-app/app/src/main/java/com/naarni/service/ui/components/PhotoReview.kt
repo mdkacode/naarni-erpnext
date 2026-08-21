@@ -48,6 +48,7 @@ import com.naarni.service.BuildConfig
 import com.naarni.service.ui.theme.AppSurface
 import com.naarni.service.ui.theme.Semantic
 import java.io.File
+import com.naarni.service.ui.theme.Radii
 
 /**
  * One photograph, wherever it currently lives.
@@ -100,7 +101,7 @@ fun PhotoStrip(
             Box(
                 Modifier
                     .size(72.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(Radii.md)
                     .background(AppSurface.sunken)
                     .clickable { viewing = index },
             ) {
@@ -200,7 +201,7 @@ fun PhotoViewer(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 photo.caption?.takeIf { it.isNotBlank() }?.let {
-                    Surface(color = Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(8.dp)) {
+                    Surface(color = Color.Black.copy(alpha = 0.55f), shape = Radii.md) {
                         Text(it, color = Color.White, modifier = Modifier.padding(10.dp))
                     }
                 }

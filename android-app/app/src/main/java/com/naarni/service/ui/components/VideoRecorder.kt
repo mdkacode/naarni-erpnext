@@ -52,6 +52,7 @@ import androidx.core.content.ContextCompat
 import com.naarni.service.core.media.VideoCompressor
 import kotlinx.coroutines.delay
 import java.io.File
+import com.naarni.service.ui.theme.Radii
 
 /**
  * Full-screen video capture for chat.
@@ -68,6 +69,17 @@ import java.io.File
  * the first frame is worse than none — it implies the whole clip is covered.
  * The message itself still carries who sent it and when.
  */
+/**
+ * The recording indicator.
+ *
+ * Deliberately *not* [Semantic.critical]. It sits on a camera preview, which is
+ * neither of the app's two canvases, and its job is the near-universal "this is
+ * recording" signal — a dark-theme-softened red would weaken a cue people read
+ * without thinking. A camera overlay is outside the theme, and this is the only
+ * colour in the app that is.
+ */
+private val RecordRed = Color(0xFFE53935)
+
 @Composable
 fun VideoRecorderScreen(
     onRecorded: (File, Long) -> Unit,
@@ -224,8 +236,8 @@ fun VideoRecorderScreen(
                 Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 56.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color(0xCCE53935))
+                    .clip(Radii.pill)
+                    .background(RecordRed.copy(alpha = 0.8f))
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -310,8 +322,8 @@ fun VideoRecorderScreen(
                 Box(
                     Modifier
                         .size(if (recording == null) 62.dp else 28.dp)
-                        .clip(if (recording == null) CircleShape else RoundedCornerShape(6.dp))
-                        .background(Color(0xFFE53935)),
+                        .clip(if (recording == null) CircleShape else Radii.sm)
+                        .background(RecordRed),
                 )
             }
 

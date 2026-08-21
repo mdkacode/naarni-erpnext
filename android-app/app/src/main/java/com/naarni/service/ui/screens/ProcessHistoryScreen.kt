@@ -69,6 +69,9 @@ import com.naarni.service.ui.components.HairlineDivider
 import com.naarni.service.ui.components.LoadingOverlay
 import com.naarni.service.ui.theme.AppSurface
 import kotlinx.coroutines.launch
+import com.naarni.service.ui.theme.Radii
+import androidx.compose.runtime.ReadOnlyComposable
+import com.naarni.service.ui.theme.Semantic
 
 /**
  * What this operator has actually done.
@@ -83,9 +86,22 @@ import kotlinx.coroutines.launch
  * every query to the caller, so there is nothing here to leak.
  */
 
-private val PassTone = Color(0xFF17784A)
-private val FailTone = Color(0xFFB62F27)
-private val WarnTone = Color(0xFF99630A)
+/**
+ * The verdict ramp, shared with the runner and with every other screen.
+ *
+ * These were three private hexes here, three more in `ProcessScreens.kt`, three
+ * in `StepRenderer.kt` and three in `SyncStatus.kt` — four copies of the same
+ * idea, and none of them changed in dark mode.
+ */
+private val PassTone: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.positive
+private val FailTone: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.critical
+private val WarnTone: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.caution
 
 private fun fullUrl(fileUrl: String?): String? =
     fileUrl?.takeIf { it.isNotBlank() }?.let {
@@ -149,7 +165,7 @@ private fun StatsHeader(stats: HistoryStats) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Surface(
             Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = Radii.xl,
             color = MaterialTheme.colorScheme.primary,
         ) {
             Row(
@@ -197,7 +213,7 @@ private fun StatsHeader(stats: HistoryStats) {
 private fun StatTile(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {
     Surface(
         modifier,
-        shape = RoundedCornerShape(14.dp),
+        shape = Radii.lg,
         color = AppSurface.raised,
         border = BorderStroke(1.dp, AppSurface.hairline),
     ) {
@@ -228,9 +244,9 @@ private fun HistoryCard(run: HistoryRun, onClick: () -> Unit) {
     Surface(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(Radii.xl)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
+        shape = Radii.xl,
         color = AppSurface.raised,
         border = BorderStroke(1.dp, AppSurface.hairline),
     ) {
@@ -242,7 +258,7 @@ private fun HistoryCard(run: HistoryRun, onClick: () -> Unit) {
             Box(
                 Modifier
                     .size(72.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(Radii.lg)
                     .background(AppSurface.sunken),
                 contentAlignment = Alignment.Center,
             ) {
@@ -304,7 +320,7 @@ private fun HistoryCard(run: HistoryRun, onClick: () -> Unit) {
 
 @Composable
 private fun StatusChip(status: String, tone: Color) {
-    Surface(color = tone.copy(alpha = 0.14f), shape = RoundedCornerShape(6.dp)) {
+    Surface(color = tone.copy(alpha = 0.14f), shape = Radii.sm) {
         Text(
             status,
             Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
@@ -315,6 +331,8 @@ private fun StatusChip(status: String, tone: Color) {
     }
 }
 
+@Composable
+@ReadOnlyComposable
 private fun statusTone(status: String): Color = when (status) {
     "Passed" -> PassTone
     "Quarantined" -> FailTone
@@ -564,7 +582,7 @@ private fun VerifyBar(busy: Boolean, onReject: () -> Unit, onApprove: () -> Unit
 private fun ReportHeader(r: RunReport) {
     Surface(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = Radii.xl,
         color = AppSurface.raised,
         border = BorderStroke(1.dp, AppSurface.hairline),
     ) {
@@ -625,7 +643,7 @@ private fun AnsweredStepCard(step: ReportStep, onOpenPhoto: (ReportPhoto) -> Uni
     }
     Surface(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = Radii.lg,
         color = AppSurface.raised,
         border = BorderStroke(1.dp, AppSurface.hairline),
     ) {
@@ -723,7 +741,7 @@ private fun PhotoStrip(photos: List<ReportPhoto>, onOpen: (ReportPhoto) -> Unit)
             Box(
                 Modifier
                     .size(96.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(Radii.lg)
                     .background(AppSurface.sunken)
                     .clickable { onOpen(photo) },
             ) {
@@ -756,7 +774,7 @@ private fun PhotoStrip(photos: List<ReportPhoto>, onOpen: (ReportPhoto) -> Unit)
 @Composable
 private fun PhotoViewer(photo: ReportPhoto, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose) {
-        Surface(shape = RoundedCornerShape(18.dp), color = AppSurface.raised) {
+        Surface(shape = Radii.xl, color = AppSurface.raised) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.fillMaxWidth()) {
                     Text(
@@ -780,7 +798,7 @@ private fun PhotoViewer(photo: ReportPhoto, onClose: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(3f / 4f)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(Radii.lg),
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     photo.captured_at?.let {

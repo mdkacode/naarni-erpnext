@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import com.naarni.service.core.feedback.LocalFeedback
 import com.naarni.service.data.dto.ChatTicketDto
 import com.naarni.service.data.dto.ChatUserDto
+import com.naarni.service.ui.theme.Radii
+import com.naarni.service.ui.theme.Semantic
 
 /**
  * Pick a Service Ticket and drop it into the thread.
@@ -194,7 +196,7 @@ private fun SheetSearchField(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(22.dp),
+        shape = Radii.xl,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     ) {
         Row(
@@ -289,10 +291,10 @@ private fun TicketRow(ticket: ChatTicketDto, busy: Boolean, onClick: () -> Unit)
 fun StatusPill(status: String) {
     val color = when (status) {
         "Open" -> MaterialTheme.colorScheme.error
-        "Acknowledged" -> Color(0xFFF59E0B)
-        else -> Color(0xFF10B981)
+        "Acknowledged" -> Semantic.caution
+        else -> Semantic.positive
     }
-    Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(5.dp)) {
+    Surface(color = color.copy(alpha = 0.14f), shape = Radii.sm) {
         Text(
             status.uppercase(),
             style = MaterialTheme.typography.labelSmall,

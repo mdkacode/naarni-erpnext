@@ -112,6 +112,9 @@ import kotlinx.coroutines.launch
 import androidx.compose.material.icons.rounded.FactCheck
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material.icons.rounded.Refresh
+import com.naarni.service.ui.theme.Radii
+import androidx.compose.runtime.ReadOnlyComposable
+import com.naarni.service.ui.theme.Semantic
 
 /**
  * The process engine's three screens — a list, a start screen, and one runner
@@ -124,9 +127,16 @@ import androidx.compose.material.icons.rounded.Refresh
 
 // Shared with the board and the history screen: one verdict palette, so a green
 // on one screen means exactly what it means on the next.
-internal val PassGreen = Color(0xFF17784A)
-internal val FailRed = Color(0xFFB62F27)
-internal val WarnAmber = Color(0xFF99630A)
+/** The verdict ramp. One definition, shared — see [Semantic]. */
+internal val PassGreen: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.positive
+internal val FailRed: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.critical
+internal val WarnAmber: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.caution
 
 // ------------------------------------------------------------------ list
 
@@ -290,7 +300,7 @@ fun ProcessListScreen(
                         // store on open, after which it behaves like any other.
                         onClick = { onResumeRun(run.name) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = Radii.lg,
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(run.run_identifier ?: run.name, fontWeight = FontWeight.SemiBold)
@@ -306,7 +316,7 @@ fun ProcessListScreen(
                     Card(
                         onClick = { onResumeRun(run.clientUuid) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = Radii.lg,
                     ) {
                         Row(
                             Modifier.padding(14.dp),
@@ -349,7 +359,7 @@ fun ProcessListScreen(
                 Card(
                     onClick = { onOpenProcess(process.family.ifBlank { process.name }) },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = Radii.lg,
                 ) {
                     Row(
                         Modifier.padding(14.dp),
@@ -384,9 +394,9 @@ private fun MyWorkCard(today: Int, total: Int, onClick: () -> Unit) {
     Surface(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(Radii.xl)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = Radii.xl,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Row(
@@ -526,9 +536,9 @@ fun ProcessStartScreen(
                 Modifier
                     .fillMaxWidth()
                     .height(168.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(Radii.xl)
                     .clickable { scanning = true },
-                shape = RoundedCornerShape(18.dp),
+                shape = Radii.xl,
                 color = MaterialTheme.colorScheme.primary,
             ) {
                 Column(
@@ -581,7 +591,7 @@ fun ProcessStartScreen(
                 label = { Text("$subject number") },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.titleLarge,
-                shape = RoundedCornerShape(14.dp),
+                shape = Radii.lg,
                 keyboardOptions = KeyboardOptions(
                     // NumberPassword, not Number: it is the one type every IME
                     // renders as a plain digits pad. `Number` still shows the full
@@ -640,7 +650,7 @@ fun ProcessStartScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                shape = RoundedCornerShape(10.dp),
+                shape = Radii.md,
                 colors = if (found != null) {
                     ButtonDefaults.buttonColors(containerColor = WarnAmber, contentColor = Color.White)
                 } else {
@@ -674,7 +684,7 @@ private fun PackInProgress(open: FoundRun, looking: Boolean) {
     val free = open.stages.filter { !it.isDone && !it.active_now && !it.blocked }
     Surface(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = Radii.xl,
         color = WarnAmber.copy(alpha = 0.10f),
         border = BorderStroke(1.dp, WarnAmber),
     ) {
@@ -1597,7 +1607,7 @@ private fun RunnerGateDialog(gate: RunnerGate, onFix: () -> Unit, onContinue: ()
         title = { Text(gate.title, fontWeight = FontWeight.Bold) },
         text = { Text(gate.body, style = MaterialTheme.typography.bodyMedium) },
         confirmButton = {
-            Button(onClick = onFix, shape = RoundedCornerShape(10.dp)) { Text(gate.fixLabel) }
+            Button(onClick = onFix, shape = Radii.md) { Text(gate.fixLabel) }
         },
         dismissButton = {
             TextButton(onClick = onContinue) {
@@ -1676,7 +1686,7 @@ private fun RunnerNavBar(
                         onClick = onBack,
                         enabled = enabled,
                         modifier = Modifier.height(60.dp),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = Radii.lg,
                         border = BorderStroke(2.dp, FailRed),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = FailRed),
                     ) {
@@ -1702,7 +1712,7 @@ private fun RunnerNavBar(
                     modifier = Modifier
                         .weight(1f)
                         .height(60.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = Radii.lg,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = PassGreen,
                         contentColor = Color.White,
@@ -1736,7 +1746,7 @@ private fun AnsweredChip(answer: StepAnswer) {
         !answer.value.isNullOrBlank() -> "ANSWERED" to PassGreen
         else -> return
     }
-    Surface(shape = RoundedCornerShape(8.dp), color = tint.copy(alpha = 0.14f)) {
+    Surface(shape = Radii.md, color = tint.copy(alpha = 0.14f)) {
         Text(
             text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -1755,7 +1765,7 @@ private fun StepProgress(index: Int, total: Int) {
         modifier = Modifier
             .fillMaxWidth()
             .height(6.dp)
-            .clip(RoundedCornerShape(3.dp)),
+            .clip(Radii.xs),
         trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
 }
@@ -1764,7 +1774,7 @@ private fun StepProgress(index: Int, total: Int) {
 private fun RunnerBanner(message: String) {
     Surface(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = Radii.lg,
         color = FailRed.copy(alpha = 0.12f),
     ) {
         Text(
@@ -1793,7 +1803,7 @@ private fun RunSummaryStrip(run: LocalRunEntity) {
 private fun SummaryTile(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {
     Card(
         modifier,
-        shape = RoundedCornerShape(10.dp),
+        shape = Radii.md,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(
@@ -1817,7 +1827,7 @@ private fun QuarantineBanner(reason: String?, status: String? = null) {
     val tint = if (rework) WarnAmber else FailRed
     Surface(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = Radii.md,
         color = tint.copy(alpha = 0.12f),
         border = BorderStroke(1.dp, tint),
     ) {
@@ -1866,7 +1876,7 @@ private fun SkipRow(reasons: List<String>, onSkip: (String) -> Unit) {
                             onSkip(reason)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = Radii.md,
                     ) { Text(reason, style = MaterialTheme.typography.bodySmall) }
                 }
             }
@@ -1886,7 +1896,7 @@ private fun SkipRow(reasons: List<String>, onSkip: (String) -> Unit) {
 private fun VerifyQueueCard(count: Int, onClick: () -> Unit) {
     Surface(
         Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = Radii.xl,
         color = WarnAmber.copy(alpha = 0.12f),
         border = BorderStroke(1.dp, WarnAmber),
     ) {

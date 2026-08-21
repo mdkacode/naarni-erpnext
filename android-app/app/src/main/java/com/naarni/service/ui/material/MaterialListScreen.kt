@@ -49,6 +49,7 @@ import com.naarni.service.ui.components.MetaChip
 import com.naarni.service.ui.components.Refreshable
 import com.naarni.service.ui.theme.AppSurface
 import com.naarni.service.ui.theme.Semantic
+import com.naarni.service.ui.theme.Radii
 
 /**
  * The Material tab: gate movements, newest first.
@@ -167,7 +168,7 @@ private fun ScopeChips(
 private fun MovementCard(row: MovementSummary, onClick: () -> Unit) {
     val inward = row.movement_type == "Inward"
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = Radii.lg,
         color = AppSurface.raised,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
@@ -248,7 +249,7 @@ fun MovementStatusChip(status: String) {
         "In Progress" -> Semantic.active
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    Surface(shape = RoundedCornerShape(6.dp), color = tint.copy(alpha = 0.14f)) {
+    Surface(shape = Radii.sm, color = tint.copy(alpha = 0.14f)) {
         Text(
             status,
             style = MaterialTheme.typography.labelSmall,

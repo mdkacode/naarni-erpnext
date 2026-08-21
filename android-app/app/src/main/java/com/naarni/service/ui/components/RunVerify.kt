@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.naarni.service.data.dto.ProcessStep
+import com.naarni.service.ui.theme.Radii
 
 /** One line of the read-back: what was asked, what was answered, what was shot. */
 data class VerifyLine(
@@ -92,7 +93,7 @@ fun RunVerifyCard(
                 .fillMaxWidth()
                 .height(64.dp)
                 .padding(top = 6.dp),
-            shape = RoundedCornerShape(12.dp),
+            shape = Radii.lg,
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (confirmed) PassGreen else MaterialTheme.colorScheme.primary,
             ),
@@ -115,7 +116,7 @@ private fun VerifyRow(line: VerifyLine, onJump: (Int) -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable { onJump(line.screenIndex) },
-        shape = RoundedCornerShape(12.dp),
+        shape = Radii.lg,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
         border = BorderStroke(
             1.dp,

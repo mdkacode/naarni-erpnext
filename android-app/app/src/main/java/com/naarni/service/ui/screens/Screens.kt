@@ -23,26 +23,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Pending
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.automirrored.rounded.Assignment
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Business
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Pending
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -70,7 +71,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -86,7 +86,12 @@ import com.naarni.service.ui.components.SmartSelect
 import com.naarni.service.ui.components.StatTile
 import com.naarni.service.ui.components.StatusChip
 import com.naarni.service.ui.components.statusColor
-import com.naarni.service.ui.theme.BrandGradient
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Stroke
+import com.naarni.service.ui.theme.Elevation
+import com.naarni.service.ui.theme.Radii
+import com.naarni.service.ui.theme.Semantic
+import androidx.compose.runtime.ReadOnlyComposable
 
 @Composable
 fun HomeScreen(
@@ -132,7 +137,7 @@ fun HomeScreen(
                     if (unread > 0) Badge { Text(if (unread > 99) "99+" else unread.toString()) }
                 }) {
                     IconButton(onClick = onOpenNotifications) {
-                        Icon(Icons.Filled.Notifications, contentDescription = "Notifications")
+                        Icon(Icons.Rounded.Notifications, contentDescription = "Notifications")
                     }
                 }
             }
@@ -144,8 +149,8 @@ fun HomeScreen(
 
         // Stats
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatTile("Active jobs", active.toString(), Icons.Filled.Pending, Modifier.weight(1f))
-            StatTile("Total", items.size.toString(), Icons.Filled.CheckCircle, Modifier.weight(1f))
+            StatTile("Active jobs", active.toString(), Icons.Rounded.Pending, Modifier.weight(1f))
+            StatTile("Total", items.size.toString(), Icons.Rounded.CheckCircle, Modifier.weight(1f))
         }
 
         // Primary gradient CTA
@@ -158,15 +163,18 @@ fun HomeScreen(
         ) {
             Row(
                 Modifier
-                    .background(Brush.horizontalGradient(BrandGradient), MaterialTheme.shapes.large)
+                    // Solid accent, not a gradient. This is the screen's one
+                    // primary action; a gradient made it read as a banner —
+                    // decoration to scroll past — rather than as a button.
+                    .background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.large)
                     .padding(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Box(
-                    Modifier.size(48.dp).background(Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp)),
+                    Modifier.size(48.dp).background(Color.White.copy(alpha = 0.18f), Radii.lg),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White) }
+                ) { Icon(Icons.Rounded.Add, contentDescription = null, tint = Color.White) }
                 Column(Modifier.weight(1f)) {
                     Text("Create Job Card", style = MaterialTheme.typography.titleMedium, color = Color.White)
                     Text("PMS, Repair, Software or Breakdown", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f))
@@ -189,7 +197,7 @@ fun JobCardsScreen(vm: AppViewModel, onOpenJobCard: (String) -> Unit = {}) {
         title = "My Job Cards",
         load = { vm.jobCards.myJobCards() },
         itemKey = { it.name },
-        empty = { EmptyState(Icons.Filled.Inbox, "No job cards yet", "Cards assigned to you will appear here.") },
+        empty = { EmptyState(Icons.Rounded.Inbox, "No job cards yet", "Cards assigned to you will appear here.") },
         row = { JobCardRow(it, onClick = { onOpenJobCard(it.name) }) },
     )
 }
@@ -215,7 +223,7 @@ private fun prettyKm(km: Int?): String? {
 @Composable
 private fun TypeBadge(type: String?) {
     if (type.isNullOrBlank()) return
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(50)) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = Radii.pill) {
         Text(
             type,
             style = MaterialTheme.typography.labelSmall,
@@ -235,10 +243,9 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
     val title = operator ?: jc.vehicle_number ?: jc.name
     val subtitle = if (operator != null) jc.vehicle_number else jc.vehicle_make_model
 
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large,
+        tonalElevation = Elevation.e0,
+        shadowElevation = Elevation.e0,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
@@ -248,9 +255,9 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
                 // Header: bus avatar + operator/registration + status
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(
-                        Modifier.size(44.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+                        Modifier.size(44.dp).background(accent.copy(alpha = 0.12f), Radii.lg),
                         contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = accent) }
+                    ) { Icon(Icons.Rounded.DirectionsBus, contentDescription = null, tint = accent) }
                     Column(Modifier.weight(1f)) {
                         Text(
                             title,
@@ -274,7 +281,7 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
                     TypeBadge(jc.job_card_type)
                     PriorityPill(criticality)
                     if (jc.sla_breached == 1) {
-                        MetaChip(Icons.Filled.Warning, "SLA", tint = MaterialTheme.colorScheme.error)
+                        MetaChip(Icons.Rounded.Warning, "SLA", tint = MaterialTheme.colorScheme.error)
                     }
                 }
                 // Meta: customer · created date · odometer
@@ -283,9 +290,9 @@ private fun JobCardRow(jc: JobCardListItem, onClick: () -> Unit = {}) {
                 val km = prettyKm(jc.odometer_reading)
                 if (customer != null || date != null || km != null) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (customer != null) MetaChip(Icons.Filled.Person, customer, modifier = Modifier.weight(1f, fill = false))
-                        if (date != null) MetaChip(Icons.Filled.Event, date)
-                        if (km != null) MetaChip(Icons.Filled.Speed, km)
+                        if (customer != null) MetaChip(Icons.Rounded.Person, customer, modifier = Modifier.weight(1f, fill = false))
+                        if (date != null) MetaChip(Icons.Rounded.Event, date)
+                        if (km != null) MetaChip(Icons.Rounded.Speed, km)
                     }
                 }
             }
@@ -310,10 +317,12 @@ internal fun prettyDateTime(raw: String?): String? {
     return if (time != null) "$short, $time" else short
 }
 
+@Composable
+@ReadOnlyComposable
 internal fun alertSeverityColor(sev: String?): Color = when (sev?.lowercase()) {
-    "critical" -> Color(0xFFEF4444)
-    "warning" -> Color(0xFFF59E0B)
-    else -> Color(0xFF64748B)
+    "critical" -> Semantic.critical
+    "warning" -> Semantic.caution
+    else -> Semantic.idle
 }
 
 /** "2026-07-06 10:00:00" → "2m ago" / "3h ago" / "2d ago" (times are IST-naive). */
@@ -387,10 +396,10 @@ fun AlertsScreen(
                     onValueChange = { search = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Search bus number or alert") },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                     trailingIcon = {
                         if (search.isNotEmpty()) {
-                            IconButton(onClick = { search = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear") }
+                            IconButton(onClick = { search = "" }) { Icon(Icons.Rounded.Close, contentDescription = "Clear") }
                         }
                     },
                     singleLine = true,
@@ -419,7 +428,7 @@ fun AlertsScreen(
             if (loaded && items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     EmptyState(
-                        Icons.Filled.NotificationsActive,
+                        Icons.Rounded.NotificationsActive,
                         "No alerts",
                         if (search.isNotBlank()) "No alerts match \"$search\"." else "No alerts for your depot's buses right now.",
                     )
@@ -442,10 +451,9 @@ fun AlertsScreen(
 @Composable
 private fun AlertGroupCard(g: com.naarni.service.data.dto.AlertGroup, onClick: () -> Unit = {}) {
     val color = alertSeverityColor(g.latest_severity)
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        tonalElevation = 1.dp,
-        shadowElevation = 1.dp,
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large,
+        tonalElevation = Elevation.e0,
+        shadowElevation = Elevation.e0,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
@@ -455,13 +463,13 @@ private fun AlertGroupCard(g: com.naarni.service.data.dto.AlertGroup, onClick: (
                     Box(
                         Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
                         contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
+                    ) { Icon(Icons.Rounded.DirectionsBus, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
                     com.naarni.service.ui.components.VehicleNumber(
                         g.registration_number,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+                    Surface(color = color.copy(alpha = 0.14f), shape = Radii.pill) {
                         Text(
                             (g.latest_severity ?: "—").replaceFirstChar { it.uppercase() },
                             color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
@@ -475,7 +483,7 @@ private fun AlertGroupCard(g: com.naarni.service.data.dto.AlertGroup, onClick: (
                 val meta = remember(g.latest_time, g.occurrence_count) {
                     (if (g.occurrence_count > 1) "${g.occurrence_count}× · " else "") + (relExact(g.latest_time) ?: "—")
                 }
-                MetaChip(Icons.Filled.NotificationsActive, meta)
+                MetaChip(Icons.Rounded.NotificationsActive, meta)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatusChip(g.open_ticket_status ?: g.latest_status)
                     Spacer(Modifier.weight(1f))
@@ -500,7 +508,7 @@ fun TicketsScreen(
         title = "Tickets",
         load = { vm.jobCards.myTickets() },
         itemKey = { it.name },
-        empty = { EmptyState(Icons.Filled.ConfirmationNumber, "No tickets", "Tickets auto-raised from alerts for your depot's buses appear here.") },
+        empty = { EmptyState(Icons.Rounded.ConfirmationNumber, "No tickets", "Tickets auto-raised from alerts for your depot's buses appear here.") },
         row = { t -> TicketCard(t, onClick = { onOpenTicket(t.name) }) },
     )
 }
@@ -509,10 +517,9 @@ fun TicketsScreen(
 private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () -> Unit = {}) {
     val color = alertSeverityColor(t.severity)
     val openable = true
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        tonalElevation = 1.dp,
-        shadowElevation = 1.dp,
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large,
+        tonalElevation = Elevation.e0,
+        shadowElevation = Elevation.e0,
         modifier = Modifier.fillMaxWidth().then(if (openable) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
@@ -523,7 +530,7 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
                     Box(
                         Modifier.size(36.dp).background(color.copy(alpha = 0.14f), CircleShape),
                         contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Filled.ConfirmationNumber, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
+                    ) { Icon(Icons.Rounded.ConfirmationNumber, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
                     com.naarni.service.ui.components.VehicleNumber(
                         t.registration_number?.takeIf { it.isNotBlank() } ?: (t.title ?: t.name),
                         style = MaterialTheme.typography.titleMedium,
@@ -539,7 +546,7 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
                 )
                 // Meta: date · severity · open hint
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    prettyDateTime(t.creation)?.let { MetaChip(Icons.Filled.Event, it) }
+                    prettyDateTime(t.creation)?.let { MetaChip(Icons.Rounded.Event, it) }
                     t.severity?.takeIf { it.isNotBlank() }?.let { PriorityPill(it) }
                     Spacer(Modifier.weight(1f))
                     Text(
@@ -555,8 +562,14 @@ private fun TicketCard(t: com.naarni.service.data.dto.TicketItem, onClick: () ->
 }
 
 @Composable
-fun ProfileScreen(vm: AppViewModel) {
-    val name = vm.session.fullName ?: vm.session.user ?: "—"
+fun ProfileScreen(
+    vm: AppViewModel,
+    onEditProfile: () -> Unit = {},
+    onSounds: () -> Unit = {},
+) {
+    val profile = rememberMyProfile()
+    val name = profile?.full_name?.takeIf { it.isNotBlank() }
+        ?: vm.session.fullName ?: vm.session.user ?: "—"
     val context = LocalContext.current
     val feedback = com.naarni.service.core.feedback.LocalFeedback.current
     var showDelete by remember { mutableStateOf(false) }
@@ -578,37 +591,42 @@ fun ProfileScreen(vm: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Profile", style = MaterialTheme.typography.titleLarge)
-        Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+        Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large, tonalElevation = Elevation.e0, shadowElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Box(
-                    Modifier.size(56.dp).background(Brush.linearGradient(BrandGradient), CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(name.take(1).uppercase(), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                Column {
+                ProfileFace(profile, size = 56)
+                Column(Modifier.weight(1f)) {
                     Text(name, style = MaterialTheme.typography.titleMedium)
+                    profile?.designation?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     StatusChip(vm.session.primaryRole)
                 }
+                TextButton(onClick = onEditProfile) { Text("Edit") }
             }
         }
 
         MyDepotCard(vm)
 
         // Legal, privacy & account management (Play Store requirements)
-        Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+        Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large, tonalElevation = Elevation.e0, shadowElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
             Column {
-                ProfileRow(Icons.Filled.PrivacyTip, "Privacy Policy") { openPage("privacy-policy") }
+                ProfileRow(Icons.Rounded.MusicNote, "Notification sounds") { onSounds() }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                ProfileRow(Icons.Filled.Description, "Terms & Conditions") { openPage("terms-and-conditions") }
+                ProfileRow(Icons.Rounded.PrivacyTip, "Privacy Policy") { openPage("privacy-policy") }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                ProfileRow(Icons.Filled.DeleteForever, "Delete account", destructive = true) { showDelete = true }
+                ProfileRow(Icons.Rounded.Description, "Terms & Conditions") { openPage("terms-and-conditions") }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                ProfileRow(Icons.Rounded.DeleteForever, "Delete account", destructive = true) { showDelete = true }
             }
         }
 
         OutlinedButton(onClick = { vm.logout() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+            Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
             Spacer(Modifier.height(0.dp))
             Text("  Log out")
         }
@@ -617,7 +635,7 @@ fun ProfileScreen(vm: AppViewModel) {
     if (showDelete) {
         AlertDialog(
             onDismissRequest = { if (!vm.ui.loading) showDelete = false },
-            icon = { Icon(Icons.Filled.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            icon = { Icon(Icons.Rounded.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Delete your account?") },
             text = {
                 Text(
@@ -684,10 +702,10 @@ private fun MyDepotCard(vm: AppViewModel) {
     }
     LaunchedEffect(Unit) { load() }
 
-    Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large, tonalElevation = Elevation.e0, shadowElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Text("My Depot", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 if (saving) androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             }

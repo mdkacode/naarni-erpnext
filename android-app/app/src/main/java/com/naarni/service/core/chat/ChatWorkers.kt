@@ -75,6 +75,45 @@ class ChatSendWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
 }
 
 /**
+ * Withdraws one message from the conversation for everyone in it.
+ *
+ * Separate from [ChatSendWorker] so that a delete asked for while offline gets
+ * the same treatment a message does: WorkManager holds it under the CONNECTED
+ * constraint and it lands when the phone next has a network, whether that is in
+ * ten seconds or after a reboot. Retrying is safe — the endpoint is idempotent,
+ * and a second call to it returns the tombstone the first one made.
+ *
+ * On giving up permanently the message is put *back*. The sender sees it again,
+ * which is not what they asked for, but it is true: the room still has it, and a
+ * device quietly disagreeing with the room about what was said is the worse
+ * failure. The one realistic cause is the deletion window closing while the
+ * request was queued.
+ */
+class ChatDeleteWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val clientId = inputData.getString(KEY_CLIENT_ID) ?: return@withContext Result.failure()
+        val repo = applicationContext.appContainer.chatRepo
+        try {
+            repo.deliverDelete(clientId)
+            Result.success()
+        } catch (e: Exception) {
+            Log.w(TAG, "delete failed for $clientId: ${e.message}")
+            if (runAttemptCount < MAX_ATTEMPTS) {
+                Result.retry()
+            } else {
+                repo.restoreAfterRefusedDelete(clientId)
+                Result.failure()
+            }
+        }
+    }
+
+    private companion object {
+        const val MAX_ATTEMPTS = 8
+    }
+}
+
+/**
  * Uploads one attachment in resumable chunks.
  *
  * Holds no state worth losing: after process death it asks the server where it
@@ -233,6 +272,27 @@ object ChatWork {
             .build()
         WorkManager.getInstance(context)
             .enqueueUniqueWork("chat-send-$clientId", ExistingWorkPolicy.KEEP, request)
+    }
+
+    /**
+     * Deliver a message deletion.
+     *
+     * A distinct unique-work name from the send, so that deleting a message
+     * whose send is still queued does not cancel or replace the send — the two
+     * are ordered by the server, not by us, and the delete is idempotent
+     * whichever way round they land.
+     */
+    fun enqueueDelete(context: Context, clientId: String) {
+        val request = OneTimeWorkRequestBuilder<ChatDeleteWorker>()
+            .addTag(TAG)
+            .setInputData(workDataOf(KEY_CLIENT_ID to clientId))
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+            )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork("chat-delete-$clientId", ExistingWorkPolicy.KEEP, request)
     }
 
     fun enqueueUpload(context: Context, clientId: String, bytes: Long) {

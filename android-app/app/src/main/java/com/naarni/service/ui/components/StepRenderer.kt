@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.sp
 import com.naarni.service.data.dto.ProcessOption
 import com.naarni.service.data.dto.ProcessStep
 import kotlinx.coroutines.delay
+import com.naarni.service.ui.theme.Radii
+import androidx.compose.runtime.ReadOnlyComposable
+import com.naarni.service.ui.theme.Semantic
 
 /**
  * The single renderer that draws every step type.
@@ -55,10 +58,19 @@ import kotlinx.coroutines.delay
  * sliders, so numbers use a keypad.
  */
 
-internal val PassGreen = Color(0xFF17784A)
-internal val FailRed = Color(0xFFB62F27)
-internal val WarnAmber = Color(0xFF99630A)
-internal val NeutralGrey = Color(0xFF5F6C7A)
+/** The verdict ramp. One definition, shared — see [Semantic]. */
+internal val PassGreen: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.positive
+internal val FailRed: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.critical
+internal val WarnAmber: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.caution
+internal val NeutralGrey: Color
+    @Composable @ReadOnlyComposable
+    get() = Semantic.idle
 
 /** What the operator has entered for one step, before it is sent. */
 data class StepAnswer(
@@ -80,11 +92,13 @@ data class StepAnswer(
     val valueLabel: String? = null,
 )
 
+@Composable
+@ReadOnlyComposable
 fun optionColor(option: ProcessOption): Color = when (option.color) {
     "green" -> PassGreen
     "red" -> FailRed
     "amber" -> WarnAmber
-    "blue" -> Color(0xFF1D4ED8)
+    "blue" -> Semantic.active
     else -> NeutralGrey
 }
 
@@ -99,7 +113,7 @@ fun StepCard(
     val answered = answer.response != null || answer.value != null || answer.skipped
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = Radii.lg,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
@@ -153,7 +167,7 @@ private fun StepHeader(step: ProcessStep, showAlt: Boolean) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!step.display_no.isNullOrBlank() && step.display_no != "—") {
                 Surface(
-                    shape = RoundedCornerShape(5.dp),
+                    shape = Radii.sm,
                     color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Text(
@@ -232,7 +246,7 @@ private fun ChoiceControl(
                 modifier = Modifier
                     .weight(1f)
                     .height(72.dp),
-                shape = RoundedCornerShape(10.dp),
+                shape = Radii.md,
                 color = if (selected) tint.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
                 border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) tint else MaterialTheme.colorScheme.outline),
                 onClick = { onAnswer(answer.copy(response = option.value, skipped = false, skipReason = null)) },
@@ -278,7 +292,7 @@ private fun MultiChoiceControl(step: ProcessStep, answer: StepAnswer, onAnswer: 
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                shape = RoundedCornerShape(10.dp),
+                shape = Radii.md,
                 color = if (on) tint.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
                 border = BorderStroke(if (on) 2.dp else 1.dp, if (on) tint else MaterialTheme.colorScheme.outline),
                 onClick = {
@@ -337,7 +351,7 @@ private fun NumericControl(step: ProcessStep, answer: StepAnswer, onAnswer: (Ste
             isError = inBand == false,
             singleLine = true,
             textStyle = MaterialTheme.typography.headlineSmall,
-            shape = RoundedCornerShape(10.dp),
+            shape = Radii.md,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
                 if (!state.isFocused && typing) {
@@ -385,7 +399,7 @@ private fun ComputedControl(step: ProcessStep, answer: StepAnswer) {
     val shown = answer.value?.takeIf { it.isNotBlank() } ?: "—"
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = Radii.md,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -428,7 +442,7 @@ private fun TextControl(
         label = { Text(hint ?: step.photo_hint ?: "Notes") },
         singleLine = singleLine,
         minLines = if (singleLine) 1 else 3,
-        shape = RoundedCornerShape(10.dp),
+        shape = Radii.md,
         modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
             if (!state.isFocused && typing) {
                 onAnswer(answer.copy(response = typed, skipped = false))
@@ -473,7 +487,7 @@ private fun UnsupportedNotice() {
     Box(
         Modifier
             .fillMaxWidth()
-            .background(WarnAmber.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+            .background(WarnAmber.copy(alpha = 0.12f), Radii.md)
             .padding(12.dp),
     ) {
         Text(

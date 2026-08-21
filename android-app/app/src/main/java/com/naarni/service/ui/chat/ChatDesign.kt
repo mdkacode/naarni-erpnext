@@ -8,6 +8,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.naarni.service.ui.theme.Ink
+import com.naarni.service.ui.theme.N50
+import com.naarni.service.ui.theme.N100
+import com.naarni.service.ui.theme.N200
+import com.naarni.service.ui.theme.N400
+import com.naarni.service.ui.theme.N600
+import com.naarni.service.ui.theme.N800
+import com.naarni.service.ui.theme.N850
+import com.naarni.service.ui.theme.N900
 
 /**
  * Chat's own colour and geometry tokens.
@@ -32,16 +41,16 @@ object ChatTokens {
      */
     val ground: Color
         @Composable @ReadOnlyComposable
-        get() = if (isSystemInDarkTheme()) Color(0xFF0B0B0F) else Color(0xFFF4F4F5)
+        get() = if (isSystemInDarkTheme()) Ink else N100
 
     /** Somebody else's message. */
     val incoming: Color
         @Composable @ReadOnlyComposable
-        get() = if (isSystemInDarkTheme()) Color(0xFF1C1C21) else Color.White
+        get() = if (isSystemInDarkTheme()) N850 else Color.White
 
     val onIncoming: Color
         @Composable @ReadOnlyComposable
-        get() = if (isSystemInDarkTheme()) Color(0xFFFAFAFA) else Color(0xFF0B0B0F)
+        get() = if (isSystemInDarkTheme()) N50 else Ink
 
     /** Your own message — the accent's one job on this screen. */
     val outgoing: Color
@@ -55,16 +64,16 @@ object ChatTokens {
     /** The composer pill and the search field sit on this. */
     val field: Color
         @Composable @ReadOnlyComposable
-        get() = if (isSystemInDarkTheme()) Color(0xFF141418) else Color.White
+        get() = if (isSystemInDarkTheme()) N900 else Color.White
 
     /** Day dividers and other floating chips over the canvas. */
     val chip: Color
         @Composable @ReadOnlyComposable
-        get() = if (isSystemInDarkTheme()) Color(0xFF27272A) else Color(0xFFE4E4E7)
+        get() = if (isSystemInDarkTheme()) N800 else N200
 
     val onChip: Color
         @Composable @ReadOnlyComposable
-        get() = if (isSystemInDarkTheme()) Color(0xFFA1A1AA) else Color(0xFF52525B)
+        get() = if (isSystemInDarkTheme()) N400 else N600
 
     /**
      * Read receipts.
@@ -78,7 +87,7 @@ object ChatTokens {
         get() = if (isSystemInDarkTheme()) Color(0xFF60C5FF) else Color(0xFF0B84D9)
 
     /** Bubble corner radius, and the tighter radius on the tail corner. */
-    val bubbleRadius = 18.dp
+    val bubbleRadius = 16.dp
     val tailRadius = 6.dp
 
     /** Gap between two messages from the same author, versus a new run. */

@@ -133,7 +133,15 @@ data class ChatMessageEntity(
     val geotagged: Boolean = false,
     val lat: Double? = null,
     val lon: Double? = null,
+    /**
+     * Withdrawn from the conversation. The row stays — it is what tells the
+     * thread there was a message here — but everything it carried is gone: body,
+     * attachment, reactions, mentions.
+     */
     val deleted: Boolean = false,
+    /** Position in the room's tombstone stream. Half of the sync cursor. */
+    val deleteSeq: Long = 0,
+    val deletedBy: String? = null,
     val status: String = SendStatus.SENT,
     /** Mirrored from the upload worker so progress survives process death. */
     val uploadPct: Int = 0,

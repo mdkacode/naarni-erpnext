@@ -9,6 +9,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,15 +25,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.LocationOff
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Login
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.rounded.AccessTime
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.LocationOff
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,6 +60,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Semantic
 import androidx.core.app.ActivityCompat
 import com.naarni.service.core.feedback.LocalFeedback
 import com.naarni.service.data.dto.AttendanceDay
@@ -70,6 +74,9 @@ import com.naarni.service.ui.components.Refreshable
 import com.naarni.service.ui.components.SectionHeader
 import com.naarni.service.ui.components.StatTile
 import kotlinx.coroutines.launch
+import com.naarni.service.ui.theme.Stroke
+import com.naarni.service.ui.theme.Elevation
+import com.naarni.service.ui.theme.Radii
 
 /**
  * Duty check-in.
@@ -161,23 +168,29 @@ fun DutyCard(vm: AppViewModel, onOpenDuty: () -> Unit) {
     // a control you can never use is noise on a screen that has to stay scannable.
     if (!state.can_punch) return
 
+    // Flat and hairlined rather than elevated. `tonalElevation` composites
+    // `surfaceTint` — the accent — over the surface, which is what turned this
+    // whole card lavender and made it read as a highlighted region rather than
+    // as an ordinary card.
     Surface(
         shape = MaterialTheme.shapes.large,
-        tonalElevation = 2.dp,
-        shadowElevation = 1.dp,
+        color = AppSurface.raised,
+        border = BorderStroke(1.dp, AppSurface.hairline),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(
-                    Icons.Filled.AccessTime,
+                    Icons.Rounded.AccessTime,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
                 )
                 Text("Today's duty", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 IconButton(onClick = onOpenDuty) {
-                    Icon(Icons.Filled.CalendarMonth, contentDescription = "My roster")
+                    Icon(Icons.Rounded.CalendarMonth, contentDescription = "My roster")
                 }
             }
 
@@ -220,7 +233,7 @@ fun DutyCard(vm: AppViewModel, onOpenDuty: () -> Unit) {
     if (askLocation) {
         AlertDialog(
             onDismissRequest = { askLocation = false },
-            icon = { Icon(Icons.Filled.LocationOn, contentDescription = null) },
+            icon = { Icon(Icons.Rounded.LocationOn, contentDescription = null) },
             title = { Text("Add your location to this punch?") },
             text = {
                 Text(
@@ -254,7 +267,7 @@ fun DutyCard(vm: AppViewModel, onOpenDuty: () -> Unit) {
     if (needsSettings) {
         AlertDialog(
             onDismissRequest = { needsSettings = false },
-            icon = { Icon(Icons.Filled.LocationOff, contentDescription = null) },
+            icon = { Icon(Icons.Rounded.LocationOff, contentDescription = null) },
             title = { Text("Location is blocked") },
             text = {
                 Text(
@@ -325,7 +338,7 @@ private fun PunchButton(state: DutyState, busy: Boolean, onPunch: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Filled.CheckCircle, null, tint = Ok, modifier = Modifier.size(20.dp))
+            Icon(Icons.Rounded.CheckCircle, null, tint = Ok, modifier = Modifier.size(20.dp))
             Text("Day recorded", style = MaterialTheme.typography.bodyMedium, color = Ok)
         }
         return
@@ -333,30 +346,42 @@ private fun PunchButton(state: DutyState, busy: Boolean, onPunch: () -> Unit) {
 
     // 64dp: the shopfloor minimum for a gloved thumb. Anything smaller gets
     // mis-tapped at a gate in the rain and the engineer gives up.
+    // Tonal, not filled.
+    //
+    // This is the *card's* action, not the screen's. Home already carries one
+    // filled accent button — Create Job Card — and on the handset the two
+    // full-width saturated blocks fought each other for the eye, which is
+    // exactly the problem a single-accent scheme exists to prevent. The tint
+    // still reads as a button at arm's length while conceding the hierarchy.
+    //
+    // Check-out keeps a distinct tone: ending a shift is not the same action as
+    // starting one, and a technician reaching for it in a hurry should not be
+    // able to confuse the two.
+    val tone = if (isOut) Semantic.critical else MaterialTheme.colorScheme.primary
     Surface(
         onClick = { if (!busy) { feedback.tap(); onPunch() } },
         shape = MaterialTheme.shapes.large,
-        color = if (isOut) CheckOutTone else CheckInTone,
+        color = Semantic.tint(tone),
         modifier = Modifier.fillMaxWidth().height(64.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (busy) {
-                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = Color.White)
+                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = tone)
             } else {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Icon(
-                        if (isOut) Icons.Filled.Logout else Icons.Filled.Login,
+                        if (isOut) Icons.Rounded.Logout else Icons.Rounded.Login,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = tone,
                     )
                     Text(
                         if (isOut) "Check out" else "Check in",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
+                        color = tone,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
@@ -370,10 +395,10 @@ private fun AdvisoryLine(
     isError: Boolean,
     action: Pair<String, () -> Unit>? = null,
 ) {
-    val tint = if (isError) MaterialTheme.colorScheme.error else Warn
+    val tint = if (isError) MaterialTheme.colorScheme.error else Semantic.caution
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         Icon(
-            if (isError) Icons.Filled.WarningAmber else Icons.Filled.LocationOff,
+            if (isError) Icons.Rounded.WarningAmber else Icons.Rounded.LocationOff,
             contentDescription = null,
             tint = tint,
             modifier = Modifier.size(16.dp),
@@ -467,7 +492,7 @@ fun DutyScreen(vm: AppViewModel, onBack: () -> Unit) {
                 title = { Text("My duty") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -486,15 +511,15 @@ fun DutyScreen(vm: AppViewModel, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatTile("Days present", presentDays.toString(), Icons.Filled.CheckCircle, Modifier.weight(1f))
-                    StatTile("Hours (30d)", "%.0f".format(totalHours), Icons.Filled.AccessTime, Modifier.weight(1f))
-                    StatTile("Late", lateDays.toString(), Icons.Filled.WarningAmber, Modifier.weight(1f))
+                    StatTile("Days present", presentDays.toString(), Icons.Rounded.CheckCircle, Modifier.weight(1f))
+                    StatTile("Hours (30d)", "%.0f".format(totalHours), Icons.Rounded.AccessTime, Modifier.weight(1f))
+                    StatTile("Late", lateDays.toString(), Icons.Rounded.WarningAmber, Modifier.weight(1f))
                 }
 
                 SectionHeader("Upcoming")
                 if (roster.isEmpty() && loaded) {
                     EmptyState(
-                        Icons.Filled.CalendarMonth,
+                        Icons.Rounded.CalendarMonth,
                         "No roster published",
                         "Your Depot Manager has not published a duty roster yet. You can still check in.",
                     )
@@ -512,7 +537,7 @@ fun DutyScreen(vm: AppViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun RosterRow(day: RosterDay) {
-    Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.medium, tonalElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -541,7 +566,7 @@ private fun RosterRow(day: RosterDay) {
 
 @Composable
 private fun AttendanceRow(day: AttendanceDay) {
-    Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.medium, tonalElevation = Elevation.e0, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -572,7 +597,7 @@ private fun AttendanceRow(day: AttendanceDay) {
 @Composable
 private fun DutyStatusPill(status: String) {
     val tone = dutyStatusColor(status)
-    Surface(shape = RoundedCornerShape(10.dp), color = tone.copy(alpha = 0.14f)) {
+    Surface(shape = Radii.md, color = tone.copy(alpha = 0.14f)) {
         Text(
             status,
             style = MaterialTheme.typography.labelMedium,
@@ -585,18 +610,22 @@ private fun DutyStatusPill(status: String) {
 
 // Colour is never the only signal — every pill carries its word too, because a
 // depot floor has plenty of people who cannot rely on hue alone.
-private val Ok = Color(0xFF16A34A)
-private val Warn = Color(0xFFD97706)
-private val CheckInTone = Color(0xFF16A34A)
-private val CheckOutTone = Color(0xFFDC2626)
+//
+// Drawn from the app-wide ramp rather than this file's own greens and ambers,
+// so "Present" here and "Closed" on a job card are the same green, and neither
+// invents a hue the rest of the app does not use.
+private val Ok: Color
+    @Composable @ReadOnlyComposable get() = Semantic.positive
 
+@Composable
+@ReadOnlyComposable
 private fun dutyStatusColor(status: String?): Color = when (status?.lowercase()) {
-    "present" -> Ok
-    "on duty" -> Color(0xFF2563EB)
-    "half day" -> Warn
-    "absent" -> Color(0xFFDC2626)
-    "week off" -> Color(0xFF64748B)
-    else -> Color(0xFF94A3B8)
+    "present" -> Semantic.positive
+    "on duty" -> Semantic.active
+    "half day" -> Semantic.caution
+    "absent" -> Semantic.critical
+    "week off" -> Semantic.idle
+    else -> Semantic.idle
 }
 
 /** "09:00:00" → "09:00". Seconds are noise on a shift label. */

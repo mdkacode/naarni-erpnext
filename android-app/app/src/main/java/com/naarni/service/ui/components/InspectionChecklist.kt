@@ -26,6 +26,10 @@ import com.naarni.service.data.dto.InspectionSheet
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import com.naarni.service.ui.theme.AppSurface
+import com.naarni.service.ui.theme.Stroke
+import com.naarni.service.ui.theme.Elevation
+import com.naarni.service.ui.theme.Semantic
 
 /** Three-tier statuses — values mirror the backend HEALTH_SCORE_MAP keys exactly. */
 const val STATUS_GOOD = "Good"
@@ -118,7 +122,7 @@ fun rememberInspectionState(): InspectionState = remember { InspectionState() }
 @Composable
 fun InspectionChecklist(sheet: InspectionSheet, state: InspectionState, modifier: Modifier = Modifier) {
     val issues = state.issueCount(sheet.items)
-    Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp, modifier = modifier.fillMaxWidth()) {
+    Surface(color = AppSurface.raised, border = Stroke.card, shape = MaterialTheme.shapes.large, tonalElevation = Elevation.e0, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Inspection — ${sheet.sheet_label}", fontWeight = FontWeight.SemiBold)
@@ -145,9 +149,9 @@ private fun InspectionRow(item: InspectionCheckItem, state: InspectionState) {
             "three_tier" -> {
                 val current = state.statusOf(item)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TierChip("Good", current == STATUS_GOOD, Color(0xFF22C55E)) { state.statuses[item.id] = STATUS_GOOD }
-                    TierChip("Recommend", current == STATUS_RECOMMENDED, Color(0xFFEAB308)) { state.statuses[item.id] = STATUS_RECOMMENDED }
-                    TierChip("Immediate", current == STATUS_IMMEDIATE, Color(0xFFEF4444)) { state.statuses[item.id] = STATUS_IMMEDIATE }
+                    TierChip("Good", current == STATUS_GOOD, Semantic.positive) { state.statuses[item.id] = STATUS_GOOD }
+                    TierChip("Recommend", current == STATUS_RECOMMENDED, Semantic.caution) { state.statuses[item.id] = STATUS_RECOMMENDED }
+                    TierChip("Immediate", current == STATUS_IMMEDIATE, Semantic.critical) { state.statuses[item.id] = STATUS_IMMEDIATE }
                 }
             }
             "measurement" -> {

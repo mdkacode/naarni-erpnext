@@ -60,6 +60,7 @@ import com.naarni.service.ui.components.EmptyState
 import com.naarni.service.ui.components.HairlineDivider
 import com.naarni.service.ui.theme.AppSurface
 import kotlinx.coroutines.launch
+import com.naarni.service.ui.theme.Radii
 
 /**
  * Everything that has ever been shared in one conversation, by category.
@@ -263,10 +264,10 @@ private fun GalleryTabs(
                     } else {
                         AppSurface.sunken
                     },
-                    shape = RoundedCornerShape(18.dp),
+                    shape = Radii.xl,
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(Radii.xl)
                         .clickable { onSelect(entry) },
                 ) {
                     Column(
@@ -374,7 +375,7 @@ private fun MediaGrid(
                 Box(
                     Modifier
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(Radii.md)
                         .background(ChatTokens.chip)
                         .clickable { onOpen(row) },
                 ) {
@@ -395,7 +396,7 @@ private fun MediaGrid(
                             Modifier
                                 .align(Alignment.BottomStart)
                                 .padding(5.dp)
-                                .clip(RoundedCornerShape(5.dp))
+                                .clip(Radii.sm)
                                 .background(Color.Black.copy(alpha = 0.55f))
                                 .padding(horizontal = 5.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -445,7 +446,7 @@ private fun DocumentRow(message: ChatMessageEntity, busy: Boolean, onClick: () -
         val playing = isVoice && VoicePlayer.playingId == message.clientId
         val loading = isVoice && VoicePlayer.loadingId == message.clientId
 
-        Surface(color = AppSurface.sunken, shape = RoundedCornerShape(11.dp)) {
+        Surface(color = AppSurface.sunken, shape = Radii.md) {
             Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                 when {
                     busy || loading -> CircularProgressIndicator(
@@ -535,7 +536,7 @@ private fun LinkRow(message: ChatMessageEntity, onOpen: (String) -> Unit) {
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(color = AppSurface.sunken, shape = RoundedCornerShape(11.dp)) {
+                Surface(color = AppSurface.sunken, shape = Radii.md) {
                     Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                         Text(
                             Gallery.linkInitial(url),

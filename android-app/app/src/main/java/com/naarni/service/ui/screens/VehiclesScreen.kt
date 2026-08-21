@@ -17,8 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.DirectionsBus
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -95,7 +95,7 @@ fun VehiclesScreen(vm: AppViewModel, onOpenVehicle: (String) -> Unit = {}) {
             value = query,
             onValueChange = { query = it },
             placeholder = { Text("Search registration, model or operator") },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
             singleLine = true,
             shape = MaterialTheme.shapes.large,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
@@ -128,7 +128,7 @@ fun VehiclesScreen(vm: AppViewModel, onOpenVehicle: (String) -> Unit = {}) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            Icons.Filled.DirectionsBus,
+                            Icons.Rounded.DirectionsBus,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.outline,
@@ -164,7 +164,7 @@ private fun VehicleRow(v: FleetVehicle, onClick: () -> Unit) {
         ) {
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = CircleShape) {
                 Icon(
-                    Icons.Filled.DirectionsBus,
+                    Icons.Rounded.DirectionsBus,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(10.dp).size(22.dp),

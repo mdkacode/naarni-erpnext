@@ -57,6 +57,7 @@ import com.naarni.service.data.dto.ProcessOption
 import com.naarni.service.data.dto.ProcessStep
 import com.naarni.service.ui.theme.AppSurface
 import kotlinx.coroutines.delay
+import com.naarni.service.ui.theme.Radii
 
 /**
  * One check, filling the screen.
@@ -421,7 +422,7 @@ private fun StepQuestion(step: ProcessStep, metrics: StepMetrics) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (!step.display_no.isNullOrBlank() && step.display_no != "—") {
-                Surface(color = AppSurface.sunken, shape = RoundedCornerShape(8.dp)) {
+                Surface(color = AppSurface.sunken, shape = Radii.md) {
                     Text(
                         step.display_no,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -440,7 +441,7 @@ private fun StepQuestion(step: ProcessStep, metrics: StepMetrics) {
                 )
             }
             if (step.is_critical == 1) {
-                Surface(color = FailRed.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
+                Surface(color = FailRed.copy(alpha = 0.12f), shape = Radii.md) {
                     Text(
                         "CRITICAL",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -497,12 +498,12 @@ private fun BigChoices(
             val tint = optionColor(option)
             Surface(
                 color = if (selected) tint.copy(alpha = 0.14f) else AppSurface.raised,
-                shape = RoundedCornerShape(18.dp),
+                shape = Radii.xl,
                 border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) tint else AppSurface.hairline),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(metrics.rowHeight)
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(Radii.xl)
                     .clickable {
                         onAnswer(
                             if (selected && multi) answer.copy(response = null)
@@ -519,7 +520,7 @@ private fun BigChoices(
                     // state survives being looked at in sunlight, where a colour
                     // difference alone often does not.
                     Box(
-                        Modifier.size(30.dp).clip(RoundedCornerShape(50)),
+                        Modifier.size(30.dp).clip(Radii.pill),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (selected) {
@@ -533,7 +534,7 @@ private fun BigChoices(
                             Box(
                                 Modifier
                                     .size(26.dp)
-                                    .clip(RoundedCornerShape(50))
+                                    .clip(Radii.pill)
                                     .background(AppSurface.sunken),
                             )
                         }
@@ -563,7 +564,7 @@ private fun BigNumber(
         reading?.let { OcrSuggestionCard(it, answer, step.unit, onAnswer) }
         Surface(
             color = AppSurface.raised,
-            shape = RoundedCornerShape(18.dp),
+            shape = Radii.xl,
             border = BorderStroke(1.dp, AppSurface.hairline),
             modifier = Modifier.fillMaxWidth().height(metrics.rowHeight),
         ) {
@@ -617,7 +618,7 @@ private fun BigNumber(
 private fun BigReadout(value: String?, unit: String?, metrics: StepMetrics) {
     Surface(
         color = AppSurface.sunken,
-        shape = RoundedCornerShape(18.dp),
+        shape = Radii.xl,
         modifier = Modifier.fillMaxWidth().height(metrics.rowHeight),
     ) {
         Row(
@@ -659,11 +660,11 @@ private fun BigScan(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Surface(
             color = MaterialTheme.colorScheme.primary,
-            shape = RoundedCornerShape(18.dp),
+            shape = Radii.xl,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(metrics.rowHeight)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(Radii.xl)
                 .clickable(onClick = onScanRequest),
         ) {
             Row(
@@ -718,7 +719,7 @@ private fun BigText(
 ) {
     Surface(
         color = AppSurface.raised,
-        shape = RoundedCornerShape(18.dp),
+        shape = Radii.xl,
         border = BorderStroke(1.dp, AppSurface.hairline),
         modifier = Modifier.fillMaxWidth().heightIn(
             min = if (singleLine) metrics.rowHeight else metrics.rowHeight * 1.5f,
@@ -761,7 +762,7 @@ private fun PhotoRow(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
             color = if (satisfied) PassGreen.copy(alpha = 0.10f) else AppSurface.raised,
-            shape = RoundedCornerShape(18.dp),
+            shape = Radii.xl,
             border = BorderStroke(
                 if (required && !satisfied) 2.dp else 1.dp,
                 when {
@@ -773,7 +774,7 @@ private fun PhotoRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(metrics.rowHeight)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(Radii.xl)
                 .clickable(onClick = onCapture),
         ) {
             Row(
@@ -856,12 +857,12 @@ private fun NoteRow(
         if (!open) {
             Surface(
                 color = AppSurface.raised,
-                shape = RoundedCornerShape(14.dp),
+                shape = Radii.lg,
                 border = BorderStroke(1.dp, AppSurface.hairline),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(minOf(metrics.rowHeight, 56.dp))
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(Radii.lg)
                     .clickable { open = true },
             ) {
                 Row(
@@ -891,7 +892,7 @@ private fun NoteRow(
 
             Surface(
                 color = AppSurface.raised,
-                shape = RoundedCornerShape(14.dp),
+                shape = Radii.lg,
                 border = BorderStroke(1.dp, AppSurface.hairline),
                 modifier = Modifier.fillMaxWidth().heightIn(min = metrics.rowHeight * 1.2f),
             ) {
@@ -917,7 +918,7 @@ private fun NoteRow(
 private fun RunnerNotice(text: String, tone: Color? = null) {
     Surface(
         color = (tone ?: MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = 0.10f),
-        shape = RoundedCornerShape(14.dp),
+        shape = Radii.lg,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
@@ -969,7 +970,7 @@ private fun OcrSuggestionCard(
 
     Surface(
         color = if (matches) PassGreen.copy(alpha = 0.10f) else WarnAmber.copy(alpha = 0.10f),
-        shape = RoundedCornerShape(14.dp),
+        shape = Radii.lg,
         border = BorderStroke(1.dp, if (matches) PassGreen else WarnAmber),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -1028,12 +1029,12 @@ private fun BigLink(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
             color = if (chosen != null) PassGreen.copy(alpha = 0.10f) else AppSurface.raised,
-            shape = RoundedCornerShape(18.dp),
+            shape = Radii.xl,
             border = BorderStroke(if (chosen != null) 2.dp else 1.dp, if (chosen != null) PassGreen else AppSurface.hairline),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(metrics.rowHeight)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(Radii.xl)
                 .clickable(onClick = onPickRequest),
         ) {
             Row(

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * The chat client's local store.
@@ -21,9 +23,9 @@ import androidx.room.RoomDatabase
     //    this carries the moment it was stored instead of the moment it was
     //    sent, and delta sync only ever returns messages *above* the cursor, so
     //    nothing would ever go back and correct them.
-    // No migrations are written for any of them — see the destructive-fallback
-    // note below.
-    version = 5,
+    // 6: deleteSeq and deletedBy on a message — deleting for everyone.
+    // Only 6 has a migration written for it; see the note on MIGRATION_5_6.
+    version = 6,
     exportSchema = true,
 )
 abstract class ChatDatabase : RoomDatabase() {
@@ -33,12 +35,29 @@ abstract class ChatDatabase : RoomDatabase() {
     companion object {
         private const val NAME = "naarni_chat.db"
 
+        /**
+         * Two columns added, nothing rewritten.
+         *
+         * Written out rather than left to the destructive fallback, which is the
+         * exception this database's own note reserves for queued outbound
+         * messages: a wipe takes the outbox with it, and a technician who typed
+         * a message in a basement would lose it to a schema bump they never saw.
+         * The tombstone columns default to "never deleted", which is true of
+         * every row that already exists.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE chat_message ADD COLUMN deleteSeq INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE chat_message ADD COLUMN deletedBy TEXT")
+            }
+        }
+
         fun build(context: Context): ChatDatabase =
             Room.databaseBuilder(context.applicationContext, ChatDatabase::class.java, NAME)
-                // Chat history is a cache of server state, recoverable in full by
-                // a delta sync from seq 0. Paying for a migration to preserve it
-                // is not worth the risk of a bad migration bricking the tab.
-                // Queued outbound messages are the exception — see below.
+                .addMigrations(MIGRATION_5_6)
+                // Still the backstop for the older versions, which have no
+                // migrations. Chat history is a cache of server state,
+                // recoverable in full by a delta sync from seq 0.
                 .fallbackToDestructiveMigration()
                 .build()
 

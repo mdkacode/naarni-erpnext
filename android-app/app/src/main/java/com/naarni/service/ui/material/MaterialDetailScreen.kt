@@ -52,6 +52,7 @@ import com.naarni.service.ui.components.ReviewablePhoto
 import com.naarni.service.ui.components.SectionHeader
 import com.naarni.service.ui.theme.AppSurface
 import com.naarni.service.ui.theme.Semantic
+import com.naarni.service.ui.theme.Radii
 
 /**
  * One movement, read-only, plus the supervisor's two decisions.
@@ -209,7 +210,7 @@ private fun Facts(movement: Movement) {
     )
     if (rows.isEmpty()) return
 
-    Surface(shape = RoundedCornerShape(14.dp), color = AppSurface.raised, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = Radii.lg, color = AppSurface.raised, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             rows.forEach { (label, value) ->
                 Row(Modifier.fillMaxWidth()) {
@@ -234,7 +235,7 @@ private fun Facts(movement: Movement) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReadOnlyItem(row: MovementItem, photos: List<ReviewablePhoto>) {
-    Surface(shape = RoundedCornerShape(12.dp), color = AppSurface.raised, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = Radii.lg, color = AppSurface.raised, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row {
                 Text(
@@ -277,7 +278,7 @@ private fun ReadOnlyItem(row: MovementItem, photos: List<ReviewablePhoto>) {
 
 @Composable
 private fun Callout(title: String, body: String, tint: androidx.compose.ui.graphics.Color) {
-    Surface(shape = RoundedCornerShape(12.dp), color = tint.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = Radii.lg, color = tint.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Text(title, style = MaterialTheme.typography.labelLarge, color = tint, fontWeight = FontWeight.SemiBold)
             Text(body, style = MaterialTheme.typography.bodySmall)

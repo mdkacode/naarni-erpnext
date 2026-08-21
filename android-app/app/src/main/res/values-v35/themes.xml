@@ -1,0 +1,17 @@
+<resources>
+    <!--
+        Android 15 (API 35) forces edge-to-edge on apps that target it, whether
+        or not they call `enableEdgeToEdge()` — and with it, `adjustResize`
+        stops working and the keyboard covers whatever is being typed into.
+
+        This opts back out, which is supported for as long as the app targets
+        35. When targetSdk moves to 36 the flag is ignored, and the app will
+        have to consume `WindowInsets.ime` itself on every screen that takes
+        input. That is a real piece of work, not a flag flip, and it should be
+        done deliberately rather than discovered by an engineer who cannot see
+        the serial they are typing.
+    -->
+    <style name="Theme.NaarniService" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>

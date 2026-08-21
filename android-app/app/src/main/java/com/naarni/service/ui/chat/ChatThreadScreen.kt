@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.NotificationsOff
@@ -115,6 +116,8 @@ import com.naarni.service.core.media.VideoCompressor
 import com.naarni.service.ui.theme.AppSurface
 import com.naarni.service.ui.theme.Semantic
 import kotlinx.coroutines.launch
+import com.naarni.service.ui.theme.Radii
+import com.naarni.service.ui.theme.Elevation
 
 /**
  * One conversation.
@@ -180,6 +183,9 @@ fun ChatThreadScreen(
               // "coroutine scope left the composition" on the first device run.
     var openingFile by remember { mutableStateOf<String?>(null) }
     var openError by remember { mutableStateOf<String?>(null) }
+
+    /** The message a delete has been asked for, held while it is confirmed. */
+    var deleting by remember { mutableStateOf<ChatMessageEntity?>(null) }
 
     // user id → display name, for rendering the `@`s inside a received message.
     // The member list is already loaded for the composer's picker, so this costs
@@ -536,6 +542,40 @@ fun ChatThreadScreen(
         )
     }
 
+    deleting?.let { target ->
+        // Confirmed rather than done on the tap. Deleting for everyone is not
+        // undoable from here, and a long-press followed by a mis-tap in a moving
+        // vehicle is exactly how it would otherwise happen.
+        val everyone = !target.serverName.isNullOrBlank()
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text(if (everyone) "Delete this message?" else "Remove this message?") },
+            text = {
+                Text(
+                    if (everyone) {
+                        "It will be removed for everyone in this chat."
+                    } else {
+                        // Never sent, so there is nobody to remove it from.
+                        "It hasn't been sent, so it will just be discarded."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val message = target
+                        deleting = null
+                        selected = null
+                        vm.deleteMessage(message) { error -> openError = error }
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+        )
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -553,6 +593,13 @@ fun ChatThreadScreen(
                 onDismiss = { selected = null },
                 onReply = { replyTo = selected; selected = null },
                 onRaiseTicket = { onRaiseTicket(selected!!); selected = null },
+                // Absent, not disabled, once the window has passed — a greyed
+                // bin invites a tap that can only answer with a refusal, and
+                // explaining the refusal would mean naming a deadline the UI is
+                // deliberately silent about.
+                onDelete = selected
+                    ?.takeIf { vm.canDelete(it) }
+                    ?.let { target -> { deleting = target } },
                 onReact = { code ->
                     feedback.tap()
                     vm.toggleReaction(selected?.serverName, code)
@@ -625,13 +672,20 @@ fun ChatThreadScreen(
                             highlighted == message.clientId,
                         replyPreview = message.replyTo?.let { quotes[it] },
                         onOpenQuote = { parent -> jumpTo(parent.clientId) },
+                        // A tombstone offers nothing: there is no text to quote,
+                        // nothing to react to and nothing left to raise a ticket
+                        // from. Swipe and long-press simply do not respond.
                         onReply = {
-                            feedback.replyTriggered()
-                            replyTo = message
+                            if (!message.deleted) {
+                                feedback.replyTriggered()
+                                replyTo = message
+                            }
                         },
                         onLongPress = {
-                            feedback.selectionEntered()
-                            selected = message
+                            if (!message.deleted) {
+                                feedback.selectionEntered()
+                                selected = message
+                            }
                         },
                         onRetry = { vm.retry(message) },
                         onOpenMedia = {
@@ -698,7 +752,7 @@ fun ChatThreadScreen(
                     Surface(
                         color = ChatTokens.field,
                         shape = CircleShape,
-                        shadowElevation = 3.dp,
+                        shadowElevation = Elevation.e2,
                         modifier = Modifier
                             .padding(top = if (missed > 0) 7.dp else 0.dp)
                             .size(40.dp)
@@ -1122,6 +1176,8 @@ private fun SelectionBar(
     onReply: () -> Unit,
     onRaiseTicket: () -> Unit,
     onReact: (String) -> Unit,
+    /** Null when this message can no longer be taken back. */
+    onDelete: (() -> Unit)? = null,
 ) {
   Column(
       Modifier
@@ -1155,6 +1211,15 @@ private fun SelectionBar(
                 contentDescription = "Raise ticket from this message",
                 tint = Color.White,
             )
+        }
+        onDelete?.let { delete ->
+            IconButton(onClick = delete) {
+                Icon(
+                    Icons.Rounded.DeleteOutline,
+                    contentDescription = "Delete message",
+                    tint = Color.White,
+                )
+            }
         }
     }
 
@@ -1191,7 +1256,7 @@ private fun ReplyBar(message: ChatMessageEntity, onClear: () -> Unit) {
                         .padding(start = 8.dp)
                         .width(3.dp)
                         .height(34.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(Radii.xs)
                         .background(authorColor(message.author)),
                 )
                 Column(Modifier.weight(1f).padding(horizontal = 9.dp, vertical = 6.dp)) {
@@ -1331,7 +1396,7 @@ private fun Composer(
         ) {
             if (!recording) Surface(
                 color = ChatTokens.field,
-                shape = RoundedCornerShape(26.dp),
+                shape = Radii.xl,
                 tonalElevation = 0.dp,
                 // A hairline rather than a drop shadow: the pill sits on a tinted
                 // canvas where a shadow just muddies the edge, and an outline is
@@ -1641,7 +1706,7 @@ private fun RecordingStrip(
 ) {
     Surface(
         color = ChatTokens.field,
-        shape = RoundedCornerShape(26.dp),
+        shape = Radii.xl,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             if (armedToCancel) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant,
@@ -1728,8 +1793,8 @@ private fun LiveWaveform(levels: List<Float>, tint: Color, modifier: Modifier = 
 private fun MentionPicker(candidates: List<ChatUserDto>, onPick: (ChatUserDto) -> Unit) {
     Surface(
         color = ChatTokens.field,
-        shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
-        shadowElevation = 6.dp,
+        shape = Radii.sheet,
+        shadowElevation = Elevation.e3,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp),
     ) {
         LazyColumn(Modifier.heightIn(max = 210.dp)) {

@@ -8,10 +8,11 @@ in the field was a transient FCM error silently discarding an alert, a worker
 dying mid-send, and a payload shape that stopped the handset's own code from
 ever running. Each of those has a test here.
 
-The manual commits carry `# nosemgrep` throughout. The code under test commits
-its own state transitions and then reads them back — that durability *is* the
-behaviour being tested — so a fixture left in the test's uncommitted transaction
-would be invisible to it. These are commits in a test, not in a request path.
+The pipeline commits its own state transitions on purpose — that durability is
+what it is for. Inside a test those commits would escape `FrappeTestCase`'s
+rollback and leak rows into the next test, so `_silence_commits` neutralises
+them and the framework's own cleanup does the rest. Nothing here overrides
+`tearDown`, which is where that rollback happens.
 """
 
 from unittest.mock import patch
@@ -35,8 +36,26 @@ class _Resp:
 		return self._payload
 
 
+def _silence_commits(case):
+	"""Make the pipeline's own `frappe.db.commit()` calls no-ops for this test.
+
+	The module under test commits deliberately — that durability is the point of
+	it. Inside a test those commits would escape `FrappeTestCase`'s rollback and
+	leak rows into the next one, so they are neutralised here instead. Every
+	assertion still sees the writes, because they remain in the test's open
+	transaction; only the escape hatch is closed.
+
+	Registered through `addCleanup` rather than `tearDown`, so the base class
+	keeps the rollback it performs there.
+	"""
+	patcher = patch.object(frappe.db, "commit", lambda *a, **k: None)
+	patcher.start()
+	case.addCleanup(patcher.stop)
+
+
 class TestPushDelivery(FrappeTestCase):
 	def setUp(self):
+		_silence_commits(self)
 		self.user = "push-test@example.com"
 		if not frappe.db.exists("User", self.user):
 			frappe.get_doc(
@@ -60,12 +79,9 @@ class TestPushDelivery(FrappeTestCase):
 				"is_active": 1,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()  # nosemgrep
 
-	def tearDown(self):
-		frappe.db.delete("Push Delivery", {"user": self.user})
-		frappe.db.delete("Push Token", {"user": self.user})
-		frappe.db.commit()  # nosemgrep
+	# No tearDown: FrappeTestCase rolls back after each test, and with commits
+	# silenced above there is nothing left for a hand-written cleanup to undo.
 
 	# ── queueing ──
 
@@ -286,7 +302,6 @@ class TestPushDelivery(FrappeTestCase):
 			"""UPDATE `tabPush Delivery` SET status='Sending', modified=%(old)s WHERE name=%(n)s""",
 			{"n": name, "old": add_to_date(now_datetime(), seconds=-(push_delivery.STUCK_SENDING_SEC + 60))},
 		)
-		frappe.db.commit()  # nosemgrep
 		with (
 			patch.object(push_delivery, "is_enabled", return_value=True),
 			patch.object(push_delivery, "_try_enqueue") as enq,
@@ -333,7 +348,6 @@ class TestPushDelivery(FrappeTestCase):
 			add_to_date(now_datetime(), seconds=-(push_delivery.SMS_FALLBACK_AFTER_SEC + 60)),
 			update_modified=False,
 		)
-		frappe.db.commit()  # nosemgrep
 		with patch("vehicle_maintenance.fleet_service.notifications._dispatch_sms") as sms:
 			push_delivery._escalate_undelivered(now_datetime())
 			push_delivery._escalate_undelivered(now_datetime())
@@ -349,7 +363,6 @@ class TestPushDelivery(FrappeTestCase):
 			add_to_date(now_datetime(), seconds=-(push_delivery.SMS_FALLBACK_AFTER_SEC + 60)),
 			update_modified=False,
 		)
-		frappe.db.commit()  # nosemgrep
 		with patch("vehicle_maintenance.fleet_service.notifications._dispatch_sms") as sms:
 			push_delivery._escalate_undelivered(now_datetime())
 		sms.assert_not_called()
@@ -383,7 +396,6 @@ class TestPushDelivery(FrappeTestCase):
 				add_to_date(now_datetime(), seconds=-(push_delivery.SMS_FALLBACK_AFTER_SEC + 60)),
 				update_modified=False,
 			)
-		frappe.db.commit()  # nosemgrep
 		with patch("vehicle_maintenance.fleet_service.notifications._dispatch_sms") as sms:
 			push_delivery._escalate_undelivered(now_datetime())
 		sms.assert_not_called()
@@ -399,7 +411,6 @@ class TestPushDelivery(FrappeTestCase):
 			add_to_date(now_datetime(), days=-(push_delivery.LEDGER_RETENTION_DAYS + 5)),
 			update_modified=False,
 		)
-		frappe.db.commit()  # nosemgrep
 		push_delivery.prune_ledger()
 		self.assertTrue(frappe.db.exists("Push Delivery", name))
 
@@ -413,6 +424,7 @@ class TestAlertNotificationWiring(FrappeTestCase):
 	"""
 
 	def setUp(self):
+		_silence_commits(self)
 		self.user = "wiring-test@example.com"
 		if not frappe.db.exists("User", self.user):
 			frappe.get_doc(
@@ -436,13 +448,6 @@ class TestAlertNotificationWiring(FrappeTestCase):
 				"is_active": 1,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()  # nosemgrep
-
-	def tearDown(self):
-		frappe.db.delete("Push Delivery", {"user": self.user})
-		frappe.db.delete("Push Token", {"user": self.user})
-		frappe.db.delete("Notification Log", {"for_user": self.user})
-		frappe.db.commit()  # nosemgrep
 
 	def test_ticket_bell_row_points_at_the_ticket_not_a_job_card(self):
 		from vehicle_maintenance.fleet_service import notifications as notif

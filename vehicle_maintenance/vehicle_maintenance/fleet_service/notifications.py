@@ -425,10 +425,12 @@ def _dispatch(job_card, roles, extra_users, subject: str, body: str, priority: s
 		# durable Notification Log write and the slower push/SMS/email follow.
 		_dispatch_realtime(user, subject, body, doc_name, priority)
 		_dispatch_in_app(user, subject, body, doc_name)
-		if frappe.get_conf().get("notifications_push_enabled"):
-			_dispatch_push(user, subject, body, doc_name, priority)
-		if frappe.get_conf().get("notifications_sms_enabled"):
-			_dispatch_sms(user, subject, body, doc_name, priority)
+		# Push gates itself on `notifications_push_enabled` inside the ledger
+		# write, so callers never have to remember the toggle — forgetting it
+		# was one of the ways a notification silently went nowhere.
+		_dispatch_push(user, subject, body, doc_name, priority)
+		# Self-gating on both the toggle and the priority class, like push.
+		_dispatch_sms(user, subject, body, doc_name, priority)
 		# Email is gated on its own toggle; dispatch is enqueued so a slow
 		# network round-trip to Microsoft Graph doesn't block the save path.
 		_dispatch_email(user, subject, body, doc_name, priority)
@@ -460,7 +462,16 @@ def _dispatch_realtime(user: str, subject: str, body: str, doc_name: str | None,
 		)
 
 
-def _dispatch_in_app(user: str, subject: str, body: str, doc_name: str | None) -> None:
+def _dispatch_in_app(
+	user: str, subject: str, body: str, doc_name: str | None, document_type: str = "Job Card"
+) -> None:
+	"""Write the durable bell row.
+
+	`document_type` used to be hardcoded to "Job Card", which meant every alert
+	and ticket notification pointed the bell at a Job Card of that name — a
+	document that does not exist. Tapping the notification dead-ended, which
+	reads to the user as "the notification didn't work".
+	"""
 	try:
 		log = frappe.new_doc("Notification Log")
 		log.update(
@@ -469,7 +480,7 @@ def _dispatch_in_app(user: str, subject: str, body: str, doc_name: str | None) -
 				"email_content": body,
 				"for_user": user,
 				"type": "Alert",
-				"document_type": "Job Card",
+				"document_type": document_type,
 				"document_name": doc_name,
 				"from_user": "Administrator",
 			}
@@ -485,42 +496,38 @@ def _dispatch_in_app(user: str, subject: str, body: str, doc_name: str | None) -
 def _dispatch_push(
 	user: str, subject: str, body: str, doc_name: str | None, priority: str, deeplink: str | None = None
 ) -> None:
-	"""Enqueue an FCM push to each of the user's active device tokens.
+	"""Queue a guaranteed-delivery push to every one of the user's devices.
 
-	Gated on `notifications_push_enabled`. The actual HTTP call to FCM is
-	background-enqueued so a slow provider never blocks the save/transition path —
-	realtime + In-App have already fired. When no FCM server key is configured the
-	job logs and no-ops, so this is safe to enable before credentials are wired.
+	Thin by design: all the hard parts — the durable ledger row, the data-only
+	payload, retry with backoff, dead-token pruning and the SMS escalation —
+	live in `fleet_service.push_delivery`, so the alert path and the job-card
+	path get the same guarantees without either having to know about FCM.
 
 	`deeplink` overrides the tap target (e.g. `naarni://alert/{id}` for tickets);
 	when omitted it defaults to the job-card route for `doc_name`.
 	"""
 	try:
-		tokens = frappe.get_all(
-			"Push Token",
-			filters={"user": user, "is_active": 1},
-			fields=["device_token"],
-			limit_page_length=20,
+		from vehicle_maintenance.fleet_service import push_delivery
+
+		ref_type = "Job Card"
+		link = deeplink
+		if deeplink and deeplink.startswith("naarni://alert/"):
+			ref_type = "Service Ticket"
+		if not link:
+			link = f"naarni://jobcard/{doc_name}" if doc_name else ""
+
+		push_delivery.queue_push(
+			user,
+			subject,
+			body,
+			reference_doctype=ref_type,
+			reference_name=doc_name,
+			deeplink=link,
+			priority=priority,
 		)
-		if not tokens:
-			return
-		for row in tokens:
-			frappe.enqueue(
-				method="vehicle_maintenance.fleet_service.notifications._dispatch_push_job",
-				queue="short",
-				timeout=30,
-				now=False,
-				job_name=f"fleet-push:{doc_name}:{user}",
-				device_token=row["device_token"],
-				subject=subject,
-				body=body,
-				doc_name=doc_name,
-				priority=priority,
-				deeplink=deeplink,
-			)
 	except Exception:
 		frappe.log_error(
-			title=f"Push enqueue failed (user={user})",
+			title=f"Push queue failed (user={user})",
 			message=frappe.get_traceback(),
 		)
 
@@ -532,6 +539,11 @@ def _fcm_access_token() -> tuple[str, str] | None:
 	in site_config as `notifications_fcm_service_account` (the whole JSON, as a dict
 	or string). Signs the assertion with PyJWT — no google-auth dependency. Cached
 	~50 min. The legacy `fcm/send` server-key API was shut down by Google in 2024.
+
+	Never raises. It used to let a transport error out of the mint escape into the
+	caller, and because the mint sat outside the send's try block that killed the
+	RQ job outright — no log, no retry, notification gone. Returning None instead
+	leaves the delivery row on its backoff, where the sweeper picks it up.
 	"""
 	conf = frappe.get_conf()
 	sa = conf.get("notifications_fcm_service_account")
@@ -541,11 +553,13 @@ def _fcm_access_token() -> tuple[str, str] | None:
 		try:
 			sa = frappe.parse_json(sa)
 		except Exception:
+			frappe.log_error(title="FCM service account JSON is unparseable")
 			return None
 	project_id = sa.get("project_id")
 	client_email = sa.get("client_email")
 	private_key = sa.get("private_key")
 	if not (project_id and client_email and private_key):
+		frappe.log_error(title="FCM service account missing project_id/client_email/private_key")
 		return None
 
 	cache = frappe.cache()
@@ -553,35 +567,42 @@ def _fcm_access_token() -> tuple[str, str] | None:
 	if cached:
 		return cached, project_id
 
-	import time
+	try:
+		import time
 
-	import jwt
-	import requests
+		import jwt
+		import requests
 
-	now = int(time.time())
-	assertion = jwt.encode(
-		{
-			"iss": client_email,
-			"scope": "https://www.googleapis.com/auth/firebase.messaging",
-			"aud": "https://oauth2.googleapis.com/token",
-			"iat": now,
-			"exp": now + 3600,
-		},
-		private_key,
-		algorithm="RS256",
-	)
-	resp = requests.post(
-		"https://oauth2.googleapis.com/token",
-		data={
-			"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-			"assertion": assertion,
-		},
-		timeout=15,
-	)
+		now = int(time.time())
+		assertion = jwt.encode(
+			{
+				"iss": client_email,
+				"scope": "https://www.googleapis.com/auth/firebase.messaging",
+				"aud": "https://oauth2.googleapis.com/token",
+				"iat": now,
+				"exp": now + 3600,
+			},
+			private_key,
+			algorithm="RS256",
+		)
+		resp = requests.post(
+			"https://oauth2.googleapis.com/token",
+			data={
+				"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+				"assertion": assertion,
+			},
+			timeout=15,
+		)
+	except Exception:
+		frappe.log_error(title="FCM OAuth token mint errored", message=frappe.get_traceback())
+		return None
+
 	token = resp.json().get("access_token") if resp.ok else None
 	if not token:
-		frappe.log_error(title="FCM OAuth token mint failed", message=resp.text[:500])
+		frappe.log_error(title="FCM OAuth token mint failed", message=(resp.text or "")[:500])
 		return None
+	# Comfortably inside the hour Google grants, so a token can't expire mid-flight
+	# on a row the sweeper is replaying.
 	cache.set_value("fcm_access_token", token, expires_in_sec=3000)
 	return token, project_id
 
@@ -594,56 +615,16 @@ def _dispatch_push_job(
 	priority: str,
 	deeplink: str | None = None,
 ) -> None:
-	"""Background worker — sends one FCM message via **HTTP v1**. Enqueue-only.
+	"""Back-compat shim for jobs enqueued by the previous release.
 
-	No-ops with a log line when `notifications_fcm_service_account` is unconfigured,
-	so this is safe to ship before Firebase credentials are wired.
+	The old fire-and-forget worker is gone; anything still sitting in Redis from
+	before the deploy is re-queued through the ledger so it isn't lost on the
+	changeover. Nothing in this codebase calls it any more.
 	"""
-	creds = _fcm_access_token()
-	if not creds:
-		frappe.logger().info(f"[push] FCM not configured; skipped doc={doc_name} priority={priority}")
+	user = frappe.db.get_value("Push Token", {"device_token": device_token}, "user")
+	if not user:
 		return
-	access_token, project_id = creds
-	# Tap target: caller-supplied deeplink (e.g. alert page) or the job-card route.
-	link = deeplink or (f"naarni://jobcard/{doc_name}" if doc_name else "")
-	try:
-		import requests
-
-		resp = requests.post(
-			f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send",
-			headers={
-				"Authorization": f"Bearer {access_token}",
-				"Content-Type": "application/json",
-			},
-			json={
-				"message": {
-					"token": device_token,
-					"notification": {"title": subject, "body": body},
-					# Send the deeplink under both keys the app may read.
-					"data": {
-						"job_card": doc_name or "",
-						"priority": str(priority),
-						"deeplink": link,
-						"route": link,
-					},
-					"android": {
-						"priority": "HIGH" if priority in ("High", "Urgent", "Critical") else "NORMAL"
-					},
-				}
-			},
-			timeout=15,
-		)
-		# Invalid/expired token (UNREGISTERED / INVALID_ARGUMENT) → deactivate it.
-		if resp.status_code in (400, 404) and (
-			"UNREGISTERED" in resp.text or "registration-token-not-registered" in resp.text
-		):
-			frappe.db.set_value(
-				"Push Token", {"device_token": device_token}, "is_active", 0, update_modified=False
-			)
-		elif resp.status_code >= 300:
-			frappe.log_error(title="FCM v1 push non-2xx", message=resp.text[:500])
-	except Exception:
-		frappe.log_error(title="FCM push send failed", message=frappe.get_traceback())
+	_dispatch_push(user, subject, body, doc_name, priority, deeplink=deeplink)
 
 
 # SMS is reserved for genuinely urgent triggers (PRD: TAT breached, breakdown
@@ -658,8 +639,15 @@ def _dispatch_sms(user: str, subject: str, body: str, doc_name: str | None, prio
 	Gated on `notifications_sms_enabled` AND a critical-class priority — routine
 	notifications never trigger SMS. The provider call is background-enqueued so a
 	slow gateway never blocks the save path (realtime + In-App already fired).
+
+	The toggle is checked *here* rather than only in `_dispatch`. It is a kill
+	switch for something that costs money per message, and a kill switch that
+	depends on every caller remembering to check it is not one — the push
+	escalation path in `push_delivery` calls straight in.
 	"""
 	if priority not in SMS_PRIORITIES:
+		return
+	if not frappe.get_conf().get("notifications_sms_enabled"):
 		return
 	try:
 		mobile = frappe.db.get_value("User", user, "mobile_no")

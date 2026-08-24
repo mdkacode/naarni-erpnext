@@ -245,16 +245,21 @@ def _notify_ticket(ticket, engineers: list[str]) -> None:
 			)
 		except Exception:
 			frappe.log_error(title="Ticket realtime failed", message=frappe.get_traceback())
-	try:
-		from vehicle_maintenance.fleet_service import notifications as notif
+	# The durable half. Push gates itself on `notifications_push_enabled` and
+	# writes a Push Delivery row before touching the network, so an engineer's
+	# alert survives Redis, the worker, or FCM being down — see
+	# `fleet_service.push_delivery`. Both severities are urgent here: a warning
+	# maps to "Medium", which still has to reach the handset immediately.
+	for user in engineers:
+		try:
+			from vehicle_maintenance.fleet_service import notifications as notif
 
-		push_on = frappe.get_conf().get("notifications_push_enabled")
-		for user in engineers:
-			notif._dispatch_in_app(user, subject, body, ticket.name)
-			if push_on:
-				notif._dispatch_push(user, subject, body, ticket.name, ticket.severity, deeplink=deeplink)
-	except Exception:
-		frappe.log_error(title="Ticket notify failed", message=frappe.get_traceback())
+			notif._dispatch_in_app(user, subject, body, ticket.name, document_type="Service Ticket")
+			notif._dispatch_push(user, subject, body, ticket.name, ticket.severity, deeplink=deeplink)
+		except Exception:
+			# Per-user, so one engineer with a broken token can't stop the
+			# others from being told about the breakdown.
+			frappe.log_error(title=f"Ticket notify failed (user={user})", message=frappe.get_traceback())
 
 
 @frappe.whitelist()

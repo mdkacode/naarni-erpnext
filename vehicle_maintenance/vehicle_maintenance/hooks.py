@@ -240,6 +240,13 @@ scheduler_events = {
 			"vehicle_maintenance.fleet_service.tasks.monitor_job_card_tat",
 			"vehicle_maintenance.fleet_service.tasks.monitor_customer_approval_sla",
 			"vehicle_maintenance.fleet_service.tasks.monitor_remote_resolution_sla",
+			# Push delivery guarantee: re-enqueue any Push Delivery row FCM
+			# hasn't accepted yet — the enqueue that never reached Redis, the
+			# worker killed mid-send, the row parked on its backoff after an
+			# FCM outage. Urgent rows still undelivered after three minutes
+			# escalate to SMS. Without this the pipeline is best-effort; with
+			# it a queued push can be delayed but not lost.
+			"vehicle_maintenance.fleet_service.push_delivery.sweep_pending",
 		],
 		# Non-urgent housekeeping stays on a relaxed cadence.
 		"*/5 * * * *": [
@@ -264,6 +271,11 @@ scheduler_events = {
 		# (Roster Settings → Mark Absent Automatically, off by default).
 		"30 5 * * *": [
 			"vehicle_maintenance.fleet_service.tasks.mark_duty_absentees",
+		],
+		# Settled push ledger rows past retention. Only Sent/Dead are pruned —
+		# anything still owed a delivery is never touched by housekeeping.
+		"20 3 * * *": [
+			"vehicle_maintenance.fleet_service.push_delivery.prune_ledger",
 		],
 		# Pull the Naarni vehicle directory (operators, status, depot) every 2 hours
 		# so the app's fleet list stays current. No-op when the integration is disabled.

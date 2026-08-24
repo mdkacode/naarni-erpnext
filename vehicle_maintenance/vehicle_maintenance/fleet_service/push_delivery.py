@@ -275,7 +275,11 @@ def deliver(delivery: str) -> None:
 			},
 			update_modified=False,
 		)
-		frappe.db.commit()
+		# Manual commit: this row is the only record that the alert reached FCM.
+		# A worker killed before the job's implicit commit would leave it
+		# readable as in-flight, and the sweeper would re-send an alert that has
+		# already been delivered.
+		frappe.db.commit()  # nosemgrep
 		return
 
 	if permanent:
@@ -286,7 +290,10 @@ def deliver(delivery: str) -> None:
 			{"status": "Dead", "last_error": detail[:480]},
 			update_modified=False,
 		)
-		frappe.db.commit()
+		# Manual commit: same durability reason, plus the token was just
+		# deactivated — this is what stops every later notification retrying a
+		# device FCM has already told us is gone.
+		frappe.db.commit()  # nosemgrep
 		return
 
 	_schedule_retry(delivery, int(row.get("attempts") or 0), bool(row.get("urgent")), detail)
@@ -310,7 +317,11 @@ def _claim(delivery: str) -> bool:
 		{"name": delivery, "now": now_datetime()},
 	)
 	claimed = frappe.db.sql("SELECT ROW_COUNT()")[0][0] == 1
-	frappe.db.commit()
+	# Manual commit: the claim must be visible to the *other* worker before this
+	# one starts a network call that takes seconds. Deferring it would leave the
+	# row readable as Queued for that whole window — exactly the double-send race
+	# the conditional UPDATE exists to close.
+	frappe.db.commit()  # nosemgrep
 	return claimed
 
 
@@ -339,7 +350,10 @@ def _schedule_retry(delivery: str, attempts: int, urgent: bool, detail: str) -> 
 			},
 			update_modified=False,
 		)
-	frappe.db.commit()
+	# Manual commit: the retry schedule is only a guarantee if it outlives the
+	# worker. An uncommitted next_attempt_at is a push that silently stops being
+	# retried, which is the failure this whole module exists to remove.
+	frappe.db.commit()  # nosemgrep
 
 
 def _kill_token(push_token: str | None, device_token: str | None) -> None:
@@ -509,7 +523,10 @@ def sweep_pending() -> None:
 			""",
 			{"now": now, "cutoff": add_to_date(now, seconds=-STUCK_SENDING_SEC)},
 		)
-		frappe.db.commit()
+		# Manual commit: must land before the enqueue below, or a worker picking
+		# the job up reads the row in the Sending state we are moving it out of
+		# and declines to claim it.
+		frappe.db.commit()  # nosemgrep
 	except Exception:
 		frappe.log_error(title="Push sweeper reclaim failed", message=frappe.get_traceback())
 
@@ -592,7 +609,9 @@ def _escalate_undelivered(now) -> None:
 		except Exception:
 			frappe.log_error(title="Push SMS escalation failed", message=frappe.get_traceback())
 
-	frappe.db.commit()
+	# Manual commit: `fallback_sent` is the only thing stopping the next sweep —
+	# sixty seconds away — from sending the same person the same SMS again.
+	frappe.db.commit()  # nosemgrep
 
 
 def prune_ledger() -> None:
@@ -612,7 +631,9 @@ def prune_ledger() -> None:
 			""",
 			{"cutoff": cutoff},
 		)
-		frappe.db.commit()
+		# Manual commit: a scheduled job, with no enclosing request to commit
+		# the delete for it.
+		frappe.db.commit()  # nosemgrep
 	except Exception:
 		frappe.log_error(title="Push ledger prune failed", message=frappe.get_traceback())
 

@@ -1,5 +1,7 @@
 exclude: 'node_modules|.git'
 default_stages: [pre-commit]
+# Plain `pre-commit install` also installs the push hook (PR governance, ADR-007).
+default_install_hook_types: [pre-commit, pre-push]
 fail_fast: false
 
 
@@ -65,6 +67,18 @@ repos:
 
       - id: ruff-format
         name: "Run ruff formatter"
+
+  # NaArNi PR governance (ADR-007): at most 10 files changed vs the base branch (develop), on push.
+  - repo: local
+    hooks:
+      - id: pr-governance
+        name: "PR governance — at most 10 files changed vs the base branch"
+        entry: .githooks/pre-push
+        language: system
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [pre-push]
 
 ci:
     autoupdate_schedule: weekly

@@ -1,0 +1,375 @@
+# NaArNi PR governance: at most 10 changed files, an approved title prefix and the standard PR
+# description (5 metadata rows, 7 numbered sections, no template placeholders left).
+# Canonical copy: naarni-workspace/standards/pr-governance/pr-governance.yml, synced into every repo by
+# naarni-workspace/scripts/sync-pr-governance.sh. Edit the canonical copy; its tests run the script below.
+#
+# Enforcement (the org is on GitHub Free, so no check can be "required" and GitHub cannot refuse a PR
+# at creation): a PR that fails is CLOSED within seconds, labelled `pr-governance: blocked` and given
+# one comment listing every problem. Editing the title or description re-runs the check and the bot
+# reopens the PR once it passes. If closing is refused, the PR is converted to a draft instead.
+# Every push to main/master/develop re-checks all open PRs; a merged PR that broke the rules is reported.
+# A repo that adopted the standard late sets the repository variable PR_GOVERNANCE_STRICT_SINCE
+# (a date): PRs opened before it are told what is missing but never closed. Unset, every PR is enforced.
+# Bot PRs (Dependabot etc.) are exempt. Decision record: naarni-workspace/context/decisions/ADR-007-pr-governance.md
+name: PR governance
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review, closed]
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to check (leave empty to check every open PR)
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-governance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-governance:
+    name: PR governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: At most 10 files, approved title, complete description
+        uses: actions/github-script@v7
+        env:
+          PR_GOVERNANCE_STRICT_SINCE: ${{ vars.PR_GOVERNANCE_STRICT_SINCE }}
+        with:
+          script: |
+            const MAX_FILES = 10;
+            const PREFIXES = ['Feature Release:', 'Bug Fix:', 'Hotfix:', 'Refactor:', 'Infra:', 'Security:', 'Chore:'];
+            const FIELDS = ['Feature', 'Developer', 'Verifier', 'Branch / Commit', 'Date'];
+            const SECTIONS = ["1. What's new", '2. New APIs', '3. How it works', '4. Database', '5. Who can see what', '6. Testing', '7. Deployment'];
+            const VERIFIER_PENDING = '[Add verifier name]';
+            const CODE_PLACEHOLDERS = ['[branch-name]', '[short-commit-sha]'];
+            const DATE = /^\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}$/;
+            const LABEL = 'pr-governance: blocked';
+            const MARKER = '<!-- pr-governance-bot -->';
+            const DRAFT = 'mutation($id: ID!) { convertPullRequestToDraft(input: { pullRequestId: $id }) { pullRequest { isDraft } } }';
+            const READY = 'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }';
+            const { owner, repo } = context.repo;
+            // PRs opened before this instant are reported, never closed (NaN when unset = enforce all).
+            const STRICT_SINCE = Date.parse(String(process.env.PR_GOVERNANCE_STRICT_SINCE || '').trim());
+            const openedBeforeStrict = (pr) =>
+              Number.isFinite(STRICT_SINCE) && Boolean(pr.created_at) && Date.parse(pr.created_at) < STRICT_SINCE;
+
+            // ---- validation -------------------------------------------------------------------
+
+            // Bracketed text that is not a link, image, checkbox, footnote, alert or reference definition.
+            // Inside code spans only the template's own placeholders count (`items[0]` is code, not a gap).
+            function placeholders(line) {
+              const found = [];
+              const spans = [];
+              const plain = line.replace(/(`+)([^`]*?)\1/g, (whole, _ticks, inner) => {
+                spans.push(inner);
+                return ' '.repeat(whole.length);
+              });
+              const lead = plain.match(/^\s*/)[0].length;
+              const re = /\[([^\[\]\n]*)\]/g;
+              let m;
+              while ((m = re.exec(plain)) !== null) {
+                const inner = m[1];
+                const before = plain[m.index - 1] || '';
+                const after = plain[m.index + m[0].length] || '';
+                if (/^[ xX]?$/.test(inner)) continue;
+                if (inner.startsWith('^') || inner.startsWith('!')) continue;
+                if (after === '(' || after === '[' || before === ']') continue;
+                if (after === ':' && m.index === lead) continue;
+                found.push(m[0]);
+              }
+              for (const inner of spans) for (const p of CODE_PLACEHOLDERS) if (inner.includes(p)) found.push(p);
+              return found;
+            }
+
+            function validate(pr, changed) {
+              const problems = [];
+              if (changed > MAX_FILES) {
+                problems.push(`Files: ${changed} files changed, the limit is ${MAX_FILES}. Split this PR into sequential PRs of at most ${MAX_FILES} files each (e.g. 1. migration + domain entities, 2. service + unit tests, 3. API + RBAC + integration tests).`);
+              }
+
+              const title = (pr.title || '').trim();
+              const prefix = PREFIXES.find((p) => title.startsWith(p));
+              if (!prefix) {
+                problems.push(`Title: must start with one of ${PREFIXES.join(' ')} (found "${title}").`);
+              } else {
+                const rest = title.slice(prefix.length).trim();
+                const left = placeholders(rest);
+                if (!rest) problems.push(`Title: add a concise title after "${prefix}".`);
+                else if (left.length) problems.push(`Title: replace the placeholder ${left.join(' ')}.`);
+              }
+
+              const body = (pr.body || '').replace(/\r\n?/g, '\n').replace(/<!--[\s\S]*?-->/g, '');
+              const lines = body.split('\n');
+              const inFence = [];
+              let fence = null;
+              lines.forEach((line, i) => {
+                const f = line.match(/^\s*(`{3,}|~{3,})/);
+                if (fence) {
+                  inFence[i] = true;
+                  if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+                } else if (f) {
+                  fence = f[1];
+                  inFence[i] = true;
+                } else {
+                  inFence[i] = false;
+                }
+              });
+
+              const escapeRe = (s) => s.replace(/[.*+?^$(){}|[\]\\/]/g, '\\$&');
+              const rowLines = new Set();
+              for (const field of FIELDS) {
+                const re = new RegExp(`^\\s*\\|\\s*\\*\\*${escapeRe(field)}\\*\\*\\s*\\|(.*)$`);
+                const i = lines.findIndex((l, k) => !inFence[k] && re.test(l));
+                if (i < 0) {
+                  problems.push(`Metadata: the **${field}** row is missing.`);
+                  continue;
+                }
+                rowLines.add(i);
+                const value = lines[i].match(re)[1].replace(/\|\s*$/, '').trim();
+                if (!value) {
+                  problems.push(`Metadata: **${field}** is empty.`);
+                  continue;
+                }
+                if (field === 'Verifier' && value === VERIFIER_PENDING) continue;
+                const left = placeholders(value);
+                if (left.length) {
+                  problems.push(`Metadata: **${field}** still holds the template placeholder ${left.join(' ')}.`);
+                } else if (field === 'Date' && !DATE.test(value)) {
+                  problems.push(`Metadata: **Date** must be "DD Month YYYY", e.g. 23 November 2026 (found "${value}").`);
+                }
+              }
+
+              const norm = (s) => s.replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim();
+              const headings = [];
+              lines.forEach((l, i) => {
+                if (inFence[i]) return;
+                const h = l.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+                if (h) headings.push({ i, level: h[1].length, text: norm(h[2]) });
+              });
+              const found = SECTIONS.map((s) => headings.findIndex((h) => h.level === 2 && h.text === s));
+              SECTIONS.forEach((s, k) => {
+                if (found[k] < 0) problems.push(`Section "## ${s}" is missing.`);
+              });
+              const present = found.filter((x) => x >= 0);
+              if (present.some((x, k) => k > 0 && x < present[k - 1])) {
+                problems.push('Sections are out of order: they must run from "## 1. What\'s new" to "## 7. Deployment" in sequence.');
+              }
+
+              const sectionOf = new Array(lines.length).fill(-1);
+              SECTIONS.forEach((s, k) => {
+                if (found[k] < 0) return;
+                const h = headings[found[k]];
+                const next = headings.find((x) => x.i > h.i && x.level <= 2);
+                const end = next ? next.i : lines.length;
+                for (let i = h.i + 1; i < end; i += 1) sectionOf[i] = k;
+                const content = lines.slice(h.i + 1, end).map((l) => l.trim()).filter((l) => l && !/^([-*+]|\d+\.)$/.test(l));
+                if (!content.length) {
+                  problems.push(`Section "## ${s}" is empty. Write what was evaluated even when nothing applies, e.g. "- No database changes".`);
+                }
+              });
+
+              const perSection = SECTIONS.map(() => []);
+              const outside = [];
+              lines.forEach((l, i) => {
+                if (inFence[i] || rowLines.has(i)) return;
+                const left = placeholders(l);
+                if (!left.length) return;
+                if (sectionOf[i] >= 0) perSection[sectionOf[i]].push(...left);
+                else outside.push(...left);
+              });
+              perSection.forEach((left, k) => {
+                if (left.length) problems.push(`Section "## ${SECTIONS[k]}" still holds template placeholder(s): ${left.join(' ')}`);
+              });
+              if (outside.length) {
+                problems.push(`Body: template placeholder(s) outside the sections: ${outside.join(' ')}. Replace them; literal brackets go in backticks.`);
+              }
+              return problems;
+            }
+
+            function report(problems, outcome) {
+              return [
+                `PR governance: ${problems.length} problem(s) to fix`,
+                ...problems.map((p, i) => `${i + 1}. ${p}`),
+                outcome,
+                'Template: .github/PULL_REQUEST_TEMPLATE.md. Rules: CLAUDE.md, "Pull requests". Editing the title or description re-runs this check.',
+              ].filter(Boolean).join('\n');
+            }
+
+            // ---- enforcement ------------------------------------------------------------------
+
+            const isBot = (pr) => Boolean(pr.user && pr.user.type === 'Bot');
+            const labelsOf = (pr) => (pr.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
+
+            async function attempt(what, fn) {
+              try {
+                await fn();
+                return true;
+              } catch (e) {
+                core.warning(`PR governance could not ${what}: ${e.message}`);
+                return false;
+              }
+            }
+
+            async function changedFiles(pr) {
+              if (typeof pr.changed_files === 'number') return pr.changed_files;
+              const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pr.number });
+              return data.changed_files;
+            }
+
+            async function writeComment(number, body, onlyIfExists = false) {
+              const { data } = await github.rest.issues.listComments({ owner, repo, issue_number: number, per_page: 100 });
+              const mine = (data || []).find((c) => (c.body || '').includes(MARKER));
+              if (mine) {
+                if (mine.body !== body) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+              } else if (!onlyIfExists) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+              }
+            }
+
+            async function addBlockedLabel(number) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: LABEL });
+              } catch (e) {
+                if (e.status !== 404) throw e;
+                await github.rest.issues.createLabel({ owner, repo, name: LABEL, color: 'b60205', description: 'Closed by the PR governance check until the title and description are fixed (ADR-007)' });
+              }
+              await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [LABEL] });
+            }
+
+            const list = (problems) => problems.map((p, i) => `${i + 1}. ${p}`);
+            const FOOTER = 'Start from `.github/PULL_REQUEST_TEMPLATE.md`: write inside the 7 numbered sections and replace every `[...]` placeholder (only `[Add verifier name]` may stay until a reviewer is assigned). Rules: `CLAUDE.md`, "Pull requests".';
+            const WHY = {
+              closed: 'This pull request was **closed** because its title or description does not follow the NaArNi PR standard (ADR-007). Fix every item below by editing the title and description: **the PR reopens automatically** once they pass. If you pushed commits to bring the file count down, reopen the PR yourself; it is checked again.',
+              still: 'This pull request stays **closed** until every item below is fixed. Edit the title and description: the PR reopens automatically once they pass.',
+              draft: 'This pull request was **converted to a draft** (a draft cannot be merged) because its title or description does not follow the NaArNi PR standard (ADR-007). Fix every item below: the check re-runs on each edit and marks it ready for review once it passes.',
+              none: 'This pull request does not follow the NaArNi PR standard (ADR-007) and the check could not block it automatically. **Do not merge it** until every item below is fixed.',
+              legacy: 'This pull request was opened before the NaArNi PR standard applied to this repository (ADR-007), so it is **not closed**. Bring its title and description in line before merging it:',
+            };
+            const OUTCOME = {
+              closed: 'closed',
+              still: 'kept closed',
+              draft: 'converted to a draft',
+              none: 'NOT blocked (the workflow token could not close or draft it): do not merge it',
+              legacy: 'reported only (opened before the standard applied here)',
+            };
+            const failComment = (problems, why) => [MARKER, why === 'legacy' ? '### ⚠️ PR governance: not compliant' : '### ❌ PR governance: blocked', '', WHY[why], '', ...list(problems), '', FOOTER].join('\n');
+            const passComment = (changed, restored) => [MARKER, '### ✅ PR governance: passed', '', `Title, the 5 metadata rows and all 7 sections are complete, and the PR changes ${changed} of ${MAX_FILES} files.${restored ? ` ${restored}` : ''}`].join('\n');
+            const mergedComment = (problems) => [MARKER, '### ⚠️ PR governance: merged while not compliant', '', 'This pull request was merged although its title or description did not follow the NaArNi PR standard (ADR-007). Add the missing information to the description now so the record is complete:', '', ...list(problems)].join('\n');
+
+            // Blocks a failing PR (close, else draft) or restores a fixed one. Returns the outcome text.
+            async function enforce(pr, problems, changed) {
+              const labelled = labelsOf(pr).includes(LABEL);
+              if (problems.length) {
+                if (openedBeforeStrict(pr) && !labelled) {
+                  await attempt('comment on the PR', () => writeComment(pr.number, failComment(problems, 'legacy')));
+                  return OUTCOME.legacy;
+                }
+                let why;
+                if (pr.state === 'closed') why = 'still';
+                else if (await attempt('close the PR', () => github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' }))) why = 'closed';
+                else if (pr.draft) why = 'draft';
+                else if (await attempt('convert the PR to draft', () => github.graphql(DRAFT, { id: pr.node_id }))) why = 'draft';
+                else why = 'none';
+                if ((why === 'closed' || why === 'draft') && !labelled) await attempt('label the PR', () => addBlockedLabel(pr.number));
+                await attempt('comment on the PR', () => writeComment(pr.number, failComment(problems, why)));
+                return OUTCOME[why];
+              }
+              let restored = '';
+              if (labelled) {
+                if (pr.state === 'closed') {
+                  if (await attempt('reopen the PR', () => github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'open' }))) restored = 'It has been reopened.';
+                } else if (pr.draft) {
+                  if (await attempt('mark the PR ready for review', () => github.graphql(READY, { id: pr.node_id }))) restored = 'It has been marked ready for review again.';
+                }
+                await attempt('remove the label', () => github.rest.issues.removeLabel({ owner, repo, issue_number: pr.number, name: LABEL }));
+              }
+              await attempt('update the comment', () => writeComment(pr.number, passComment(changed, restored), true));
+              return 'OK';
+            }
+
+            async function summarise(lines) {
+              try {
+                await core.summary.addHeading('PR governance', 2).addList(lines).write();
+              } catch (e) {
+                core.info(`Job summary not written: ${e.message}`);
+              }
+            }
+
+            // ---- events -----------------------------------------------------------------------
+
+            if (context.eventName === 'pull_request') {
+              const pr = context.payload.pull_request;
+              const action = context.payload.action;
+              if (isBot(pr)) {
+                core.info(`PR governance: #${pr.number} was opened by a bot (${pr.user.login}); exempt.`);
+                return;
+              }
+              if (action === 'closed') {
+                if (!pr.merged) {
+                  core.info(`PR governance: #${pr.number} was closed without merging; nothing to check.`);
+                  return;
+                }
+                const changed = await changedFiles(pr);
+                const problems = validate(pr, changed);
+                if (problems.length) {
+                  await attempt('comment on the PR', () => writeComment(pr.number, mergedComment(problems)));
+                  core.setFailed(report(problems, 'This PR was merged although it was not compliant.'));
+                } else {
+                  core.info(`PR governance: OK (${changed} of ${MAX_FILES} files; title, 5 metadata rows and 7 sections complete).`);
+                }
+                return;
+              }
+              if (pr.state === 'closed' && !labelsOf(pr).includes(LABEL)) {
+                core.info(`PR governance: #${pr.number} was closed by a person; not checked.`);
+                return;
+              }
+              const changed = await changedFiles(pr);
+              const problems = validate(pr, changed);
+              const outcome = await enforce(pr, problems, changed);
+              if (problems.length) {
+                await summarise([...problems, `This PR was ${outcome}.`]);
+                core.setFailed(report(problems, `This PR was ${outcome}.`));
+              } else {
+                await summarise([`OK: ${changed} of ${MAX_FILES} files; title, 5 metadata rows and 7 sections complete.`]);
+                core.info(`PR governance: OK (${changed} of ${MAX_FILES} files; title, 5 metadata rows and 7 sections complete).`);
+              }
+              return;
+            }
+
+            // push to main/master/develop, or workflow_dispatch: re-check open PRs. Never fails the run, so the
+            // base branch is not marked red because of someone else's PR.
+            const only = String((context.payload.inputs && context.payload.inputs.pr) || '').trim();
+            const numbers = [];
+            if (only) {
+              numbers.push(Number(only));
+            } else {
+              for (let page = 1; page <= 20; page += 1) {
+                const { data } = await github.rest.pulls.list({ owner, repo, state: 'open', per_page: 100, page });
+                numbers.push(...(data || []).map((p) => p.number));
+                if (!data || data.length < 100) break;
+              }
+            }
+            const rows = [];
+            for (const n of [...new Set(numbers)]) {
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: n });
+              if (!pr || pr.state !== 'open') {
+                rows.push(`#${n}: not open, skipped`);
+              } else if (isBot(pr)) {
+                rows.push(`#${n}: opened by a bot, exempt`);
+              } else {
+                const problems = validate(pr, pr.changed_files);
+                const outcome = await enforce(pr, problems, pr.changed_files);
+                rows.push(problems.length ? `#${n}: ${problems.length} problem(s), ${outcome}` : `#${n}: OK`);
+              }
+            }
+            for (const row of rows) core.info(`PR governance sweep: ${row}`);
+            await summarise(rows.length ? rows : ['No open pull requests.']);

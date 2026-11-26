@@ -26,8 +26,8 @@ android {
         applicationId = "com.naarni.service"
         minSdk = 24            // Android 7.0 — covers ~99% of field devices (plan §0)
         targetSdk = 35         // Android 15 — Play requires API 35 for new apps
-        versionCode = 12
-        versionName = "0.9.1"
+        versionCode = 13
+        versionName = "0.9.2"
 
         // Backend base URL — overridable per build type.
         buildConfigField("String", "BASE_URL", "\"https://service.naarni.com/\"")

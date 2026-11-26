@@ -523,25 +523,36 @@ def get_my_alert_filter_options() -> dict:
 	vehicles = sorted(_user_vehicle_names(user))
 	if not vehicles:
 		return {"success": True, "data": {"vehicles": [], "alert_types": []}}
-	veh_ph = ", ".join(["%s"] * len(vehicles))
-	types = frappe.db.sql(
-		f"""
-		SELECT ae.alert_type AS value, COALESCE(MAX(at.alert_name), ae.alert_type) AS label
-		FROM `tabAlert Event` ae
-		LEFT JOIN `tabAlert Type` at ON at.name = ae.alert_type
-		WHERE ae.vehicle IN ({veh_ph})
-		  AND ae.alert_type IS NOT NULL AND ae.alert_type != ''
-		GROUP BY ae.alert_type
-		ORDER BY label
-		""",
-		vehicles,
-		as_dict=True,
+	raised = frappe.get_all(
+		"Alert Event",
+		filters={"vehicle": ["in", vehicles], "alert_type": ["is", "set"]},
+		fields=["alert_type"],
+		distinct=True,
+		limit_page_length=0,
+	)
+	type_names = sorted({r["alert_type"] for r in raised})
+	labels = (
+		{
+			t["name"]: t["alert_name"]
+			for t in frappe.get_all(
+				"Alert Type",
+				filters={"name": ["in", type_names]},
+				fields=["name", "alert_name"],
+				limit_page_length=0,
+			)
+		}
+		if type_names
+		else {}
+	)
+	types = sorted(
+		({"value": name, "label": labels.get(name) or name} for name in type_names),
+		key=lambda t: t["label"].lower(),
 	)
 	return {
 		"success": True,
 		"data": {
 			"vehicles": [{"value": v, "label": v} for v in vehicles],
-			"alert_types": [{"value": t["value"], "label": t["label"]} for t in types],
+			"alert_types": types,
 		},
 	}
 

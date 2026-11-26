@@ -1,33 +1,39 @@
 <!--
-
-Some key notes before you open a PR:
-
- 1. Select which branch should this PR be merged in?
- 2. PR name follows [convention](http://karma-runner.github.io/4.0/dev/git-commit-msg.html)
- 3. All tests pass locally, UI and Unit tests
- 4. All business logic and validations must be on the server-side
- 5. Update necessary Documentation
- 6. Put `closes #XXXX` in your comment to auto-close the issue that your PR fixes
-
-
-Also, if you're new here
-
-- Documentation Guidelines => https://github.com/frappe/erpnext/wiki/Updating-Documentation
-
-- Contribution Guide => https://github.com/frappe/erpnext/blob/develop/.github/CONTRIBUTING.md
-
-- Pull Request Checklist => https://github.com/frappe/erpnext/wiki/Pull-Request-Checklist
-
+  Fill in this form; do not write your description above or below it.
+  Replace every [ ... ] placeholder (only [Add verifier name] may stay until a reviewer is assigned)
+  and write something in all 7 numbered sections. Title: Feature Release: / Bug Fix: / Hotfix: /
+  Refactor: / Infra: / Security: / Chore: followed by a concise title. At most 10 changed files.
+  A PR that fails the "PR governance" check is closed automatically within seconds; fix the title
+  and description and it reopens by itself.
 -->
+# [Type: Feature Release / Bug Fix / Refactor / Infra]: [Concise Title]
 
-> Please provide enough information so that others can review your pull request:
+| Field | Value |
+| :--- | :--- |
+| **Feature** | [One-line summary of the feature or change] |
+| **Developer** | [Developer Name] |
+| **Verifier** | [Add verifier name] |
+| **Branch / Commit** | `[branch-name]` · `[short-commit-sha]` |
+| **Date** | [DD Month YYYY] |
 
-<!-- You can skip this if you're fixing a typo or updating existing documentation -->
+## 1. What's new
+- [Bullet points describing user-facing or system changes]
+- [Call out dependent PRs in other repos: repo, branch and link, or "No cross-repo dependency"]
 
-> Explain the **details** for making this change. What existing problem does the pull request solve?
+## 2. New APIs
+- [Method, path, request, response and required role for each new or changed endpoint, or "None (<reason>)"]
 
-<!-- Example: When "Adding a function to do X", explain why it is necessary to have a way to do X. -->
+## 3. How it works
+- [Design and data flow: which modules, services or tables are involved, and why this approach]
 
-> Screenshots/GIFs
+## 4. Database
+- [Migrations (version and file), new or changed tables and columns, backfills, or "No database changes"]
 
-<!-- Add images/recordings to better visualize the change: expected/current behviour -->
+## 5. Who can see what
+- [Roles, permissions and data visibility this change affects, or "No access changes"]
+
+## 6. Testing
+- [Tests written first, the verification command and its result: N tests, N passed, N failed]
+
+## 7. Deployment
+- [Deploy order across repos, config and secrets, zero-downtime evidence for infra, and the rollback]

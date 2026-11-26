@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# NaArNi PR governance: pre-push gate.
+# Canonical copy: naarni-workspace/standards/pr-governance/pre-push, synced into every repo as
+# .githooks/pre-push by naarni-workspace/scripts/sync-pr-governance.sh. Edit the canonical copy.
+#
+#   Gate 1  At most 10 files changed (added, modified, deleted or renamed) between the base branch
+#           and each pushed commit: `git diff --name-only origin/<base>...<sha>`, the number GitHub
+#           shows as "Files changed". The base is origin/main or origin/master, whichever the
+#           pushed commit is closest to. A branch stacked on another PR branch is measured against
+#           its parent with: PR_GOVERNANCE_BASE=<parent-branch> git push
+#   Gate 2  The repo's verification: `make verify`, else `npm run verify`, with QUALITY_BASE set to the
+#           base gate 1 measured against. When pre-commit runs this hook (PRE_COMMIT=1), its other
+#           pre-push hooks are the verification and gate 2 is skipped.
+#
+# Activation: scripts/setup-git-hooks.sh (core.hooksPath=.githooks, .husky/pre-push, or a pre-commit
+# pre-push hook). The pull request is checked again by .github/workflows/pr-governance.yml.
+# Decision record: naarni-workspace/context/decisions/ADR-007-pr-governance.md
+set -u
+MAX_FILES=10
+ZERO=0000000000000000000000000000000000000000
+say() { printf 'pr-governance: %s\n' "$*" >&2; }
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# ---- the commits being pushed ----------------------------------------------------------------
+shas=""
+if [ "${PRE_COMMIT:-}" = 1 ]; then
+  shas="$(git rev-parse --verify --quiet "${PRE_COMMIT_TO_REF:-HEAD}^{commit}")"
+elif [ -t 0 ]; then
+  shas="$(git rev-parse HEAD)"                       # run by hand (make hooks-run)
+else
+  read_any=0
+  while read -r _local_ref local_sha _remote_ref _remote_sha; do
+    read_any=1
+    [ -z "${local_sha:-}" ] && continue
+    [ "$local_sha" = "$ZERO" ] && continue           # deleting a remote branch
+    shas="$shas $local_sha"
+  done
+  [ "$read_any" = 0 ] && shas="$(git rev-parse HEAD)"
+  [ "$read_any" = 1 ] && [ -z "$shas" ] && exit 0    # the push only deletes branches
+fi
+
+# ---- the base branch ---------------------------------------------------------------------------
+if [ -n "${PR_GOVERNANCE_BASE:-}" ]; then
+  candidates="${PR_GOVERNANCE_BASE#origin/}"
+else
+  default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)"
+  candidates="$(printf '%s\n' "${default_branch#origin/}" main master | awk 'NF && !seen[$0]++')"
+fi
+
+if git remote get-url origin >/dev/null 2>&1; then
+  known=""
+  for b in $candidates; do
+    git show-ref --verify --quiet "refs/remotes/origin/$b" && known="$known $b"
+  done
+  if [ -n "$known" ]; then
+    # shellcheck disable=SC2086  # one argument per branch
+    git fetch --quiet --no-tags origin $known 2>/dev/null \
+      || say "warning: could not fetch origin ($known ); measuring against the local origin refs"
+  else
+    for b in $candidates; do git fetch --quiet --no-tags origin "$b" 2>/dev/null; done
+  fi
+fi
+
+if [ -n "${PR_GOVERNANCE_BASE:-}" ] && ! git show-ref --verify --quiet "refs/remotes/origin/$candidates"; then
+  say "✗ BLOCKED: PR_GOVERNANCE_BASE=$PR_GOVERNANCE_BASE but origin/$candidates does not exist. Push the parent branch first."
+  exit 1
+fi
+
+closest_base() { # $1 = commit; prints origin/<branch> with the fewest commits between it and $1
+  best="" best_n=""
+  for b in $candidates; do
+    git show-ref --verify --quiet "refs/remotes/origin/$b" || continue
+    n="$(git rev-list --count "origin/$b..$1" 2>/dev/null)" || continue
+    if [ -z "$best_n" ] || [ "$n" -lt "$best_n" ]; then best="origin/$b"; best_n="$n"; fi
+  done
+  printf '%s' "$best"
+}
+
+# ---- gate 1: at most 10 files ------------------------------------------------------------------
+blocked=0
+measured_base=""
+for sha in $shas; do
+  short="$(git rev-parse --short "$sha")"
+  base="$(closest_base "$sha")"
+  if [ -z "$base" ]; then
+    say "warning: no base branch on origin yet (looked for: $(echo $candidates)); file-count gate skipped for $short"
+    continue
+  fi
+  measured_base="$base"
+  files="$(git diff --name-only -M "$base...$sha")"
+  count="$(printf '%s' "$files" | grep -c .)"
+  if [ "$count" -gt "$MAX_FILES" ]; then
+    blocked=1
+    say "✗ BLOCKED: $count / $MAX_FILES max files changed ($short vs $base)"
+    printf '%s\n' "$files" | awk '{ printf "    %3d  %s\n", NR, $0 }' >&2
+    cat >&2 <<EOF
+
+A pull request may change at most $MAX_FILES files (added, modified, deleted and renamed all count).
+Split this branch into sequential PRs of at most $MAX_FILES files each, for example:
+    PR 1  database migration + domain entities
+    PR 2  service / business logic + unit tests
+    PR 3  API endpoints + RBAC + integration tests
+One way: git switch -c <name>-part1 $base && git checkout $short -- <files for part 1>
+         commit, push and open PR 1; base part 2 on part 1 and push it with
+         PR_GOVERNANCE_BASE=<name>-part1 git push   (GitHub still counts each PR on its own)
+EOF
+  else
+    say "✓ $count / $MAX_FILES files changed ($short vs $base)"
+  fi
+done
+[ "$blocked" = 1 ] && exit 1
+
+# ---- gate 2: the repo's verification ------------------------------------------------------------
+if [ "${PRE_COMMIT:-}" = 1 ]; then
+  say "gate 2: verification runs as the other pre-commit pre-push hooks"
+  exit 0
+fi
+export QUALITY_SOURCE="${QUALITY_SOURCE:-local-push}"
+# Verify against the same base gate 1 measured (each repo's verify reads QUALITY_BASE), so a branch
+# off origin/main is not checked against origin/master or the other way round. A value already set wins.
+[ -n "$measured_base" ] && export QUALITY_BASE="${QUALITY_BASE:-$measured_base}"
+if [ -f Makefile ] && grep -qE '^verify:' Makefile; then
+  say "gate 2: make verify"
+  make verify || { say "✗ BLOCKED: 'make verify' failed. Fix the findings above, then push again."; exit 1; }
+elif [ -f package.json ] && node -e "process.exit((require('./package.json').scripts || {}).verify ? 0 : 1)" 2>/dev/null; then
+  say "gate 2: npm run verify"
+  npm run verify || { say "✗ BLOCKED: 'npm run verify' failed. Fix the findings above, then push again."; exit 1; }
+else
+  say "gate 2: no verification command in this repo (no 'make verify' target, no npm 'verify' script)"
+fi
+say "✓ push allowed"

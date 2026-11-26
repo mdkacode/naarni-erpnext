@@ -6,9 +6,11 @@ acknowledged, resolved, or turned into a Job Card. The App's Alerts and Tickets
 tabs consume these.
 """
 
+import re
+
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
+from frappe.utils import add_days, getdate, now_datetime
 
 # Alert Event severity (warning/critical) → Ticket severity.
 SEVERITY_FROM_ALERT = {"critical": "Critical", "warning": "Medium"}
@@ -380,6 +382,25 @@ def _user_vehicle_names(user: str) -> list[str]:
 	]
 
 
+_ISO_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# The alert's own clock: when the engine fired it, else when it happened, else when stored.
+_ALERT_CLOCK = "COALESCE(ae.triggered_at, ae.occurred_at, ae.creation)"
+
+
+def _day(value: str, label: str):
+	"""A `YYYY-MM-DD` day, or None when not given. Anything else is refused."""
+	value = (value or "").strip()
+	if not value:
+		return None
+	if not _ISO_DAY.match(value):
+		frappe.throw(_("{0} must be a date as YYYY-MM-DD.").format(label))
+	try:
+		return getdate(value)
+	except Exception:
+		frappe.throw(_("{0} is not a valid date.").format(label))
+
+
 @frappe.whitelist()
 def get_my_alert_groups(
 	search: str = "",
@@ -388,6 +409,10 @@ def get_my_alert_groups(
 	sort: str = "latest",
 	limit: int = 50,
 	offset: int = 0,
+	from_date: str = "",
+	to_date: str = "",
+	alert_type: str = "",
+	vehicle: str = "",
 ) -> dict:
 	"""Modernized Alerts feed: one row per (bus, issue) group (dedup_key).
 
@@ -395,11 +420,25 @@ def get_my_alert_groups(
 	current open ticket. Latest is computed with a window function keyed on the
 	reliable clock COALESCE(triggered_at, occurred_at, creation) so a stale
 	status/severity can't leak in (greatest-N-per-group). Depot-scoped.
+
+	Filters (all optional, all inside the SE's depots):
+	- `from_date` / `to_date`: days as YYYY-MM-DD, inclusive, in the site's time
+	  zone. They apply before grouping, so a group's count and latest occurrence
+	  come only from the alerts inside the range.
+	- `alert_type`: an Alert Type name; `vehicle`: a Vehicle name (its registration).
+	  A vehicle outside the SE's depots matches nothing.
 	"""
 	user = frappe.session.user
 	if user == "Guest":
 		frappe.throw(_("Authentication required."), frappe.PermissionError)
+	start = _day(from_date, _("From date"))
+	end = _day(to_date, _("To date"))
+	if start and end and start > end:
+		frappe.throw(_("From date must be on or before To date."))
 	vehicles = _user_vehicle_names(user)
+	if vehicle:
+		# Narrows the depot's vehicles; never reaches past them.
+		vehicles = [v for v in vehicles if v == vehicle]
 	if not vehicles:
 		return {"success": True, "data": []}
 
@@ -416,6 +455,15 @@ def get_my_alert_groups(
 		extra += " AND (ae.registration_number LIKE %s OR ae.title LIKE %s OR ae.message LIKE %s)"
 		like = f"%{search.strip()}%"
 		params += [like, like, like]
+	if alert_type:
+		extra += " AND ae.alert_type = %s"
+		params.append(alert_type)
+	if start:
+		extra += f" AND {_ALERT_CLOCK} >= %s"
+		params.append(f"{start} 00:00:00")
+	if end:
+		extra += f" AND {_ALERT_CLOCK} < %s"
+		params.append(f"{add_days(end, 1)} 00:00:00")
 
 	order = "occurrence_count DESC, latest_time DESC" if sort == "frequent" else "latest_time DESC"
 
@@ -463,6 +511,50 @@ def get_my_alert_groups(
 		r["latest_time"] = str(r["latest_time"]) if r.get("latest_time") else None
 
 	return {"success": True, "data": rows}
+
+
+@frappe.whitelist()
+def get_my_alert_filter_options() -> dict:
+	"""Choices for the Alerts feed's filters: the vehicles at the SE's depots (by
+	registration) and the alert types raised on them (by their name), both sorted."""
+	user = frappe.session.user
+	if user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+	vehicles = sorted(_user_vehicle_names(user))
+	if not vehicles:
+		return {"success": True, "data": {"vehicles": [], "alert_types": []}}
+	raised = frappe.get_all(
+		"Alert Event",
+		filters={"vehicle": ["in", vehicles], "alert_type": ["is", "set"]},
+		fields=["alert_type"],
+		distinct=True,
+		limit_page_length=0,
+	)
+	type_names = sorted({r["alert_type"] for r in raised})
+	labels = (
+		{
+			t["name"]: t["alert_name"]
+			for t in frappe.get_all(
+				"Alert Type",
+				filters={"name": ["in", type_names]},
+				fields=["name", "alert_name"],
+				limit_page_length=0,
+			)
+		}
+		if type_names
+		else {}
+	)
+	types = sorted(
+		({"value": name, "label": labels.get(name) or name} for name in type_names),
+		key=lambda t: t["label"].lower(),
+	)
+	return {
+		"success": True,
+		"data": {
+			"vehicles": [{"value": v, "label": v} for v in vehicles],
+			"alert_types": types,
+		},
+	}
 
 
 @frappe.whitelist()

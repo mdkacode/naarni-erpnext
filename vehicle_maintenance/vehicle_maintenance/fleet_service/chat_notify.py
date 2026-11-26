@@ -22,6 +22,7 @@ message that was already committed.
 """
 
 import frappe
+from frappe import _
 
 from vehicle_maintenance.fleet_service.doctype.vm_chat_room.vm_chat_room import VMChatRoom
 
@@ -45,6 +46,10 @@ TEXTUAL_KINDS = ("text", "system")
 
 def preview_for(msg) -> str:
 	"""One-line summary of a message for list rows and notification bodies."""
+	# A withdrawn message must not survive as a room-list line quoting the words
+	# it no longer shows in the thread.
+	if msg.get("deleted"):
+		return _("This message was deleted")
 	if msg.kind in TEXTUAL_KINDS:
 		return (msg.body or "")[:PREVIEW_CHARS]
 	if msg.kind in ("ticket", "alert"):

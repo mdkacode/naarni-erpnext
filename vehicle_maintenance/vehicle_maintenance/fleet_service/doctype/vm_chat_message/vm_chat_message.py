@@ -60,6 +60,7 @@ class VMChatMessage(Document):
 
 	def as_payload(self) -> dict:
 		"""Wire shape consumed by the mobile client. Explicit field list, never SELECT *."""
+		deleted = bool(self.deleted)
 		return {
 			"name": self.name,
 			"room": self.room,
@@ -68,21 +69,31 @@ class VMChatMessage(Document):
 			"author": self.author,
 			"author_name": frappe.db.get_value("User", self.author, "full_name") or self.author,
 			"kind": self.kind,
-			"body": "" if self.deleted else (self.body or ""),
-			"file_url": None if self.deleted else self.file_url,
-			"file_name": self.file_name,
-			"file_size": self.file_size,
-			"duration_ms": self.duration_ms,
-			"transcript": self.transcript,
+			# Everything the message *said* is withheld once it is deleted — see
+			# the note on `redact` in api/chat.py for why this is a blank rather
+			# than a smaller row.
+			"body": "" if deleted else (self.body or ""),
+			"file_url": None if deleted else self.file_url,
+			"file_name": None if deleted else self.file_name,
+			"file_size": None if deleted else self.file_size,
+			"duration_ms": None if deleted else self.duration_ms,
+			"transcript": None if deleted else self.transcript,
 			"reply_to": self.reply_to,
-			"vehicle": self.vehicle,
-			"ticket": self.ticket,
+			"vehicle": None if deleted else self.vehicle,
+			"ticket": None if deleted else self.ticket,
 			"alert_event": self.alert_event,
-			"mentions": [m.user for m in (self.mentions or [])],
-			"geotagged": bool(self.geotagged),
-			"lat": self.lat,
-			"lon": self.lon,
-			"deleted": bool(self.deleted),
+			"mentions": [] if deleted else [m.user for m in (self.mentions or [])],
+			"geotagged": False if deleted else bool(self.geotagged),
+			"lat": None if deleted else self.lat,
+			"lon": None if deleted else self.lon,
+			"deleted": deleted,
+			"delete_seq": self.delete_seq or 0,
+			"deleted_by": self.deleted_by,
+			"deleted_by_name": (
+				frappe.db.get_value("User", self.deleted_by, "full_name") or self.deleted_by
+				if self.deleted_by
+				else None
+			),
 			"created_at": str(self.creation),
 		}
 

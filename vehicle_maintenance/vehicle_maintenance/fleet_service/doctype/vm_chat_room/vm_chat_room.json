@@ -115,6 +115,14 @@
       "description": "Per-room monotonic counter. Allocated under a row lock by allocate_seq(); never edit by hand."
     },
     {
+      "fieldname": "last_delete_seq",
+      "label": "Last Allocated Delete Seq",
+      "fieldtype": "Int",
+      "default": "0",
+      "read_only": 1,
+      "description": "A second monotonic counter, for tombstones only. Deliberately not last_seq: unread is computed as last_seq minus the reader's cursor, so a deletion sharing that counter would leave every member holding one unread message that does not exist and cannot be read away."
+    },
+    {
       "fieldname": "last_message_at",
       "label": "Last Message At",
       "fieldtype": "Datetime",

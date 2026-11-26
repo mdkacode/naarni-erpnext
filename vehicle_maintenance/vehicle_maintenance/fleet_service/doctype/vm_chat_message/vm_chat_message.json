@@ -72,6 +72,27 @@
       "description": "Soft delete. The row stays so seq never has a hole; the body is blanked."
     },
     {
+      "fieldname": "delete_seq",
+      "label": "Delete Seq",
+      "fieldtype": "Int",
+      "default": "0",
+      "read_only": 1,
+      "description": "Per-room tombstone counter, allocated by VMChatRoom.allocate_delete_seq(). A separate stream from seq so that removing a message never moves the room's unread mark; it is what lets a device that was offline when the message was deleted still learn about it on the next delta sync."
+    },
+    {
+      "fieldname": "deleted_by",
+      "label": "Deleted By",
+      "fieldtype": "Link",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "deleted_at",
+      "label": "Deleted At",
+      "fieldtype": "Datetime",
+      "read_only": 1
+    },
+    {
       "fieldname": "section_body",
       "label": "Body",
       "fieldtype": "Section Break"
